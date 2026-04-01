@@ -1,0 +1,114 @@
+# Aegis Cost & Loop Protection Policy
+# Prevents runaway costs like the $47K infinite loop incident
+apiVersion: aegis/v1
+kind: SecurityPolicy
+metadata:
+  name: cost-protection
+  description: Rate limits, cost budgets, and loop detection
+  incident_reference: "Industry Reports - $47K Multi-Agent Loop Incident"
+
+spec:
+  # Per-agent cost limits
+  - name: agent-cost-budget
+    type: cost
+    priority: 0
+
+    scope:
+      agents: ["*"]  # Apply to all agents
+
+    limits:
+      per_request: 5.00      # Max $5 per single request
+      hourly: 50.00          # Max $50/hour
+      daily: 200.00          # Max $200/day
+      monthly: 5000.00       # Max $5K/month
+
+    action_on_exceed: DENY
+
+    alert:
+      at_percentage: [50, 80, 95, 100]
+      channels: ["slack", "email"]
+      message: |
+        Cost budget alert for {{ agent.name }}
+        Current spend: ${{ cost.current }}
+        Limit: ${{ cost.limit }}
+        Period: {{ cost.period }}
+
+  # Loop detection - same tool with same parameters
+  - name: loop-detection-exact
+    type: tool_call
+    priority: 0
+
+    rate_limit:
+      # Same tool + same parameters within window = likely loop
+      limit: 3
+      window: 1m
+      scope: per_agent_per_tool_signature
+
+    action_on_exceed: DENY
+
+    response:
+      message: |
+        Potential infinite loop detected.
+        Tool '{{ tool.name }}' called with identical parameters 3 times in 1 minute.
+        Task terminated to prevent cost runaway.
+
+    alert:
+      severity: HIGH
+      channels: ["slack", "pagerduty"]
+      message: |
+        Infinite loop detected and blocked
+        Agent: {{ agent.name }}
+        Tool: {{ tool.name }}
+        Repetitions: {{ rate_limit.count }}
+
+  # Rate limiting - overall calls per minute
+  - name: rate-limit-calls
+    type: tool_call
+    priority: 1
+
+    rate_limit:
+      limit: 60
+      window: 1m
+      scope: per_agent
+
+    action_on_exceed: THROTTLE  # Slow down rather than block
+
+    response:
+      message: "Rate limit reached. Requests are being throttled."
+
+  # Agent call chain depth limit
+  - name: agent-chain-depth
+    type: tool_call
+    priority: 0
+
+    match:
+      context:
+        call_chain_depth:
+          gt: 5  # Max 5 agents deep
+
+    action: DENY
+
+    response:
+      message: |
+        Agent call chain too deep ({{ context.call_chain_depth }} levels).
+        Maximum depth is 5 to prevent infinite agent loops.
+
+    alert:
+      severity: MEDIUM
+      channels: ["slack"]
+
+  # Token budget per request
+  - name: token-budget
+    type: llm_request
+    priority: 1
+
+    limits:
+      max_tokens: 4096
+      max_prompt_tokens: 8192
+      max_completion_tokens: 4096
+
+    action_on_exceed: TRUNCATE
+
+    alert:
+      at_percentage: [90]
+      severity: LOW

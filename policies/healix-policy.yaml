@@ -1,0 +1,157 @@
+# Aegis Policy for Healix Medical
+# Healthcare Scheduling - HIPAA Compliant
+apiVersion: aegis/v1
+kind: SecurityPolicy
+metadata:
+  name: healix-schedule-agent
+  namespace: healix
+  labels:
+    company: healix
+    industry: healthcare
+    compliance: hipaa
+    framework: langchain
+
+spec:
+  # Agent identification
+  agent:
+    name: ScheduleBot
+    framework: langchain
+    model: gpt-4o-mini
+
+  # HIPAA Compliance Settings
+  compliance:
+    hipaa:
+      enabled: true
+      minimum_necessary: true  # Only access data needed for task
+      audit_phi_access: true
+      encryption_required: true
+
+  # Tenant isolation (clinic-based)
+  tenancy:
+    enabled: true
+    isolation: strict
+    identifier_field: clinic
+    allowed_clinics:
+      - healix-main
+    deny_cross_tenant: true
+
+  # Tool call policies
+  tools:
+    allowed:
+      - get_patient
+      - search_patients
+      - get_appointments
+      - list_providers
+      - get_slots
+      - book_appointment
+      - send_reminder
+
+    restricted:
+      - name: get_patient
+        requires_audit: true
+        phi_access: true
+        log_retention: 6_years  # HIPAA requirement
+
+      - name: search_patients
+        requires_audit: true
+        phi_access: true
+
+      - name: send_reminder
+        rate_limit: 50/hour
+        requires_audit: true
+
+    denied:
+      - export_data
+      - bulk_download
+      - share_externally
+      - execute_sql
+      - http_request
+
+  # PHI (Protected Health Information) Protection
+  phi_protection:
+    enabled: true
+    sensitive_fields:
+      - ssn
+      - ssn_last4
+      - dob
+      - conditions
+      - medications
+      - diagnoses
+      - insurance_id
+
+    redact_in_logs: true
+    mask_in_responses: false  # Needed for scheduling context
+    access_justification_required: true
+
+  # Prompt injection protection (stricter for healthcare)
+  prompt_security:
+    enabled: true
+    block_patterns:
+      - "ignore.*previous.*instructions"
+      - "ignore.*hipaa"
+      - "bypass.*compliance"
+      - "system.*override"
+      - "admin.*mode"
+      - "show.*all.*patients"
+      - "export.*database"
+      - "send.*to.*external"
+    sanitize_xml: true
+    sanitize_json: true
+
+  # Data protection
+  data_protection:
+    pii_detection: true
+    phi_detection: true
+    block_external_urls: true
+    allowed_domains:
+      - healix.com
+      - "*.healix.com"
+
+    # Prevent data exfiltration
+    block_patterns_in_output:
+      - email_addresses: false  # Allowed for notifications
+      - ssn_patterns: true
+      - bulk_records: true
+
+  # Rate limiting (healthcare typically lower volume)
+  rate_limits:
+    requests_per_minute: 30
+    tokens_per_minute: 50000
+    concurrent_requests: 5
+
+  # Comprehensive audit logging (HIPAA requirement)
+  audit:
+    enabled: true
+    log_all_requests: true
+    log_tool_calls: true
+    log_phi_access: true
+    include_user_identity: true
+    include_access_reason: true
+    retention_days: 2190  # 6 years for HIPAA
+
+  # Alerts
+  alerts:
+    - name: phi_bulk_access
+      description: Large number of patient records accessed
+      severity: critical
+      threshold: 10_records_per_hour
+      notify:
+        - hipaa-officer@healix.com
+        - security@healix.com
+
+    - name: prompt_injection_detected
+      severity: critical
+      notify:
+        - security@healix.com
+
+    - name: cross_clinic_attempt
+      severity: critical
+      notify:
+        - hipaa-officer@healix.com
+        - security@healix.com
+
+    - name: external_data_share_attempt
+      severity: critical
+      notify:
+        - hipaa-officer@healix.com
+        - legal@healix.com

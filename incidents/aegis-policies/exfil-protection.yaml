@@ -1,0 +1,109 @@
+# Aegis Data Exfiltration Protection Policy
+# Prevents data theft like the EchoLeak (CVE-2025-32711) attack
+apiVersion: aegis/v1
+kind: SecurityPolicy
+metadata:
+  name: exfil-protection
+  description: Block unauthorized external URLs and protect sensitive files
+  incident_reference: "CVE-2025-32711 - EchoLeak MS Copilot Vulnerability"
+
+spec:
+  # Block external URL access (exfiltration prevention)
+  - name: external-url-block
+    type: tool_call
+    priority: 0
+
+    match:
+      tools: ["send_to_url", "http_request", "fetch_url", "post_data", "webhook_*"]
+      parameters:
+        url:
+          not_matches_domain:
+            - "{{ org.domain }}"           # Company domain
+            - "*.{{ org.domain }}"         # Subdomains
+            - "api.openai.com"             # LLM provider
+            - "api.anthropic.com"          # LLM provider
+
+    action: DENY
+
+    response:
+      message: |
+        External URL access blocked.
+        The URL '{{ parameters.url }}' is not in the allowed domain list.
+        Contact security team if this is a legitimate integration.
+
+    alert:
+      severity: CRITICAL
+      channels: ["slack", "siem"]
+      message: |
+        Potential data exfiltration attempt blocked
+        Agent: {{ agent.name }}
+        Target URL: {{ parameters.url }}
+        Data size: {{ parameters.data | length }} bytes
+
+  # Protect sensitive files
+  - name: sensitive-file-protection
+    type: tool_call
+    priority: 0
+
+    match:
+      tools: ["fetch_file", "read_file", "get_file", "file_*"]
+      parameters:
+        filename:
+          regex: "(?i)(salary|password|secret|api.?key|credential|ssn|.env|.pem|.key)"
+
+    action: DENY
+
+    response:
+      message: |
+        Access to sensitive file blocked.
+        File '{{ parameters.filename }}' is classified as sensitive.
+        Request access through the security team.
+
+    alert:
+      severity: HIGH
+      channels: ["slack"]
+
+  # Detect and sanitize prompt injection patterns
+  - name: prompt-injection-sanitize
+    type: prompt
+    priority: 0
+
+    match:
+      content:
+        regex: "(?i)(ignore|forget|disregard).{0,20}(previous|prior|above).{0,20}(instructions?|prompts?)"
+
+    action: TRANSFORM
+
+    transform:
+      sanitize: true
+      remove_patterns:
+        - "(?i)ignore.*instructions"
+        - "(?i)you are now"
+        - "(?i)new instructions:"
+        - "(?i)system.*override"
+        - "(?i)admin.*mode"
+
+    alert:
+      severity: HIGH
+      channels: ["slack"]
+      message: "Prompt injection pattern detected and sanitized"
+
+  # Block base64 encoded data in external requests (common exfil technique)
+  - name: encoded-exfil-block
+    type: tool_call
+    priority: 1
+
+    match:
+      tools: ["send_to_url", "http_request", "post_data"]
+      parameters:
+        data:
+          # Base64 pattern (long strings of base64 characters)
+          regex: "[A-Za-z0-9+/]{100,}={0,2}"
+
+    action: DENY
+
+    response:
+      message: "Encoded data transmission blocked. Large encoded payloads are not permitted."
+
+    alert:
+      severity: HIGH

@@ -1,0 +1,194 @@
+version: '3.8'
+
+# Real-World Incident Simulation Infrastructure
+# Replicates documented AI agent security incidents
+
+services:
+  # ============================================
+  # INCIDENT 1: Replit DB Deletion
+  # Source: AI Incident Database #1152
+  # ============================================
+
+  replit-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: saastr_experiment
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: agent_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./01-replit-db-deletion/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - replit_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d saastr_experiment"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  replit-agent:
+    build: ./01-replit-db-deletion
+    ports:
+      - "8010:8000"
+    environment:
+      - LLM_BASE_URL=${AEGIS_URL:-http://litellm:4000}/v1
+      - LLM_API_KEY=${LLM_API_KEY:-sk-fake-key}
+      - DATABASE_URL=postgresql://agent:agent_password@replit-db:5432/saastr_experiment
+      - AGENT_MODE=${AGENT_MODE:-unprotected}
+    depends_on:
+      replit-db:
+        condition: service_healthy
+      litellm:
+        condition: service_started
+
+  # ============================================
+  # INCIDENT 2: Amazon Kiro Infrastructure
+  # Source: Particula Tech Blog, Dec 2025
+  # ============================================
+
+  kiro-mock-aws:
+    build: ./02-kiro-infrastructure/mock_aws
+    ports:
+      - "8020:8000"
+    environment:
+      - ENVIRONMENT=production
+    volumes:
+      - ./02-kiro-infrastructure/mock_aws/state:/app/state
+
+  kiro-agent:
+    build: ./02-kiro-infrastructure
+    ports:
+      - "8011:8000"
+    environment:
+      - LLM_BASE_URL=${AEGIS_URL:-http://litellm:4000}/v1
+      - LLM_API_KEY=${LLM_API_KEY:-sk-fake-key}
+      - AWS_ENDPOINT=http://kiro-mock-aws:8000
+      - AGENT_MODE=${AGENT_MODE:-unprotected}
+    depends_on:
+      - kiro-mock-aws
+      - litellm
+
+  # ============================================
+  # INCIDENT 3: EchoLeak Data Exfiltration
+  # Source: CVE-2025-32711
+  # ============================================
+
+  echoleak-file-server:
+    build: ./03-echoleak-exfiltration/mock_services
+    ports:
+      - "8021:8000"
+    environment:
+      - STORAGE_PATH=/app/files
+    volumes:
+      - ./03-echoleak-exfiltration/mock_services/sample_files:/app/files
+
+  echoleak-attacker:
+    image: python:3.11-slim
+    ports:
+      - "8099:8000"
+    command: python -m http.server 8000 --directory /app/exfil
+    volumes:
+      - ./03-echoleak-exfiltration/exfil_capture:/app/exfil
+
+  echoleak-agent:
+    build: ./03-echoleak-exfiltration
+    ports:
+      - "8012:8000"
+    environment:
+      - LLM_BASE_URL=${AEGIS_URL:-http://litellm:4000}/v1
+      - LLM_API_KEY=${LLM_API_KEY:-sk-fake-key}
+      - FILE_SERVER_URL=http://echoleak-file-server:8000
+      - AGENT_MODE=${AGENT_MODE:-unprotected}
+    depends_on:
+      - echoleak-file-server
+      - litellm
+
+  # ============================================
+  # INCIDENT 4: Cost Runaway Loop ($47K)
+  # Source: Industry Reports, 2025
+  # ============================================
+
+  cost-tracker:
+    build: ./04-cost-runaway-loop/cost_tracker
+    ports:
+      - "8022:8000"
+    environment:
+      - DAILY_BUDGET=200.00
+      - ALERT_THRESHOLD=0.8
+    volumes:
+      - ./04-cost-runaway-loop/cost_logs:/app/logs
+
+  loop-agents:
+    build: ./04-cost-runaway-loop
+    ports:
+      - "8013:8000"
+    environment:
+      - LLM_BASE_URL=${AEGIS_URL:-http://litellm:4000}/v1
+      - LLM_API_KEY=${LLM_API_KEY:-sk-fake-key}
+      - COST_TRACKER_URL=http://cost-tracker:8000
+      - AGENT_MODE=${AGENT_MODE:-unprotected}
+    depends_on:
+      - cost-tracker
+      - litellm
+
+  # ============================================
+  # INCIDENT 5: GitHub Copilot RCE
+  # Source: CVE-2025-53773
+  # ============================================
+
+  mock-github:
+    build: ./05-copilot-rce/mock_github
+    ports:
+      - "8023:8000"
+    volumes:
+      - ./05-copilot-rce/mock_github/repos:/app/repos
+
+  copilot-agent:
+    build: ./05-copilot-rce
+    ports:
+      - "8014:8000"
+    environment:
+      - LLM_BASE_URL=${AEGIS_URL:-http://litellm:4000}/v1
+      - LLM_API_KEY=${LLM_API_KEY:-sk-fake-key}
+      - GITHUB_URL=http://mock-github:8000
+      - AGENT_MODE=${AGENT_MODE:-unprotected}
+    depends_on:
+      - mock-github
+      - litellm
+
+  # ============================================
+  # SHARED SERVICES
+  # ============================================
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ../litellm-config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml"]
+
+  # Centralized logging
+  log-collector:
+    image: fluent/fluent-bit:latest
+    ports:
+      - "24224:24224"
+    volumes:
+      - ./logging/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
+      - ./logs:/app/logs
+
+  # Redis for rate limiting simulation
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  replit_db_data:
+
+networks:
+  default:
+    name: aegis-incidents

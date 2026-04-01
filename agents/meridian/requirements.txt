@@ -1,0 +1,9 @@
+# Meridian Agent - Fintech Risk Analysis
+fastapi>=0.109.0
+uvicorn>=0.27.0
+langgraph>=0.0.20
+langchain>=0.1.0
+langchain-openai>=0.0.5
+pydantic>=2.5.0
+redis>=5.0.0
+httpx>=0.27.0

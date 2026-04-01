@@ -1,0 +1,13 @@
+# CLI and async
+click>=8.1.0
+httpx>=0.27.0
+asyncio>=3.4.3
+
+# Rich output
+rich>=13.0.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Data generation
+faker>=30.0.0

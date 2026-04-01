@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # SAMPLE AGENTS
+  # ============================================
+
+  nimbus-agent:
+    build: ./agents/nimbus
+    ports:
+      - "8001:8000"
+    environment:
+      - LLM_BASE_URL=${AEGIS_URL:-http://litellm:4000}/v1
+      - LLM_API_KEY=${LLM_API_KEY:-sk-fake-key}
+      - MONGODB_URI=mongodb://mongodb:27017/nimbus
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - litellm
+      - mongodb
+      - redis
+    restart: unless-stopped
+
+  meridian-agent:
+    build: ./agents/meridian
+    ports:
+      - "8002:8000"
+    environment:
+      - LLM_BASE_URL=${AEGIS_URL:-http://litellm:4000}/v1
+      - LLM_API_KEY=${LLM_API_KEY:-sk-fake-key}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - litellm
+      - redis
+    restart: unless-stopped
+
+  healix-agent:
+    build: ./agents/healix
+    ports:
+      - "8003:8000"
+    environment:
+      - LLM_BASE_URL=${AEGIS_URL:-http://litellm:4000}/v1
+      - LLM_API_KEY=${LLM_API_KEY:-sk-fake-key}
+    depends_on:
+      - litellm
+    restart: unless-stopped
+
+  # ============================================
+  # LLM GATEWAY
+  # ============================================
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml"]
+    restart: unless-stopped
+
+  # ============================================
+  # SUPPORTING SERVICES
+  # ============================================
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # ============================================
+  # OPTIONAL: Ollama (free local LLM)
+  # ============================================
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
+  ollama_data:

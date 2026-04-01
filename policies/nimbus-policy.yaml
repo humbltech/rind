@@ -1,0 +1,98 @@
+# Aegis Policy for Nimbus SaaS
+# B2B Task Management Platform
+apiVersion: aegis/v1
+kind: SecurityPolicy
+metadata:
+  name: nimbus-task-agent
+  namespace: nimbus
+  labels:
+    company: nimbus
+    industry: b2b-saas
+    framework: langchain
+
+spec:
+  # Agent identification
+  agent:
+    name: TaskBot
+    framework: langchain
+    model: gpt-4o-mini
+
+  # Tenant isolation
+  tenancy:
+    enabled: true
+    isolation: strict
+    identifier_field: workspace
+    allowed_workspaces:
+      - nimbus-default
+    deny_cross_tenant: true
+
+  # Tool call policies
+  tools:
+    allowed:
+      - list_tasks
+      - get_task
+      - update_task
+      - create_task
+      - list_users
+      - send_notification
+
+    restricted:
+      - name: send_notification
+        rate_limit: 10/minute
+        requires_audit: true
+
+    denied:
+      - execute_sql
+      - shell_command
+      - http_request
+
+  # Prompt injection protection
+  prompt_security:
+    enabled: true
+    block_patterns:
+      - "ignore.*previous.*instructions"
+      - "system.*override"
+      - "admin.*mode"
+      - "you are now"
+      - "DAN"
+      - "jailbreak"
+    sanitize_xml: true
+    sanitize_json: true
+
+  # Data protection
+  data_protection:
+    pii_detection: true
+    block_external_urls: true
+    allowed_domains:
+      - nimbus.io
+      - "*.nimbus.io"
+    sensitive_fields:
+      - password
+      - api_key
+      - token
+      - secret
+
+  # Rate limiting
+  rate_limits:
+    requests_per_minute: 60
+    tokens_per_minute: 100000
+    concurrent_requests: 10
+
+  # Audit logging
+  audit:
+    enabled: true
+    log_all_requests: true
+    log_tool_calls: true
+    retention_days: 90
+
+  # Alerts
+  alerts:
+    - name: prompt_injection_detected
+      severity: high
+      notify:
+        - security@nimbus.io
+    - name: cross_tenant_attempt
+      severity: critical
+      notify:
+        - security@nimbus.io
+        - oncall@nimbus.io

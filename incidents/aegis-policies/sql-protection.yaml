@@ -1,0 +1,98 @@
+# Aegis SQL Protection Policy
+# Prevents catastrophic database operations like the Replit incident
+apiVersion: aegis/v1
+kind: SecurityPolicy
+metadata:
+  name: sql-protection
+  description: Block destructive SQL operations, require approval for high-risk queries
+  incident_reference: "AI Incident Database #1152 - Replit DB Deletion"
+
+spec:
+  # Block destructive operations outright
+  - name: sql-destructive-block
+    type: tool_call
+    priority: 0  # Highest priority - evaluate first
+
+    match:
+      tools: ["sql_execute", "sql_*", "db_*", "postgres_*", "mysql_*"]
+      parameters:
+        query:
+          regex: "(?i)(DROP|TRUNCATE)\\s+(TABLE|DATABASE|SCHEMA)"
+
+    action: DENY
+
+    response:
+      message: |
+        Destructive database operation blocked.
+        DROP and TRUNCATE operations are not permitted via AI agents.
+        Please use the admin console for schema changes.
+
+    alert:
+      severity: CRITICAL
+      channels: ["slack", "pagerduty"]
+      message: "AI agent attempted destructive database operation"
+
+  # Require approval for DELETE operations
+  - name: sql-delete-approval
+    type: tool_call
+    priority: 1
+
+    match:
+      tools: ["sql_execute", "sql_*", "db_*"]
+      parameters:
+        query:
+          regex: "(?i)DELETE\\s+FROM"
+
+    action: REQUIRE_APPROVAL
+
+    approval:
+      approvers: ["role:dba", "role:data-team"]
+      timeout: 30m
+      on_timeout: DENY
+      message: |
+        *SQL DELETE Operation Requires Approval*
+
+        Agent: {{ agent.name }}
+        Query: {{ parameters.query | truncate(200) }}
+
+        This will delete data. Please review carefully.
+
+    alert:
+      severity: HIGH
+      channels: ["slack"]
+
+  # Audit all write operations
+  - name: sql-write-audit
+    type: tool_call
+    priority: 2
+
+    match:
+      tools: ["sql_execute", "sql_*", "db_*"]
+      parameters:
+        query:
+          regex: "(?i)(INSERT|UPDATE|ALTER)"
+
+    action: ALLOW
+
+    audit:
+      enabled: true
+      include_parameters: true
+      include_response: true
+      retention_days: 90
+
+  # Allow read operations freely
+  - name: sql-read-allow
+    type: tool_call
+    priority: 3
+
+    match:
+      tools: ["sql_execute", "sql_*", "db_*"]
+      parameters:
+        query:
+          regex: "(?i)^\\s*SELECT"
+
+    action: ALLOW
+
+    audit:
+      enabled: true
+      retention_days: 30
