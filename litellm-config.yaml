@@ -1,30 +1,75 @@
 model_list:
-  # OpenAI models (if OPENAI_API_KEY is set)
-  - model_name: gpt-4o
-    litellm_params:
-      model: openai/gpt-4o
-      api_key: os.environ/OPENAI_API_KEY
+  # ============================================
+  # FREE OPTIONS (for local development)
+  # ============================================
 
+  # Ollama - FREE, runs locally on your Mac
+  # Start with: make up-ollama
+  - model_name: llama3
+    litellm_params:
+      model: ollama/llama3.2
+      api_base: http://ollama:11434
+
+  - model_name: mistral
+    litellm_params:
+      model: ollama/mistral
+      api_base: http://ollama:11434
+
+  # Groq - FREE tier (very fast, cloud-hosted)
+  # Get free API key: https://console.groq.com
+  - model_name: groq-llama
+    litellm_params:
+      model: groq/llama-3.1-8b-instant
+      api_key: os.environ/GROQ_API_KEY
+
+  - model_name: groq-mixtral
+    litellm_params:
+      model: groq/mixtral-8x7b-32768
+      api_key: os.environ/GROQ_API_KEY
+
+  # ============================================
+  # CHEAP CLOUD OPTIONS (for testing)
+  # ============================================
+
+  # GPT-4o-mini - $0.15/1M input, $0.60/1M output
+  # Good balance of cheap + capable
   - model_name: gpt-4o-mini
     litellm_params:
       model: openai/gpt-4o-mini
       api_key: os.environ/OPENAI_API_KEY
 
-  # Anthropic models (if ANTHROPIC_API_KEY is set)
+  # Gemini 1.5 Flash - $0.075/1M input (CHEAPEST)
+  # Get free API key: https://aistudio.google.com
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-1.5-flash
+      api_key: os.environ/GOOGLE_API_KEY
+
+  # DeepSeek - $0.14/1M input, $0.28/1M output
+  - model_name: deepseek
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  # ============================================
+  # PREMIUM OPTIONS (for customer demos)
+  # ============================================
+
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
   - model_name: claude-3-5-sonnet
     litellm_params:
       model: anthropic/claude-3-5-sonnet-20241022
       api_key: os.environ/ANTHROPIC_API_KEY
 
-  # Fallback: Mock responses for testing without API keys
-  - model_name: mock
-    litellm_params:
-      model: openai/gpt-3.5-turbo
-      mock_response: "This is a mock response for testing."
-
 litellm_settings:
   drop_params: true
   set_verbose: false
+  # Default to cheapest model
+  default_model: gpt-4o-mini
 
 general_settings:
   master_key: "sk-simulation-key"
