@@ -255,6 +255,24 @@ build-incidents:
 	docker-compose -f incidents/docker-compose.incidents.yml build
 
 # ============================================
+# CLOUD-ONLY SETUP (No local Docker needed)
+# ============================================
+
+# For GitHub Codespaces / Gitpod - everything runs in cloud
+codespaces-setup:
+	@echo "Setting up for GitHub Codespaces..."
+	pip install -r requirements.txt
+	pip install -r incidents/requirements.txt
+	@echo ""
+	@echo "✓ Dependencies installed!"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. Get free Groq API key: https://console.groq.com/keys"
+	@echo "  2. Run: export GROQ_API_KEY=gsk_your_key"
+	@echo "  3. Run: make incidents-up"
+	@echo "  4. Run: make incident INCIDENT=replit"
+
+# ============================================
 # HELP
 # ============================================
 
@@ -263,16 +281,17 @@ help:
 	@echo "╔═══════════════════════════════════════════════════════════════════╗"
 	@echo "║                    AEGIS SIMULATION COMMANDS                       ║"
 	@echo "╠═══════════════════════════════════════════════════════════════════╣"
-	@echo "║  QUICK START (with Ollama - FREE):                                 ║"
-	@echo "║    make ollama-setup          Install Ollama on Mac               ║"
-	@echo "║    make ollama-start          Start Ollama server                 ║"
-	@echo "║    make incidents-up-ollama   Start incident simulations          ║"
-	@echo "║    make incident INCIDENT=replit   Run Replit simulation          ║"
+	@echo "║  QUICK START (FREE - uses Groq cloud LLM):                         ║"
+	@echo "║    1. Get free key: https://console.groq.com/keys                 ║"
+	@echo "║    2. echo 'GROQ_API_KEY=gsk_xxx' > .env                          ║"
+	@echo "║    3. make incidents-up                                           ║"
+	@echo "║    4. make incident INCIDENT=replit                               ║"
 	@echo "╠═══════════════════════════════════════════════════════════════════╣"
-	@echo "║  QUICK START (with OpenAI):                                        ║"
-	@echo "║    echo 'OPENAI_API_KEY=sk-xxx' > .env                            ║"
-	@echo "║    make incidents-up          Start incident simulations          ║"
-	@echo "║    make incident INCIDENT=replit   Run Replit simulation          ║"
+	@echo "║  GITHUB CODESPACES (no local resources needed):                    ║"
+	@echo "║    1. Open repo in Codespaces                                     ║"
+	@echo "║    2. make codespaces-setup                                       ║"
+	@echo "║    3. export GROQ_API_KEY=gsk_xxx                                 ║"
+	@echo "║    4. make incidents-up && make incident INCIDENT=replit          ║"
 	@echo "╠═══════════════════════════════════════════════════════════════════╣"
 	@echo "║  OTHER COMMANDS:                                                   ║"
 	@echo "║    make incidents             List all incidents                  ║"

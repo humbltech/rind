@@ -1,11 +1,37 @@
 model_list:
   # ============================================
-  # FREE OPTIONS (for local development)
+  # FREE CLOUD OPTIONS (RECOMMENDED - no local resources needed)
+  # ============================================
+
+  # Groq - FREE tier, VERY FAST (500 tokens/sec!)
+  # Get free API key: https://console.groq.com/keys
+  # This is the BEST free option - runs Llama 3.1 in the cloud
+  - model_name: gpt-4o-mini  # Alias so agents work without code changes
+    litellm_params:
+      model: groq/llama-3.1-8b-instant
+      api_key: os.environ/GROQ_API_KEY
+
+  - model_name: groq-llama
+    litellm_params:
+      model: groq/llama-3.1-8b-instant
+      api_key: os.environ/GROQ_API_KEY
+
+  - model_name: groq-llama-70b
+    litellm_params:
+      model: groq/llama-3.1-70b-versatile
+      api_key: os.environ/GROQ_API_KEY
+
+  - model_name: groq-mixtral
+    litellm_params:
+      model: groq/mixtral-8x7b-32768
+      api_key: os.environ/GROQ_API_KEY
+
+  # ============================================
+  # LOCAL OPTIONS (if you have resources)
   # ============================================
 
   # Ollama - FREE, runs locally on your Mac
-  # Install: make ollama-setup
-  # Start: ollama serve (in terminal)
+  # Only use if you have RAM/disk space
   - model_name: llama3
     litellm_params:
       model: ollama/llama3.2
@@ -15,23 +41,6 @@ model_list:
     litellm_params:
       model: ollama/llama3.2
       api_base: os.environ/OLLAMA_API_BASE
-
-  - model_name: mistral
-    litellm_params:
-      model: ollama/mistral
-      api_base: os.environ/OLLAMA_API_BASE
-
-  # Groq - FREE tier (very fast, cloud-hosted)
-  # Get free API key: https://console.groq.com
-  - model_name: groq-llama
-    litellm_params:
-      model: groq/llama-3.1-8b-instant
-      api_key: os.environ/GROQ_API_KEY
-
-  - model_name: groq-mixtral
-    litellm_params:
-      model: groq/mixtral-8x7b-32768
-      api_key: os.environ/GROQ_API_KEY
 
   # ============================================
   # CHEAP CLOUD OPTIONS (for testing)
