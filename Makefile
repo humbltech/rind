@@ -10,12 +10,15 @@ ATTACK ?= all
 DURATION ?= 24
 SPEED ?= 100
 
+# Docker Compose command (v2 uses "docker compose", v1 uses "$(DOCKER_COMPOSE)")
+DOCKER_COMPOSE := $(shell command -v $(DOCKER_COMPOSE) 2>/dev/null || echo "docker compose")
+
 # ============================================
 # ENVIRONMENT
 # ============================================
 
 up:
-	docker-compose up -d
+	$(DOCKER_COMPOSE) up -d
 	@echo ""
 	@echo "✓ Simulation environment started!"
 	@echo ""
@@ -29,17 +32,17 @@ up:
 	@echo "Next: make run COMPANY=nimbus"
 
 down:
-	docker-compose down
+	$(DOCKER_COMPOSE) down
 
 reset:
-	docker-compose down -v
+	$(DOCKER_COMPOSE) down -v
 	@echo "✓ All data cleared"
 
 logs:
-	docker-compose logs -f
+	$(DOCKER_COMPOSE) logs -f
 
 logs-%:
-	docker-compose logs -f $*
+	$(DOCKER_COMPOSE) logs -f $*
 
 # ============================================
 # SIMULATIONS
@@ -120,7 +123,7 @@ demo-compare:
 
 # Start incident simulation environment
 incidents-up:
-	docker-compose -f incidents/docker-compose.incidents.yml up -d
+	$(DOCKER_COMPOSE) -f incidents/$(DOCKER_COMPOSE).incidents.yml up -d
 	@echo ""
 	@echo "✓ Incident simulation environment started!"
 	@echo ""
@@ -134,13 +137,13 @@ incidents-up:
 	@echo "Next: make incident INCIDENT=replit"
 
 incidents-down:
-	docker-compose -f incidents/docker-compose.incidents.yml down
+	$(DOCKER_COMPOSE) -f incidents/$(DOCKER_COMPOSE).incidents.yml down
 
 incidents-logs:
-	docker-compose -f incidents/docker-compose.incidents.yml logs -f
+	$(DOCKER_COMPOSE) -f incidents/$(DOCKER_COMPOSE).incidents.yml logs -f
 
 incidents-reset:
-	docker-compose -f incidents/docker-compose.incidents.yml down -v
+	$(DOCKER_COMPOSE) -f incidents/$(DOCKER_COMPOSE).incidents.yml down -v
 	@echo "✓ Incident environment reset"
 
 # List available incidents
@@ -226,7 +229,7 @@ incidents-up-ollama:
 	@echo "Starting incidents with LOCAL Ollama..."
 	@pgrep -x ollama > /dev/null || (echo "Starting Ollama..." && ollama serve &)
 	@sleep 2
-	OLLAMA_HOST=http://host.docker.internal:11434 docker-compose -f incidents/docker-compose.incidents.yml up -d
+	OLLAMA_HOST=http://host.docker.internal:11434 $(DOCKER_COMPOSE) -f incidents/$(DOCKER_COMPOSE).incidents.yml up -d
 	@echo ""
 	@echo "✓ Incident environment started with Ollama!"
 	@echo "  Ollama: http://localhost:11434 (on your Mac)"
@@ -234,10 +237,10 @@ incidents-up-ollama:
 
 # Option 2: Ollama in Docker (original - uses more resources)
 up-ollama:
-	docker-compose --profile ollama up -d
+	$(DOCKER_COMPOSE) --profile ollama up -d
 	@echo "Waiting for Ollama container to start..."
 	@sleep 15
-	docker-compose exec ollama ollama pull llama3.2
+	$(DOCKER_COMPOSE) exec ollama ollama pull llama3.2
 	@echo "✓ Ollama ready with llama3.2"
 
 # ============================================
@@ -249,10 +252,10 @@ install:
 	pip install -r incidents/requirements.txt
 
 build:
-	docker-compose build
+	$(DOCKER_COMPOSE) build
 
 build-incidents:
-	docker-compose -f incidents/docker-compose.incidents.yml build
+	$(DOCKER_COMPOSE) -f incidents/$(DOCKER_COMPOSE).incidents.yml build
 
 # ============================================
 # CLOUD-ONLY SETUP (No local Docker needed)
