@@ -2,8 +2,52 @@
 
 ## The Policy Engine for AI Agents
 
-**Version:** 0.1 (Draft)
-**Last Updated:** March 2026
+**Version:** 0.2 (Updated)
+**Last Updated:** April 2026
+
+---
+
+## Market Context (RSAC 2026 Update)
+
+### Why Now?
+
+From Zscaler ThreatLabz 2026 AI Security Report:
+
+| Stat | Value | Implication |
+|------|-------|-------------|
+| AI/ML transaction growth | 91% YoY | Market is massive and growing |
+| Systems with critical vulns | 100% | Everyone needs protection |
+| Median time to compromise | 16 minutes | Real-time defense required |
+| AI traffic blocked by fear | 39% | Enterprises want enablement, not just blocking |
+
+### Key Competitive Shift
+
+**Lakera acquired by Check Point for ~$300M** (closing Q4 2025)
+- Validates the market
+- Check Point = enterprise DNA, will abandon mid-market/startups
+- Creates opening for Aegis in the $50M-$500M revenue segment
+
+### Target Market (Updated)
+
+| Segment | Target? | Rationale |
+|---------|---------|-----------|
+| **Enterprise** ($500M+) | No | Check Point territory, long sales cycles |
+| **Mid-market** ($50M-$500M) | **PRIMARY** | Budget ($300K-5M security spend), compliance-driven |
+| **Funded startups** (Series B+) | **PRIMARY** | Have budget, enterprise customers asking |
+| **SMB** (<$50M) | No | No dedicated budget, price sensitive |
+
+See [market-targeting-rsac-2026.md](../research/market-targeting-rsac-2026.md) for detailed analysis.
+
+### Real-World Incidents Aegis Prevents
+
+| Incident | Impact | How Aegis Prevents |
+|----------|--------|-------------------|
+| **Replit DB Deletion** (July 2025) | 1,206 records lost, agent lied about damage | REQUIRE_APPROVAL for DELETE queries |
+| **Amazon Kiro Outage** (Dec 2025) | 13-hour AWS outage | Multi-approver for production infra |
+| **EchoLeak** (CVE-2025-32711) | Zero-click data exfiltration | Block external URLs, sanitize inputs |
+| **$47K Agent Loop** | 11 days, $47,000 bill | Cost limits, loop detection |
+
+See [case-studies-incident-prevention.md](../research/case-studies-incident-prevention.md) for detailed analysis
 
 ---
 
@@ -45,6 +89,28 @@ Enterprises lack:
 | Replit | Agent deleted production database | Human-in-the-loop for destructive actions |
 | $47K bill | 4 agents in infinite loop for 11 days | Cost limits, loop detection |
 | Bank rollback | Chatbot gave incorrect financial advice | Output policy enforcement |
+
+### Priority #1: Catastrophic Action Prevention
+
+**This is the killer feature.** Lakera detects prompt injection but cannot prevent agents from taking catastrophic actions.
+
+Example of Lakera's gap:
+```
+User: "Please clean up the old test data"
+Prompt check: PASS (no injection detected)
+Agent action: DELETE FROM users WHERE created_at < '2024-01-01'
+Result: Production data deleted 💀
+```
+
+**Aegis approach:** Tiered risk controls based on McKinsey's framework:
+
+| Risk Tier | Actions | Control |
+|-----------|---------|---------|
+| **Tier 1** | Read-only queries, info retrieval | Automated monitoring |
+| **Tier 2** | Reversible actions, non-sensitive writes | Real-time guardrails |
+| **Tier 3** | DB deletion, production changes, financial txns | **Human-in-the-loop required** |
+
+See [competitive-analysis-lakera-2026.md](../research/competitive-analysis-lakera-2026.md) for detailed comparison
 
 ---
 
@@ -312,7 +378,69 @@ spec:
 
 ---
 
-### Model 4: SDK Integration (Minimal Infrastructure)
+### Model 4: Self-Hosted LLM Support (Ollama, vLLM)
+
+**Best for:** Companies self-hosting models for privacy/cost/compliance
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Customer's Kubernetes Cluster                             │
+│                                                                              │
+│  ┌──────────────────┐                                                       │
+│  │   Your Agents    │                                                       │
+│  │  (LangChain,     │                                                       │
+│  │   CrewAI, etc)   │                                                       │
+│  └────────┬─────────┘                                                       │
+│           │                                                                  │
+│           │ OpenAI-compatible API calls                                     │
+│           ▼                                                                  │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │              AEGIS GATEWAY (Helm chart deployment)                   │    │
+│  │                                                                      │    │
+│  │  Same policy engine, deployed in-cluster                            │    │
+│  │  Exposes OpenAI-compatible endpoint                                 │    │
+│  │                                                                      │    │
+│  └──────────────────────────────┬───────────────────────────────────────┘    │
+│                                 │                                            │
+│                                 ▼                                            │
+│                        ┌─────────────────┐                                  │
+│                        │  Ollama / vLLM  │                                  │
+│                        │  (self-hosted)  │                                  │
+│                        └─────────────────┘                                  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │ Audit logs, metrics (outbound only)
+                                    ▼
+                         ┌─────────────────────┐
+                         │  AEGIS CONTROL      │
+                         │  PLANE (Cloud)      │
+                         │                     │
+                         │  • Dashboard        │
+                         │  • Policy sync      │
+                         │  • Alerting         │
+                         └─────────────────────┘
+```
+
+**Why this works:**
+- Ollama and vLLM already expose OpenAI-compatible APIs
+- Same proxy pattern, different deployment target
+- No code changes for customers already using OpenAI SDK
+- Data stays in their cluster, only audit logs sent to cloud
+
+**Deployment:**
+```bash
+helm install aegis-gateway aegis/gateway \
+  --set apiKey=$AEGIS_API_KEY \
+  --set upstream.url="http://ollama:11434/v1" \
+  --set upstream.type="ollama"
+```
+
+**Phase 2 feature** - focus on cloud APIs (OpenAI, Anthropic) first.
+
+---
+
+### Model 5: SDK Integration (Minimal Infrastructure)
 
 **Best for:** Quick start, development, simple deployments
 
@@ -664,14 +792,23 @@ policies:
 | **Langfuse** | Events | Free → $29-$2,499/mo |
 | **Lakera** | Per-request | ~$0.001-0.003/request |
 
-### Recommended Aegis Pricing
+### Recommended Aegis Pricing (Updated April 2026)
 
-| Tier | Price | Includes | Target |
-|------|-------|----------|--------|
-| **Developer** | Free | 10K policy evaluations/mo, 3 agents, 1 user | Indie devs |
-| **Team** | $199/mo | 100K evals, 25 agents, 5 users, Slack alerts | Startups |
-| **Business** | $799/mo | 1M evals, 100 agents, 20 users, SSO, SLA | Mid-market |
-| **Enterprise** | Custom | Unlimited, self-hosted, compliance, support | Enterprise |
+**Note:** Adjusted for mid-market focus. No free tier (attracts SMB support burden).
+
+| Tier | Price | Includes | Target | ACV |
+|------|-------|----------|--------|-----|
+| **Starter** | $499/mo | 500K evals, 25 agents, 5 users, email support | Series A-B startups | $6K |
+| **Growth** | $1,999/mo | 5M evals, 100 agents, 20 users, Slack alerts, compliance reports | Series B+, small mid-market | $24K |
+| **Business** | $4,999/mo | 25M evals, 500 agents, 50 users, SSO, SLA, dedicated CSM | Mid-market core | $60K |
+| **Enterprise** | Custom ($15K+/mo) | Unlimited, self-hosted option, custom SLA, on-prem | Large mid-market | $180K+ |
+
+**Comparison to competition:**
+- Lakera (→Check Point): Will be $50K+ enterprise bundles
+- LLM Guard: Free but DIY (no support, no dashboard)
+- Cloudflare AI: Requires enterprise WAF subscription
+
+**We own the "managed, affordable, mid-market" gap.**
 
 ### Pricing Philosophy
 

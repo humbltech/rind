@@ -938,5 +938,42 @@ Full JSON Schema for validation available at:
 
 ---
 
-*Version: 1.0 Draft*
-*Last Updated: March 2026*
+---
+
+## Policy Packs & Tool Catalog
+
+See [tool-discovery-policy-generation.md](./architecture/tool-discovery-policy-generation.md) for:
+
+- **Tool Catalog**: Pre-defined patterns for known tools (SQL, filesystem, payments, etc.)
+- **Policy Packs**: Curated rule sets that apply automatically
+- **AI Policy Generation**: For unknown/custom tools
+- **Human Review Flow**: Approval workflow for AI-generated policies
+
+### Quick Reference
+
+```yaml
+# Policy packs available:
+packs:
+  - sql-protection        # 12 rules for database safety
+  - filesystem-protection # 8 rules for file operations
+  - email-protection      # 6 rules for communication
+  - payment-protection    # 6 rules for financial operations
+  - aws-protection        # 10 rules for AWS APIs
+  - shell-protection      # 5 rules for command execution
+
+# Enable pack for an agent:
+agents:
+  - id: "my-agent"
+    packs:
+      - sql-protection
+      - filesystem-protection
+    pack_settings:
+      sql-protection:
+        require_where_clause: true
+        production_environments: ["prod", "production"]
+```
+
+---
+
+*Version: 1.1*
+*Last Updated: April 2026*
