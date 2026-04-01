@@ -167,6 +167,12 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      # For local Ollama on Mac (host.docker.internal points to host machine)
+      - OLLAMA_API_BASE=${OLLAMA_HOST:-http://host.docker.internal:11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ../litellm-config.yaml:/app/config.yaml
     command: ["--config", "/app/config.yaml"]

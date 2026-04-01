@@ -4,16 +4,22 @@ model_list:
   # ============================================
 
   # Ollama - FREE, runs locally on your Mac
-  # Start with: make up-ollama
+  # Install: make ollama-setup
+  # Start: ollama serve (in terminal)
   - model_name: llama3
     litellm_params:
       model: ollama/llama3.2
-      api_base: http://ollama:11434
+      api_base: os.environ/OLLAMA_API_BASE
+
+  - model_name: llama3.2
+    litellm_params:
+      model: ollama/llama3.2
+      api_base: os.environ/OLLAMA_API_BASE
 
   - model_name: mistral
     litellm_params:
       model: ollama/mistral
-      api_base: http://ollama:11434
+      api_base: os.environ/OLLAMA_API_BASE
 
   # Groq - FREE tier (very fast, cloud-hosted)
   # Get free API key: https://console.groq.com
