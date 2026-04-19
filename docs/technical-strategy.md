@@ -301,10 +301,11 @@ Why this wins:
 
 | Tier | Price | Features | Target |
 |------|-------|----------|--------|
-| **Community** | Free | 100K events/mo, basic observability | Developers |
-| **Team** | $500/mo | 1M events, MCP proxy, policies | Startups |
-| **Business** | $2,000/mo | 10M events, compliance reports, SSO | Mid-market |
-| **Enterprise** | Custom | Unlimited, VPC deploy, SLA | Enterprise |
+| **Free** | $0 | 10K evals/mo, basic observability, 5 agents | Developers |
+| **Starter** | $99/mo | 100K evals/mo, all policy types, 25 agents | Solo builders |
+| **Team** | $399/mo | 1M evals/mo, MCP proxy, Slack alerts, 100 agents | Startups |
+| **Business** | $999/mo | 10M evals/mo, SSO, approvals, compliance, 500 agents | Mid-market |
+| **Enterprise** | Custom ($25K-100K/yr) | Unlimited, self-hosted, SLA, dedicated support | Enterprise |
 
 ---
 

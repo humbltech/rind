@@ -794,14 +794,15 @@ policies:
 
 ### Recommended Aegis Pricing (Updated April 2026)
 
-**Note:** Adjusted for mid-market focus. No free tier (attracts SMB support burden).
+**Note:** Canonical pricing — all other docs should match this table. Source of truth: `pricing-strategy.md`.
 
 | Tier | Price | Includes | Target | ACV |
 |------|-------|----------|--------|-----|
-| **Starter** | $499/mo | 500K evals, 25 agents, 5 users, email support | Series A-B startups | $6K |
-| **Growth** | $1,999/mo | 5M evals, 100 agents, 20 users, Slack alerts, compliance reports | Series B+, small mid-market | $24K |
-| **Business** | $4,999/mo | 25M evals, 500 agents, 50 users, SSO, SLA, dedicated CSM | Mid-market core | $60K |
-| **Enterprise** | Custom ($15K+/mo) | Unlimited, self-hosted option, custom SLA, on-prem | Large mid-market | $180K+ |
+| **Free** | $0 | 10K evals/mo, 5 agents, 1 user, 7-day audit | Developers, hobbyists | $0 |
+| **Starter** | $99/mo | 100K evals/mo, 25 agents, 3 users, email alerts, 30-day audit | Solo builders, indie devs | $1.2K |
+| **Team** | $399/mo | 1M evals/mo, 100 agents, 10 users, Slack alerts, 90-day audit | Startups | $4.8K |
+| **Business** | $999/mo | 10M evals/mo, 500 agents, 25 users, SSO, approvals, 1-yr audit | Mid-market | $12K |
+| **Enterprise** | Custom ($25K-100K/yr) | Unlimited, self-hosted, SLA, compliance reports, dedicated support | Enterprise | $25K+ |
 
 **Comparison to competition:**
 - Lakera (→Check Point): Will be $50K+ enterprise bundles

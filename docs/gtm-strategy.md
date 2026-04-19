@@ -321,10 +321,11 @@ Based on successful cybersecurity companies, three viable approaches:
 
 | Tier | Target | Price | Features |
 |------|--------|-------|----------|
-| **Community** | Individual devs | Free | 5 agents, basic observability, community support |
-| **Team** | Small teams | $500/month | 25 agents, policy enforcement, email support |
-| **Business** | Mid-market | $2,000/month | 100 agents, advanced policies, SSO, priority support |
-| **Enterprise** | Enterprise | Custom ($50K-500K/year) | Unlimited agents, endpoint agent, sandbox cloud, dedicated support |
+| **Free** | Individual devs | $0 | 5 agents, 10K evals/mo, basic observability |
+| **Starter** | Solo builders | $99/month | 25 agents, 100K evals/mo, all policy types, email alerts |
+| **Team** | Small teams | $399/month | 100 agents, 1M evals/mo, Slack alerts, 90-day audit |
+| **Business** | Mid-market | $999/month | 500 agents, 10M evals/mo, SSO, approvals, priority support |
+| **Enterprise** | Enterprise | Custom ($25K-100K/year) | Unlimited, self-hosted, SLA, compliance reports, dedicated support |
 
 #### Pricing Philosophy
 - Free tier builds adoption and word-of-mouth

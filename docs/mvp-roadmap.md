@@ -1,505 +1,417 @@
 # Aegis MVP Roadmap
 
+> **Note**: This roadmap was rewritten in April 2026 to reflect the confirmed TypeScript/Node.js stack (AD-006). The previous Python/FastAPI version is superseded. See `architecture/architecture-decisions.md` AD-006 for the decision rationale.
+
 ## Overview
 
-**MVP Goal:** A working policy engine that can intercept tool calls and LLM requests, evaluate policies, and enforce decisions.
+**MVP Goal**: A working scanner + SDK that lets developers see what their agents are doing, stop runaway costs, and block destructive actions — all in under 5 minutes of setup.
 
-**Timeline:** 12 weeks (3 months) to MVP
-**Team Assumption:** 1-2 engineers
+**Timeline**: 8 weeks (evenings + weekends, solo developer)
+**Team**: 1 engineer, ~14-16 hours/week
+
+**Sequence rationale**: Scanner first → design partner conversations → SDK informed by feedback → dashboard. Do not build the SDK before talking to at least 3 real users.
 
 ---
 
 ## Success Criteria for MVP
 
-By end of Week 12, we can:
-- [ ] Deploy Aegis proxy in front of an existing LangChain agent
-- [ ] Define policies in YAML that control tool calls
-- [ ] Block/allow tool calls based on policies
-- [ ] Issue virtual keys per agent with usage tracking
-- [ ] View audit logs in a basic dashboard
-- [ ] Demo to 3 potential customers
+By end of Week 8:
+- [ ] `npx @aegis/scan` runs against any MCP config and reports security findings
+- [ ] `@aegis/langchain` SDK wraps LangChain tools with cost tracking + loop detection
+- [ ] First tool call appears in basic dashboard within 5 minutes of install
+- [ ] 3 design partners using the SDK and providing feedback
+- [ ] SDK and scanner published to npm
 
 ---
 
-## Phase 1: Foundation (Weeks 1-4)
+## Phase 0: Infrastructure (Week 1)
 
-### Week 1: Project Setup & Core Types
+### Monorepo Scaffold + Brand Setup
 
-**Goal:** Monorepo setup, core data models, basic proxy skeleton
+**Goal**: Working dev environment and public brand presence
 
-| Task | Details | Output |
-|------|---------|--------|
-| Monorepo setup | Python (uv/poetry), pnpm for dashboard | Working dev environment |
-| Core types | Policy, Agent, Key, AuditLog models | `aegis/core/models.py` |
-| Policy parser | Parse YAML policies into typed objects | `aegis/core/policy_parser.py` |
-| Basic proxy | FastAPI proxy that forwards requests | `aegis/proxy/main.py` |
-| Docker setup | Dockerfile, docker-compose | `docker-compose.yml` |
-
-**Deliverable:** Can start proxy, forward requests to OpenAI, see logs
+#### Monorepo (follow `architecture/project-setup.md` exactly)
 
 ```bash
-# End of Week 1
-docker-compose up
-curl http://localhost:8080/v1/chat/completions -d '{"model": "gpt-4o", "messages": [...]}'
-# Request forwarded to OpenAI, logged
+# Inside existing aegis/ repo (docs stay, code is added)
+pnpm init
+# Create pnpm-workspace.yaml, turbo.json, tsconfig.json, biome.json
+# per project-setup.md
+
+mkdir -p apps/{dashboard,api,proxy}
+mkdir -p packages/{sdk-core,sdk-langchain,policy-engine,db,ui}
+mkdir -p tools/mcp-scanner
 ```
+
+**Key config files** (exact content in `architecture/project-setup.md`):
+- `package.json` — root workspace with Turborepo scripts
+- `pnpm-workspace.yaml` — workspace package globs
+- `turbo.json` — build/test/lint pipeline
+- `tsconfig.json` — strict TypeScript base config
+- `biome.json` — linting + formatting
+
+#### Brand setup (manual tasks, ~5-6 hours)
+- Register domain under parent incorporation (check: `useaegis.dev`, `aegis-security.dev`, `getaegis.dev`)
+- Create `hello@[domain]` email via Google Workspace
+- Create GitHub org (no personal info in org profile)
+- Reserve npm scope (`@aegis` or `@aegis-security`)
+- Create Twitter/X brand account
+- Set up Tally/Typeform waitlist (4 questions: framework, agents in prod, pain point, email)
+
+**Deliverable**: `pnpm install && pnpm build` runs without errors. Brand domain and GitHub org exist.
 
 ---
 
-### Week 2: Policy Engine Core
+## Phase 1: MCP Scanner (Weeks 2-3)
 
-**Goal:** Policy evaluation engine that can match and decide
+### `tools/mcp-scanner` → published as `@aegis/scan`
 
-| Task | Details | Output |
-|------|---------|--------|
-| Policy matcher | Match requests against policy conditions | `aegis/engine/matcher.py` |
-| Condition evaluators | Implement match conditions (contains, regex, gt/lt, etc.) | `aegis/engine/conditions.py` |
-| Decision engine | Evaluate policies, return decision | `aegis/engine/evaluator.py` |
-| Action handlers | ALLOW, DENY, TRANSFORM actions | `aegis/engine/actions.py` |
-| Unit tests | Test policy matching logic | `tests/test_engine.py` |
+**Goal**: `npx @aegis/scan ./path/to/mcp-config.json` produces a security report
 
-**Deliverable:** Can evaluate policies against mock requests
+**Why this first**: Validates the monorepo, ships something real, creates a conversation piece for design partners. No backend, no account needed.
 
-```python
-# End of Week 2
-policy = load_policy("block-dangerous-queries.yaml")
-request = {"tool": "sql_execute", "parameters": {"query": "DROP TABLE users"}}
-decision = engine.evaluate(request, [policy])
-assert decision.action == "DENY"
+#### Week 2: Core scanner logic
+
+```
+tools/mcp-scanner/
+├── src/
+│   ├── index.ts          # CLI entry point
+│   ├── parser.ts         # MCP config file parser (Claude Desktop format)
+│   ├── connector.ts      # MCP server connection + tools/list call
+│   ├── checks/
+│   │   ├── auth.ts       # Missing authentication check
+│   │   ├── poisoning.ts  # Tool poisoning pattern detection
+│   │   ├── permissions.ts # Over-permissioning check
+│   │   └── rugpull.ts    # Hash-based tool definition change detection
+│   ├── reporter.ts       # Colored terminal output + JSON mode
+│   └── types.ts          # Scanner types
+├── package.json
+├── tsconfig.json
+└── README.md
 ```
 
----
+```typescript
+// tools/mcp-scanner/src/types.ts
+export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
 
-### Week 3: Tool Call Interception
+export interface ScanFinding {
+  id: string;
+  severity: Severity;
+  title: string;
+  description: string;
+  server: string;
+  tool?: string;
+  remediation: string;
+}
 
-**Goal:** Intercept tool calls from LangChain agents
-
-| Task | Details | Output |
-|------|---------|--------|
-| Tool call detection | Detect tool_calls in OpenAI responses | `aegis/proxy/interceptors/tool_calls.py` |
-| Pre-execution hook | Intercept before tool executes | Hook mechanism |
-| Policy enforcement | Apply policies to tool calls | Integration |
-| Response handling | Return policy decision to agent | Error responses |
-| LangChain testing | Test with real LangChain agent | `examples/langchain_demo.py` |
-
-**Deliverable:** Block a tool call from a LangChain agent
-
-```python
-# End of Week 3
-# Policy: block sql_execute with DROP
-# Agent tries: sql_execute("DROP TABLE users")
-# Result: Tool call blocked, agent receives error
+export interface ScanResult {
+  scannedAt: string;
+  configPath: string;
+  serversScanned: number;
+  toolsFound: number;
+  findings: ScanFinding[];
+  summary: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    info: number;
+  };
+}
 ```
 
----
+Security checks to implement:
+1. **Missing auth** — server has no auth config (no `env` with `*_TOKEN`/`*_KEY`, no `headers`)
+2. **Tool poisoning** — suspicious patterns in tool descriptions (instructions to ignore rules, base64 strings, override commands)
+3. **Over-permissioning** — filesystem tools with no path restrictions, wildcard DB access
+4. **Rug pull detection** — hash tool definitions; compare to stored hash; warn if changed (`.aegis-scan-cache.json`)
 
-### Week 4: Virtual Keys & Basic Storage
+#### Week 3: Polish + publish
 
-**Goal:** Issue keys, store policies and audit logs
+- Colored terminal output (chalk): critical=red, high=orange, medium=yellow, low=blue
+- JSON output mode (`--json` flag) for CI/CD integration
+- Exit code 1 if any critical/high findings (for CI gates)
+- `--fix` flag for auto-remediation suggestions
+- README with screenshots and comparison to alternatives
+- Publish to npm as `@aegis/scan` (public package under GitHub org)
 
-| Task | Details | Output |
-|------|---------|--------|
-| PostgreSQL schema | Keys, policies, audit_logs tables | `aegis/db/schema.sql` |
-| Key generation | Generate virtual keys | `aegis/core/keys.py` |
-| Key-to-policy binding | Associate keys with policies | DB relations |
-| Audit logging | Log all decisions to DB | `aegis/core/audit.py` |
-| Key authentication | Validate keys on requests | Auth middleware |
-| Basic API | CRUD for keys and policies | `aegis/api/` |
-
-**Deliverable:** Issue a key, make requests with it, see audit logs
-
+**Deliverable:**
 ```bash
-# End of Week 4
-# Create key
-curl -X POST http://localhost:8080/api/keys -d '{"name": "my-agent"}'
-# {"key": "aegis_sk_abc123", "id": "key_xyz"}
+npx @aegis/scan ~/.cursor/mcp.json
 
-# Use key
-curl http://localhost:8080/v1/chat/completions \
-  -H "Authorization: Bearer aegis_sk_abc123" \
-  -d '{"model": "gpt-4o", ...}'
+  Aegis MCP Scanner v0.1.0
+  Scanning 4 MCP servers...
 
-# View audit
-curl http://localhost:8080/api/audit?key_id=key_xyz
-# [{"timestamp": "...", "action": "ALLOW", ...}]
+  CRITICAL  filesystem  No authentication configured
+  HIGH      github      Tool descriptions contain suspicious override instructions
+  MEDIUM    supabase    Read + write access; consider read-only for this agent
+  INFO      brave-search  No issues found
+
+  4 servers scanned · 3 findings (1 critical, 1 high, 1 medium)
+  Run with --json for CI/CD integration
 ```
 
 ---
 
-## Phase 2: Core Features (Weeks 5-8)
+## Phase 2: Landing Page + Outreach (Week 3, parallel with scanner polish)
 
-### Week 5: LLM Request Policies
+### `apps/landing` → deployed to Vercel on new domain
 
-**Goal:** Policies for LLM requests (model, tokens, cost)
+**Goal**: Somewhere to send people. Single page, no pricing, no team.
 
-| Task | Details | Output |
-|------|---------|--------|
-| LLM request parsing | Extract model, tokens, parameters | Parser |
-| Token counting | Estimate tokens before request | `aegis/utils/tokens.py` |
-| Cost estimation | Calculate estimated cost | `aegis/utils/cost.py` |
-| Model policies | Block/allow by model name | Policy type |
-| Cost policies | Enforce per-request cost limits | Policy type |
+Content (minimum):
+- Hero: "Stop your agent before it breaks production"
+- 4 bullets: observability, safety, security, MCP adoption
+- Scanner CTA: `npx @aegis/scan` with terminal screenshot
+- Waitlist form embed (Tally/Typeform)
+- Brand email link
 
-**Deliverable:** Block requests to expensive models or over cost limit
+**Deploy**: Vercel on `[domain]` — free tier, no identity exposure.
 
-```yaml
-# Policy
-- name: "block-expensive-models"
-  type: llm_request
-  match:
-    model:
-      in: ["gpt-4", "claude-3-opus"]
-  action: DENY
+**Outreach starts here** (see `positioning.md` — Developer Discovery section):
+- HN: "Show HN: Free MCP security scanner"
+- LangChain Discord + MLOps Slack — use brand handle
+- r/LangChain, r/netsec
+- 3 incident prevention blog posts on dev.to or GitHub Gist
+
+**Target**: 3-5 design partner conversations started within 2 weeks of scanner launch.
+
+---
+
+## Phase 3: LangChain SDK (Weeks 4-6)
+
+### `packages/sdk-core` + `packages/sdk-langchain`
+
+**Goal**: 2-line LangChain integration that captures traces, tracks costs, and blocks loops
+
+**Start this AFTER first design partner conversations.** Their feedback shapes the SDK design.
+
+#### Week 4: `packages/sdk-core`
+
+Shared types per `architecture/project-setup.md`:
+- `AegisSpan` type — traces, tool calls, LLM calls
+- `AegisConfig` — SDK configuration
+- `PolicyAction` — ALLOW, DENY, REQUIRE_APPROVAL, RATE_LIMIT
+
+```typescript
+// packages/sdk-core/src/index.ts
+export * from './types/span';
+export * from './types/config';
+export * from './types/policy';
+```
+
+#### Week 5: `packages/sdk-langchain` — callback handler
+
+```typescript
+// packages/sdk-langchain/src/handler.ts
+import { BaseCallbackHandler } from '@langchain/core/callbacks/base';
+import type { AegisConfig } from '@aegis/core';
+
+export class AegisCallbackHandler extends BaseCallbackHandler {
+  name = 'AegisCallbackHandler';
+
+  constructor(private config: AegisConfig) {
+    super();
+  }
+
+  async handleToolStart(tool: { name: string }, input: string) {
+    // Check loop detection: same tool + same input > N times?
+    // Check cost budget: would this push over limit?
+    // Emit span with tool start
+  }
+
+  async handleToolEnd(output: string) {
+    // Complete span, record duration
+    // Batch export to API
+  }
+
+  async handleLLMStart(llm: { name: string }, prompts: string[]) {
+    // Estimate token count + cost
+    // Check model allow/deny policy
+    // Emit LLM span
+  }
+
+  async handleLLMEnd(output: LLMResult) {
+    // Record actual tokens + cost
+    // Update running total
+  }
+}
+```
+
+Policies enforced SDK-side (no proxy needed):
+- `costLimitUsd` — block LLM call if accumulated cost exceeds limit
+- `loopDetection` — block tool call if same tool+input seen > N times in session
+- `blockDestructive` — require approval for tools matching destructive patterns (delete, drop, destroy, remove)
+- `allowTools` / `denyTools` — simple string match against tool name
+
+#### Week 6: `apps/api` — telemetry ingestion
+
+Minimal Hono API that receives spans from the SDK:
+
+```typescript
+// apps/api/src/index.ts
+import { serve } from '@hono/node-server';
+import { Hono } from 'hono';
+
+const app = new Hono();
+
+app.get('/health', (c) => c.json({ status: 'ok' }));
+
+// Receive batched spans from SDK
+app.post('/v1/traces', async (c) => {
+  const { spans, agentId } = await c.req.json();
+  // Validate API key
+  // Store spans in Supabase
+  return c.json({ received: spans.length });
+});
+
+serve({ fetch: app.fetch, port: 3001 });
+```
+
+Database schema (`packages/db`):
+- `organizations` — multi-tenant isolation
+- `agents` — per-agent identity + stats
+- `traces` — span storage (JSONB)
+- `api_keys` — authentication
+
+Full schema in `architecture/project-setup.md`.
+
+**Deliverable:**
+```typescript
+import { ChatOpenAI } from '@langchain/openai';
+import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { AegisCallbackHandler } from '@aegis/langchain';
+
+const aegis = new AegisCallbackHandler({
+  apiKey: process.env.AEGIS_API_KEY,
+  costLimitUsd: 10.0,
+  loopDetection: true,
+  blockDestructive: true,
+});
+
+const agent = createReactAgent({
+  llm: new ChatOpenAI({ callbacks: [aegis] }),
+  tools,
+});
 ```
 
 ---
 
-### Week 6: Prompt Policies & Integrations
+## Phase 4: Dashboard MVP (Weeks 7-8)
 
-**Goal:** Prompt filtering with Lakera/Presidio integration
+### `apps/dashboard` — Next.js 15
 
-| Task | Details | Output |
-|------|---------|--------|
-| Prompt extraction | Extract prompts from requests | Parser |
-| Lakera integration | Call Lakera API for injection detection | `aegis/integrations/lakera.py` |
-| Presidio integration | PII detection and redaction | `aegis/integrations/presidio.py` |
-| Transform action | Modify prompts before forwarding | Transform handler |
-| Async evaluation | Non-blocking external calls | Async pattern |
+**Goal**: Basic web UI that shows the "oh shit" moment
 
-**Deliverable:** Detect prompt injection, redact PII
+Pages:
+- `/` — Summary: cost this week, blocked actions, anomaly count
+- `/traces` — Timeline of agent tool calls
+- `/agents` — Agent inventory (discovered from SDK data)
+- `/alerts` — Blocked actions, loop detections, budget warnings
 
-```yaml
-# Prompt injection detection
-- name: "block-injection"
-  type: prompt
-  match:
-    provider: "lakera"
-    detection:
-      prompt_injection: { threshold: 0.8 }
-  action: DENY
+**Stack**: Next.js 15 App Router, Supabase auth, shadcn/ui components, Tailwind
 
-# PII redaction
-- name: "redact-pii"
-  type: prompt
-  action: TRANSFORM
-  transform:
-    redact_pii:
-      types: ["email", "phone"]
+**Auth**: Supabase auth (email magic link for free tier — no OAuth complexity in MVP)
+
+**Deploy**: Vercel on `app.[domain]`
+
+**Design partner access**: Invite 3-5 partners to their own organization. Collect structured feedback via Tally form embedded in dashboard.
+
+**Deliverable:**
+```
+Dashboard shows on first login:
+  "Your agent attempted filesystem.delete 7 times today"
+  "Agent cost this week: $340 (no budget set)"
+  "3 tool calls blocked by safety rules"
 ```
 
 ---
 
-### Week 7: Rate Limiting & Cost Tracking
+## Repository Structure
 
-**Goal:** Enforce rate limits and track costs
+Per `architecture/project-setup.md`:
 
-| Task | Details | Output |
-|------|---------|--------|
-| Redis integration | Rate limit counters | `aegis/utils/redis.py` |
-| Rate limiter | Token bucket / sliding window | `aegis/engine/rate_limiter.py` |
-| Cost tracking | Track actual costs per key/agent | `aegis/core/cost_tracker.py` |
-| Budget enforcement | Block when budget exceeded | Cost policy |
-| Usage API | Query usage by key/project | API endpoint |
-
-**Deliverable:** Rate limit agents, track and enforce budgets
-
-```yaml
-- name: "agent-rate-limit"
-  type: tool_call
-  action: RATE_LIMIT
-  rate_limit:
-    limit: 100
-    window: 1m
-    scope: per_key
-
-- name: "daily-budget"
-  type: cost
-  limits:
-    daily: 100.00
-  action_on_exceed: DENY
+```
+aegis/                          # This repo
+├── apps/
+│   ├── dashboard/              # Next.js 15 (Week 7-8)
+│   ├── api/                    # Hono API (Week 6)
+│   └── proxy/                  # MCP Proxy (Horizon 2)
+│
+├── packages/
+│   ├── sdk-core/               # @aegis/core shared types (Week 4)
+│   ├── sdk-langchain/          # @aegis/langchain (Week 5)
+│   ├── policy-engine/          # Policy evaluation (Horizon 2)
+│   ├── db/                     # Supabase schema + migrations (Week 6)
+│   └── ui/                     # Shared components (Week 7)
+│
+├── tools/
+│   └── mcp-scanner/            # @aegis/scan CLI (Week 2-3)
+│
+├── docs/                       # Strategic docs (existing)
+├── research/                   # Research (existing)
+│
+├── package.json
+├── pnpm-workspace.yaml
+├── turbo.json
+├── biome.json
+└── tsconfig.json
 ```
 
 ---
 
-### Week 8: Dashboard MVP
+## Tech Stack
 
-**Goal:** Basic web dashboard for policies and audit
+| Component | Technology | Version |
+|-----------|-----------|---------|
+| Package manager | pnpm | 9.x |
+| Monorepo | Turborepo | 2.x |
+| Runtime | Node.js | 22.x LTS |
+| Language | TypeScript | 5.4+ |
+| Proxy / API | Hono | 4.x |
+| Dashboard | Next.js | 15.x |
+| UI | React 19, Tailwind, shadcn/ui | — |
+| Database | PostgreSQL via Supabase | — |
+| Cache | Redis via Upstash | — |
+| Queue | BullMQ | 5.x |
+| Linting | Biome | 1.9+ |
+| Testing | Vitest | 2.x |
+| Build | tsup | 8.x |
+| Deployment | Vercel (dashboard), Railway/Fly.io (API) | — |
 
-| Task | Details | Output |
-|------|---------|--------|
-| Next.js setup | App router, Tailwind, shadcn/ui | `dashboard/` |
-| Auth | Simple API key or Supabase auth | Auth flow |
-| Policy viewer | List and view policies | `/policies` page |
-| Policy editor | YAML editor with validation | Monaco editor |
-| Audit viewer | Search and filter audit logs | `/audit` page |
-| Key management | Create, view, revoke keys | `/keys` page |
-
-**Deliverable:** Web UI to manage policies and view audit logs
-
----
-
-## Phase 3: Production Ready (Weeks 9-12)
-
-### Week 9: MCP Gateway
-
-**Goal:** Intercept and govern MCP connections
-
-| Task | Details | Output |
-|------|---------|--------|
-| MCP protocol support | Handle MCP stdio/SSE transport | `aegis/proxy/mcp/` |
-| MCP tool interception | Extract tool calls from MCP | Interceptor |
-| MCP policies | Server allowlist, tool restrictions | Policy type |
-| MCP audit | Log all MCP interactions | Audit |
-| Claude integration | Test with Claude Desktop | Demo |
-
-**Deliverable:** Control which MCP servers agents can connect to
-
-```yaml
-- name: "mcp-allowlist"
-  type: mcp
-  match:
-    servers_not: ["github-official", "internal-*"]
-  action: DENY
-```
+**Python SDK** (`aegis-sdk` on PyPI): Not in scope for MVP. Post-MVP: a thin Python package that wraps the cloud API over HTTP. Python users get the same features; there is no Python proxy server.
 
 ---
 
-### Week 10: Human-in-the-Loop
-
-**Goal:** Approval workflows for sensitive actions
-
-| Task | Details | Output |
-|------|---------|--------|
-| Approval queue | Store pending approvals | DB + API |
-| Slack integration | Send approval requests to Slack | `aegis/integrations/slack.py` |
-| Approval API | Approve/deny via API or Slack | Endpoints |
-| Timeout handling | Auto-deny on timeout | Background job |
-| Dashboard approvals | Approve in web UI | UI component |
-
-**Deliverable:** Request human approval for sensitive tool calls
-
-```yaml
-- name: "approve-payments"
-  type: tool_call
-  match:
-    tools: ["stripe_*"]
-    parameters:
-      amount: { gt: 10000 }
-  action: REQUIRE_APPROVAL
-  approval:
-    slack_channel: "#agent-approvals"
-    timeout: 15m
-```
-
----
-
-### Week 11: Deployment & Reliability
-
-**Goal:** Production-ready deployment options
-
-| Task | Details | Output |
-|------|---------|--------|
-| Helm chart | Kubernetes deployment | `helm/aegis/` |
-| Health checks | Liveness, readiness probes | `/health` endpoints |
-| Metrics | Prometheus metrics | `/metrics` |
-| Error handling | Graceful degradation | Fallback logic |
-| Load testing | Performance benchmarks | Benchmark results |
-| Documentation | Deployment guide | `docs/deployment.md` |
-
-**Deliverable:** One-command Kubernetes deployment
-
-```bash
-helm install aegis ./helm/aegis \
-  --set apiKey=$AEGIS_API_KEY \
-  --set postgresql.enabled=true
-```
-
----
-
-### Week 12: Polish & Demo
-
-**Goal:** Demo-ready product for design partners
-
-| Task | Details | Output |
-|------|---------|--------|
-| Demo environment | Hosted demo instance | demo.aegis.dev |
-| Example policies | Library of common policies | `examples/policies/` |
-| Quickstart guide | 5-minute getting started | `docs/quickstart.md` |
-| Video walkthrough | 3-minute demo video | Video |
-| Design partner outreach | Contact 10 potential customers | Meetings |
-| Feedback collection | Structured feedback form | Form |
-
-**Deliverable:** Can demo to customers, collect feedback
-
----
-
-## Technical Architecture Summary
-
-### Repository Structure
-
-```
-aegis/
-├── aegis/                      # Python package
-│   ├── core/                   # Core models, types
-│   │   ├── models.py
-│   │   ├── policy_parser.py
-│   │   ├── keys.py
-│   │   └── audit.py
-│   ├── engine/                 # Policy engine
-│   │   ├── evaluator.py
-│   │   ├── matcher.py
-│   │   ├── conditions.py
-│   │   ├── actions.py
-│   │   └── rate_limiter.py
-│   ├── proxy/                  # FastAPI proxy
-│   │   ├── main.py
-│   │   ├── middleware.py
-│   │   └── interceptors/
-│   │       ├── tool_calls.py
-│   │       ├── llm_requests.py
-│   │       └── mcp.py
-│   ├── integrations/           # External integrations
-│   │   ├── litellm.py
-│   │   ├── lakera.py
-│   │   ├── presidio.py
-│   │   └── slack.py
-│   ├── api/                    # Management API
-│   │   ├── policies.py
-│   │   ├── keys.py
-│   │   └── audit.py
-│   ├── db/                     # Database
-│   │   ├── schema.sql
-│   │   └── migrations/
-│   └── utils/
-│       ├── tokens.py
-│       └── cost.py
-├── dashboard/                  # Next.js dashboard
-│   ├── app/
-│   ├── components/
-│   └── lib/
-├── helm/                       # Kubernetes charts
-├── examples/                   # Example policies and demos
-├── tests/
-├── docs/
-├── docker-compose.yml
-├── Dockerfile
-└── pyproject.toml
-```
-
-### Tech Stack
-
-| Component | Technology |
-|-----------|------------|
-| Proxy | Python 3.12, FastAPI, uvicorn |
-| Policy Engine | Custom Python |
-| Dashboard | Next.js 15, React 19, Tailwind, shadcn/ui |
-| Database | PostgreSQL (Supabase compatible) |
-| Cache | Redis |
-| Auth | API keys (MVP), OAuth later |
-| Deployment | Docker, Kubernetes/Helm |
-
----
-
-## Dependencies & Integrations
-
-### Python Dependencies
-
-```toml
-[project]
-dependencies = [
-    "fastapi>=0.110.0",
-    "uvicorn[standard]>=0.27.0",
-    "pydantic>=2.6.0",
-    "pyyaml>=6.0",
-    "httpx>=0.27.0",
-    "redis>=5.0.0",
-    "asyncpg>=0.29.0",
-    "litellm>=1.30.0",           # LLM routing
-    "presidio-analyzer>=2.2.0",  # PII detection
-    "tiktoken>=0.6.0",           # Token counting
-]
-
-[project.optional-dependencies]
-lakera = ["lakera-guard>=0.1.0"]
-nemo = ["nemoguardrails>=0.8.0"]
-```
-
-### External Services (MVP)
-
-| Service | Purpose | Required? |
-|---------|---------|-----------|
-| PostgreSQL | Policy & audit storage | Yes |
-| Redis | Rate limiting, cache | Yes |
-| Lakera | Prompt injection (optional) | No |
-| Slack | Approvals (optional) | No |
-
----
-
-## Risk Mitigation
-
-| Risk | Mitigation |
-|------|------------|
-| LiteLLM doesn't support our use case | Fork early, maintain our own |
-| Lakera API too slow | Make async, cache results, fallback |
-| Policy engine too slow | Benchmark constantly, optimize hot paths |
-| Customers don't understand DSL | Provide UI policy builder, templates |
-| MCP protocol changes | Follow spec closely, version support |
-
----
-
-## Post-MVP Roadmap (Months 4-6)
-
-| Feature | Priority | Notes |
-|---------|----------|-------|
-| Multi-tenant (orgs/projects) | P0 | Required for SaaS |
-| SSO (OIDC) | P1 | Enterprise requirement |
-| Policy versioning | P1 | Git-like history |
-| Response policies | P1 | Filter LLM outputs |
-| Compliance reports | P2 | SOC2, HIPAA templates |
-| Self-hosted control plane | P2 | Air-gapped deployments |
-| SDK (Python) | P2 | Direct integration option |
-| Semantic caching | P3 | Cost optimization |
-
----
-
-## Weekly Milestones Summary
+## 8-Week Milestone Summary
 
 | Week | Milestone | Demo |
 |------|-----------|------|
-| 1 | Proxy forwards requests | Forward to OpenAI |
-| 2 | Policy engine evaluates | Match policy, return decision |
-| 3 | Tool calls intercepted | Block a tool call |
-| 4 | Keys and audit | Issue key, view logs |
-| 5 | LLM policies | Block expensive models |
-| 6 | Prompt policies | Detect injection, redact PII |
-| 7 | Rate limits & budgets | Enforce limits |
-| 8 | Dashboard | Web UI for management |
-| 9 | MCP gateway | Control MCP servers |
-| 10 | Approvals | Slack approval workflow |
-| 11 | Kubernetes | Helm deployment |
-| 12 | Demo ready | Customer demos |
+| 1 | Monorepo scaffold + brand infrastructure | `pnpm build` succeeds; domain live |
+| 2 | Scanner core logic | `node tools/mcp-scanner/dist/index.js ./mcp.json` |
+| 3 | Scanner published + landing page + outreach starts | `npx @aegis/scan` works |
+| 4 | `sdk-core` types + first design partner conversations | Types compile |
+| 5 | `sdk-langchain` callback handler | Agent traces captured locally |
+| 6 | `apps/api` telemetry ingestion | Traces stored in Supabase |
+| 7 | Dashboard basic views | Cost + blocked actions visible |
+| 8 | Design partners in dashboard | 3 partners using the SDK |
 
 ---
 
-## Getting Started (Week 1, Day 1)
+## Post-MVP Roadmap (Months 3-6)
 
-```bash
-# Create project
-mkdir aegis && cd aegis
-uv init --python 3.12
-
-# Add dependencies
-uv add fastapi uvicorn pydantic pyyaml httpx
-
-# Create structure
-mkdir -p aegis/{core,engine,proxy,api,db}
-mkdir -p dashboard tests docs examples
-
-# Start coding
-touch aegis/core/models.py
-touch aegis/proxy/main.py
-```
+| Feature | Priority | Notes |
+|---------|----------|-------|
+| MCP proxy (proxy-through H1) | P0 | Intercepts MCP traffic — requires hosted infrastructure |
+| Policy engine | P0 | YAML policy DSL, evaluator — needed for team tier |
+| Multi-tenancy | P0 | Required for SaaS — orgs, projects, RLS |
+| Slack/Telegram alerts | P1 | Event bus → subscriber channels (AD-003) |
+| SSO (OIDC) | P1 | Enterprise requirement — Okta, Azure AD |
+| Python SDK wrapper | P1 | PyPI `aegis-sdk` — HTTP wrapper of cloud API |
+| JIT permissions | P2 | AD-004 — requires proxy layer |
+| Agent RBAC | P2 | AD-004 — requires proxy + identity store |
+| Compliance export | P2 | SOC2, EU AI Act audit trail |
 
 ---
 
-*Last Updated: March 2026*
+*Last Updated: April 2026 — Rewritten for TypeScript/Node.js stack (AD-006)*

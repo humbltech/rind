@@ -113,7 +113,7 @@ While competitors detect and alert at the prompt layer (which can be bypassed), 
 | Action | Details |
 |--------|---------|
 | **Product** | Launch proxy gateway MVP with basic policy engine |
-| **Pricing** | Free Community tier (5 agents), Paid tiers start $500/mo |
+| **Pricing** | Free tier (5 agents), Paid tiers: Starter $99/mo, Team $399/mo, Business $999/mo |
 | **Marketing** | Launch "Aegis Arena" viral challenge, begin content engine |
 | **Sales** | Founder-led sales to 50 target accounts |
 | **Partnerships** | LangChain, CrewAI SDK integrations |
@@ -168,10 +168,11 @@ While competitors detect and alert at the prompt layer (which can be bypassed), 
 ### Recommended Tiers
 | Tier | Price | Target | Features |
 |------|-------|--------|----------|
-| **Community** | Free | Individual devs | 5 agents, basic observability |
-| **Team** | $500/mo | Small teams | 25 agents, policy enforcement |
-| **Business** | $2,000/mo | Mid-market | 100 agents, advanced policies, SSO |
-| **Enterprise** | Custom ($50K-500K/yr) | Enterprise | Unlimited, endpoint agent, sandbox cloud |
+| **Free** | $0 | Individual devs | 5 agents, 10K evals/mo, basic observability |
+| **Starter** | $99/mo | Solo builders | 25 agents, 100K evals/mo, all policy types |
+| **Team** | $399/mo | Small teams | 100 agents, 1M evals/mo, Slack alerts |
+| **Business** | $999/mo | Mid-market | 500 agents, 10M evals/mo, SSO, approvals |
+| **Enterprise** | Custom ($25K-100K/yr) | Enterprise | Unlimited, self-hosted, SLA, compliance reports |
 
 ### Why This Works
 - **Free tier**: Drives adoption, word-of-mouth, bottom-up motion

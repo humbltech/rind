@@ -97,22 +97,36 @@ DATABASE_URL=postgres://...
 
 **Installation flow**:
 ```bash
-pip install aegis-sdk
-# or
-npm install @aegis/sdk
+npm install @aegis/langchain
+# Python users: pip install aegis-sdk (HTTP wrapper of cloud API, not a proxy)
+```
+
+```typescript
+// 2-line change to existing agent code (TypeScript)
+import { AegisCallbackHandler } from '@aegis/langchain';
+
+const aegis = new AegisCallbackHandler({
+  apiKey: process.env.AEGIS_API_KEY,  // or omit for local-only free tier
+  costLimitUsd: 10.0,
+  loopDetection: true,
+});
+
+const agent = createReactAgent({
+  llm: new ChatOpenAI({ callbacks: [aegis] }),
+  tools,
+});
 ```
 
 ```python
-# 2-line change to existing agent code
-from aegis import AegisSDK
+# Python (LangChain) — uses cloud API wrapper
+from aegis import AegisCallbackHandler
 
-aegis = AegisSDK()  # reads AEGIS_KEY from env, or generates a local key for free tier
-
-agent = create_react_agent(
-    llm=ChatOpenAI(),
-    tools=aegis.wrap(tools),          # wraps tools with cost tracking + loop detection
-    checkpointer=aegis.checkpointer() # optional: add trace + approval gates
+aegis = AegisCallbackHandler(
+    api_key=os.getenv("AEGIS_API_KEY"),
+    cost_limit_usd=10.0,
+    loop_detection=True,
 )
+agent = create_react_agent(llm, tools, callbacks=[aegis])
 ```
 
 **What happens immediately**:
@@ -130,7 +144,7 @@ Dashboard notification:
 ```
 
 **Free tier onboarding sequence**:
-1. `pip install aegis-sdk` — 30 seconds
+1. `npm install @aegis/langchain` (or `pip install aegis-sdk` for Python) — 30 seconds
 2. Add 2 lines to agent code — 2 minutes
 3. Run agent once — triggers dashboard population
 4. Email: "Your agent just did something interesting. View it →" — 5 minutes
@@ -233,9 +247,8 @@ agent_service IAM role: {
 
 **Installation flow**:
 ```bash
-pip install aegis-sdk
-# or
-npm install @aegis/sdk
+npm install @aegis/langchain
+# Python: pip install aegis-sdk
 ```
 
 Add to existing agent code (1 line per agent):
@@ -500,13 +513,13 @@ ENTERPRISE:
 
 ```
 INDIE — Path 1: SDK Only
-  pip install aegis-sdk
+  npm install @aegis/langchain  (or pip install aegis-sdk for Python)
   Add 2 lines → run agent → "oh shit" moment in 5 min
   No proxy, no Docker, no signup required for local testing
   Free tier forever for single-agent hobbyists
 
 STARTUP — Path 2: SDK + Cloud Proxy
-  pip install aegis-sdk + AEGIS_PROXY_URL env var
+  npm install @aegis/langchain + AEGIS_PROXY_URL env var
   All Path 1 features + MCP auth + server allowlists
   No Docker; uses Aegis hosted proxy
   Team dashboard activated immediately

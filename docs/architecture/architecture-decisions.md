@@ -87,18 +87,18 @@ Some features can be delivered via SDK alone (no infrastructure required). Other
 
 ```
 Path 1 — SDK Only (Horizon 1, indie/startup):
-  pip install aegis-sdk
+  npm install @aegis/langchain
   2-line init → observability + cost limits + safety rules
   No infrastructure, no proxy, no Docker
 
 Path 2 — SDK + Cloud Proxy (Horizon 1-2, startup/growth):
-  pip install aegis-sdk
+  npm install @aegis/langchain
   Set AEGIS_PROXY_URL=https://proxy.aegis.dev/<key>
   All Path 1 features + MCP security + server allowlists
   Still no Docker; uses our hosted infrastructure
 
 Path 3 — Self-Hosted Proxy (Horizon 2-3, enterprise):
-  docker run aegis/proxy
+  helm install aegis aegis/aegis-proxy
   Full feature set + data stays on-premises
   Requires infrastructure team
 ```
@@ -255,7 +255,7 @@ Entry:       npm/pip install → 2-line init
 Key views:   Cost this week | Safety events | Agent timeline
 Key actions: Review pending approvals | Set cost limit | View traces
 Mobile:      Yes — approve tool calls from phone
-Tier:        Free + Starter ($49/mo)
+Tier:        Free + Starter ($99/mo)
 ```
 
 **Horizon 1 Target: Startup Team**
@@ -265,7 +265,7 @@ Entry:       Invite teammates, shared policy workspace
 Key views:   Team agent activity | Policy status | Cost by agent
 Key actions: Create policies | Set team budgets | Invite members
 Mobile:      Partial — alerts + approvals
-Tier:        Team ($149/mo)
+Tier:        Team ($399/mo)
 ```
 
 **Horizon 2 Target: Security Team**
@@ -275,7 +275,7 @@ Entry:       Integration with SSO, import existing agent inventory
 Key views:   Policy enforcement | Incident timeline | Audit log
 Key actions: Write enforcement policies | Investigate incidents | Export evidence
 Mobile:      No — security work is desktop
-Tier:        Business ($499/mo)
+Tier:        Business ($999/mo)
 ```
 
 **Horizon 2 Target: Ops/SRE**
@@ -285,7 +285,7 @@ Entry:       OpenTelemetry export → existing observability stack
 Key views:   Agent latency | Error rates | Tool call volumes | Anomaly trends
 Key actions: Configure alert thresholds | PagerDuty integration | Runbooks
 Mobile:      Yes — on-call requires mobile
-Tier:        Business ($499/mo)
+Tier:        Business ($999/mo)
 ```
 
 **Horizon 3 Target: Compliance**
