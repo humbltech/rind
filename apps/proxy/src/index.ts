@@ -1,4 +1,15 @@
-// @aegis/proxy — MCP proxy server
-// Phase 1 (Weeks 2-4): main build target
-// See: docs/mvp-roadmap.md Phase 1 for full implementation spec
-console.log('Aegis Proxy — scaffold only, implementation starting Week 2');
+// Aegis proxy entry point
+// Usage: node dist/index.js (or via `aegis proxy start` CLI — Week 4)
+
+import { createProxyServer } from './server.js';
+
+const config = {
+  port: Number(process.env['PROXY_PORT'] ?? 7777),
+  agentId: process.env['AEGIS_AGENT_ID'] ?? 'default-agent',
+  upstreamMcpUrl: process.env['MCP_UPSTREAM_URL'] ?? 'http://localhost:3100',
+  policyFile: process.env['AEGIS_POLICY_FILE'],
+  logLevel: (process.env['LOG_LEVEL'] ?? 'info') as 'debug' | 'info' | 'warn' | 'error',
+};
+
+const { start } = createProxyServer(config);
+start();
