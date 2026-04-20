@@ -301,17 +301,86 @@ LLMSideChannel (non-blocking, async):
 
 ---
 
-### D-033: Brand & Design Language — PENDING DEEP COUNCIL
-**Date**: TBD — must run BEFORE dashboard implementation
-**Status**: BLOCKING D-032
-**Decision needed**: Full brand guidelines, design language, component philosophy, animation/motion principles for all Aegis UI surfaces.
-**Why deep mode**: Brand/design language is effectively irreversible once shipped — users expect consistency. Getting it wrong means a full redesign, not a tweak. This decision gates every future UI surface (dashboard, landing page, docs, CLI output).
-**Inputs for the council**:
-- Confirmed: primary accent teal `#14b8a6`
-- Confirmed: must feel "alive and cohesive" — subtle animations, gradients, not hardcoded
-- Confirmed: shadcn/ui + Tailwind as the component system
-- Open: typography, spacing scale, motion principles, dark/light mode strategy, illustration style
-**Process**: Run `/strategic-council` deep mode. Use Claude Code design mode or Playwright screenshots for real-product inspiration. Lock down: color system, typography, motion tokens, component variants.
+### D-033: Brand & Design Language — DECIDED
+**Date**: April 20, 2026
+**Status**: COMPLETE — unblocks D-032
+**Council mode**: Deep (9 phases). Research: Linear, Vercel/Geist, Resend, Clerk design systems via WebFetch.
+
+**Decision**: Option B — Dark Slate + Semantic Severity Palette + Teal Accent + Data-Change-Only Motion.
+
+**Color Token System** (CSS variables, white-label safe):
+```
+Background layers:
+  --bg-base:     #09090b  (zinc-950 — true dark canvas)
+  --bg-surface:  #18181b  (zinc-900 — card/panel surface)
+  --bg-elevated: #27272a  (zinc-800 — hover, selected, dropdown)
+
+Borders:
+  --border-default: #3f3f46  (zinc-700)
+  --border-subtle:  #27272a  (zinc-800)
+
+Text hierarchy:
+  --text-primary:   #fafafa  (zinc-50)
+  --text-secondary: #a1a1aa  (zinc-400)
+  --text-muted:     #71717a  (zinc-500)
+
+Aegis accent (teal — non-negotiable brand):
+  --accent:       #14b8a6           (teal-500)
+  --accent-hover: #2dd4bf           (teal-400)
+  --accent-muted: rgba(20,184,166,0.1)  (10% teal glow backgrounds)
+
+Severity palette (maps to CVSS — borrowed muscle memory):
+  --severity-critical: #ef4444  (red-500)
+  --severity-high:     #f97316  (orange-500)
+  --severity-medium:   #eab308  (yellow-500)
+  --severity-low:      #22c55e  (green-500)
+  --severity-info:     #6366f1  (indigo-500 — policy/neutral events)
+```
+
+**Typography**:
+- Primary face: Inter (variable font, weights 400/500/600/700) — system fallback stack
+- Monospace face: JetBrains Mono — session IDs, agent IDs, tool names, log entries, code blocks
+- Scale: H1 1.875rem/-0.025em/700 · H2 1.5rem/-0.02em/600 · Body 0.875rem/400 · Label 0.75rem/0.05em uppercase/500 · Mono 0.8125rem (13px)
+- Rationale: dual typeface is standard for dev tools (Vercel ships Geist+Geist Mono); monospaced IDs render wrong in proportional type
+
+**Motion Principles**:
+- Durations: 150ms (micro/hover) · 200ms (default enter) · 300ms (modal/drawer)
+- Easing: `cubic-bezier(0.16, 1, 0.3, 1)` (ease-out-expo) for enters; `ease-in` 150ms for exits
+- What animates: row slide-in on new data arrival (200ms), stat card number count-up on mount, severity badge pulse once on critical detection
+- What NEVER animates: re-sorts, filter state changes, idle states, shimmer skeletons
+- Respect `prefers-reduced-motion` — all transitions disabled when set
+- Motion discipline: `transition` classes only on elements receiving new data props — never on static layout
+
+**Layout Philosophy**:
+- Sidebar navigation (240px fixed, collapses to 60px icon-only) — matches Linear/Vercel mental model
+- Content area: fluid, max-width 1400px, padding 32px (p-8)
+- Stat card grid: 4-col desktop · 2-col tablet · 1-col mobile
+- Spacing: 4px base unit (Tailwind grid) · card padding 20px (p-5) · section gap 24px (gap-6)
+
+**The △ Triangle Logo Mark**:
+- Rendered as SVG polygon in the sidebar header (16px) + "AEGIS" wordmark (bold, wide tracking)
+- Color: teal `#14b8a6` triangle + `#fafafa` wordmark text
+- Subtle radial gradient behind logo area: teal 5% opacity
+- RESERVED for identity only — not used decoratively elsewhere in the UI
+- Favicon: the △ on `#09090b` background
+
+**Component Philosophy (shadcn/ui)**:
+- Override only via CSS variable tokens and `className` prop — never modify shadcn internal styles
+- Key components: Card, Badge, Table, Tabs, ScrollArea, Skeleton, Tooltip
+- Severity badges: shadcn Badge with border/bg overriding via `--severity-*` vars
+- Stat cards: Card composition — uppercase label + large bold value + delta indicator
+- All color references: semantic token names (`text-accent`, `bg-surface`) not raw Tailwind colors (`text-teal-500`)
+
+**White-label implementation**:
+- All brand values in `tailwind.config.ts` mapped to CSS custom properties
+- Tenant override: `[data-tenant="x"] { --accent: #... }` — zero code changes per tenant
+- Hard rule: no hardcoded hex values anywhere in component files
+
+**Confidence**: 9/10
+**Kill Criteria**:
+- First 5 design partners say "looks cluttered" → simplify to Option A (drop severity palette, use teal opacity variations)
+- Any animation causes jank (>16ms frame) → disable that specific animation
+- White-label tenant needs color system that breaks current tokens → add semantic layer for secondary text vars
 
 ---
 

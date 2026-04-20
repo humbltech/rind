@@ -59,6 +59,10 @@ export function getStoredSchema(serverId: string): ServerSchema | undefined {
   return schemaStore.get(serverId);
 }
 
+export function listStoredSchemas(): ServerSchema[] {
+  return Array.from(schemaStore.values());
+}
+
 export function clearSchemaStore(): void {
   schemaStore.clear();
 }

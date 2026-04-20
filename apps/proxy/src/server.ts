@@ -11,7 +11,7 @@ import { serve } from '@hono/node-server';
 import pino from 'pino';
 import { randomUUID } from 'node:crypto';
 import type { ProxyConfig, ToolCallEvent, AuditEntry } from './types.js';
-import { runFullScan } from './scanner/index.js';
+import { runFullScan, listStoredSchemas } from './scanner/index.js';
 import { intercept } from './interceptor.js';
 import { PolicyEngine } from './policy/engine.js';
 import { InMemoryPolicyStore } from './policy/store.js';
@@ -77,13 +77,27 @@ export function createProxyServer(config: ProxyConfig) {
   app.get('/status', (c) => {
     const sessions = listSessions();
     const events = ringBuffer.toArray();
-    const threatCount = events.reduce((n, _e) => n, 0); // will be enriched post D-019 wiring
+    const schemas = listStoredSchemas();
+    // Count critical/high findings across all registered servers as the threat signal
+    const threatCount = schemas.reduce(
+      (n, s) => n + s.findings.filter((f) => f.severity === 'critical' || f.severity === 'high').length,
+      0,
+    );
     return c.json({
       status: 'ok',
       sessions: { total: sessions.length, active: sessions.filter((s) => s.active).length },
       toolCalls: { total: events.length },
       threats: { total: threatCount },
+      servers: { total: schemas.length },
     });
+  });
+
+  // ─── Scan results (for dashboard) ─────────────────────────────────────────────
+  // Returns findings from all registered MCP servers — used by the dashboard UI
+  // to display the scan findings panel without re-triggering a scan.
+  app.get('/scan/results', (c) => {
+    const schemas = listStoredSchemas();
+    return c.json(schemas);
   });
 
   // ─── Policy management (D-021) ────────────────────────────────────────────────
