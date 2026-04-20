@@ -3,9 +3,18 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/lib.ts",
+      "default": "./dist/lib.js"
+    }
+  },
+  "bin": {
+    "aegis-proxy": "./dist/index.js"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsup src/index.ts --format esm",
+    "build": "tsup src/index.ts src/lib.ts --format esm --dts",
     "start": "node dist/index.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

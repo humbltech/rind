@@ -26,24 +26,24 @@ export function runFullScan(serverId: string, tools: ToolDefinition[]): ScanResu
     findings.push(...driftFindings);
   }
 
-  // Update stored schema with current state
-  const schema: ServerSchema = {
-    serverId,
-    hash: hashToolSchema(tools),
-    tools,
-    scannedAt: Date.now(),
-    findings,
-  };
-  schemaStore.set(serverId, schema);
-
+  // Compute pass/fail before deciding whether to update the stored baseline.
+  // Only update the baseline on clean scans — this preserves the last-known-good
+  // schema so drift is detectable on repeated scans of a poisoned/drifted server,
+  // not just the first reconnect.
   const passed = !findings.some((f) => f.severity === 'critical' || f.severity === 'high');
+  const scannedAt = Date.now();
 
-  return {
-    serverId,
-    scannedAt: schema.scannedAt,
-    findings,
-    passed,
-  };
+  if (passed) {
+    schemaStore.set(serverId, {
+      serverId,
+      hash: hashToolSchema(tools),
+      tools,
+      scannedAt,
+      findings,
+    });
+  }
+
+  return { serverId, scannedAt, findings, passed };
 }
 
 export function getStoredSchema(serverId: string): ServerSchema | undefined {

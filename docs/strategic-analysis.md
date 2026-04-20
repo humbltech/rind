@@ -207,6 +207,77 @@ Each entry: Decision → Date → Reasoning → Confidence → Outcome (updated 
 
 ---
 
+### D-010: Policy Enforcement Engine — Async DetectorChain, Regex Phase 1, LLM Phase 2 Side Channel
+**Date**: April 19, 2026
+**Decision**: Phase 1 ships regex/keyword detectors. The engine is architected as an async `DetectorChain` (middleware pipeline) so LLM classification slots in without changing callers. Phase 2 adds LLM as a non-blocking async side channel (analyze after-the-fact, suggest new rules) — never on the blocking path.
+**Reasoning** (from strategic council quick mode):
+- Local LLM in-process is eliminated: even 1B models require 100-500ms CPU inference — incompatible with <10ms latency budget
+- Cloud LLM on blocking path is eliminated: 300-1500ms per call violates latency budget
+- Regex IS accurate for Phase 1 structural patterns — every real incident driving Aegis (DROP TABLE, delegate loops, "IGNORE PREVIOUS INSTRUCTIONS") is keyword-catchable
+- User stated preference "speed and accuracy now, optimize cost later" maps exactly to this: regex is both fast AND accurate for Phase 1 use cases
+- The hidden one-way trap: if the engine interface is sync today, adding async LLM later requires changing every caller. Must design async interface now even if Phase 1 detectors are sync-wrapped.
+- Phase 2 LLM side channel: classify tool calls after-the-fact, surface behavioral patterns, suggest new regex rules. LLM learns what patterns to hardcode — it is not inline.
+
+**Phase 1 Detector Stack**:
+```
+DetectorChain (async pipeline):
+  1. RegexDetector       — SQL patterns (DROP/TRUNCATE/DELETE), shell injection, path traversal
+  2. KeywordDetector     — tool name matching, glob patterns, agent-scoped rules
+  3. InputPatternMatcher — parameter value matching (amounts, paths, flags)
+```
+
+**Phase 2 Extension**:
+```
+LLMSideChannel (non-blocking, async):
+  Runs in parallel with the blocking path
+  Writes analysis to event log
+  Surfaces patterns → auto-suggests new DetectorChain rules
+  Never blocks the tool call
+```
+
+**Confidence**: 9/10
+**Kill Criteria**: A real customer has a destructive action that passes all regex detectors in the first 60 days of production. That is the threshold for moving LLM classification to the blocking path (with opt-in latency tradeoff).
+
+---
+
+### D-011: Agent Identity — API Keys in Phase 1, JWT in Phase 2
+**Date**: April 19, 2026
+**Decision**: Issue per-agent API keys, validated server-side. agentId is derived from key lookup — never from request body. Agent-scoped policy rules (`agent: 'specific-agent'`) are disabled in Phase 1 until key-based identity is validated per agent. Phase 2 upgrades to signed JWTs with short-lived tokens and capability claims.
+**Reasoning** (from strategic council quick mode):
+- Self-reported agentId + agent-scoped policies = real security hole: a compromised dev agent can claim a prod agent's identity and bypass capability restrictions. The hole is closed by two controls: (1) API key validation, (2) disabling per-agent policy scoping until key auth is in place.
+- Enterprise demo risk: Entro Security leads with identity. Security teams ask "who made this call?" as their first question. "agentId is derived from a validated API key, not self-reported" is a credible Phase 1 answer. "We don't authenticate agents" is not.
+- API keys are zero friction: universal pattern (Stripe, Twilio, OpenAI). Bearer token in Authorization header. No conceptual overhead for engineers.
+- Phase 2 JWT: short-lived tokens issued by Aegis or customer IdP, carrying capability claims. Non-breaking migration — API key validation is the same interface as JWT validation from the caller's perspective.
+
+**Phase 1 constraint**: Policies with `agent: 'specific-agent-id'` scoping are supported in the YAML schema but documented as requiring API key auth. Phase 1 enforces `agent: '*'` policies for all agents until per-agent key registration is complete.
+
+**Confidence**: 8/10
+**Kill Criteria**: An enterprise prospect requires JWT or mTLS as a deal-blocker before Phase 2 is ready. In that case, fast-track JWT to Phase 1.5.
+
+---
+
+### D-012: Policy Authoring Interface — YAML File + REST API + Policy Packs
+**Date**: April 19, 2026
+**Decision**: Phase 1 ships YAML file loading + a REST CRUD API for policy management. Policies are structured resource objects (not file uploads), validated at ingest via Zod. Policy packs (curated presets) cover non-technical operator needs without requiring YAML authoring. Phase 2 adds a web UI as an API consumer with no backend changes.
+**Reasoning** (from strategic council quick mode):
+- YAML without API has adoption friction: can't hot-reload without restart, can't integrate into CI/CD without file management
+- API-only (no YAML) adds friction for operators who want to check policies into version control — YAML file is the right initial config format
+- REST API must be resource-based (structured JSON policy objects), not RPC-style (file upload). This is the constraint that prevents a rewrite when the UI is added.
+- Policy packs solve the non-technical operator problem: security manager enables `packs: [sql-protection, shell-protection]` with one flag. They don't author YAML — they choose presets. 80% of Phase 1 needs covered.
+- NL → policy generation deferred: enterprise security teams want to audit every rule. LLM-generated policies introduce opacity that enterprise security explicitly rejects. NL is a Phase 2 assist tool.
+- Validation at ingest (not at evaluation time): Zod validates policy schema when loaded or API'd. Errors surface immediately, not at runtime.
+
+**Phase 1 Policy Pack List** (from policy-dsl.md):
+- `sql-protection` — DROP/TRUNCATE/DELETE/ALTER blocking
+- `shell-protection` — terminal, exec, spawn blocking
+- `filesystem-protection` — system directory write blocking
+- `exfil-protection` — data export/backup/dump blocking
+
+**Confidence**: 8/10
+**Kill Criteria**: A Phase 1 design partner has a non-technical security manager who needs to author rules (not just enable packs). That triggers fast-tracking the Phase 2 rule builder UI.
+
+---
+
 ## Open Questions
 
 Questions that need answers before major decisions.

@@ -84,6 +84,21 @@ export interface Session {
   estimatedCostUsd: number;
 }
 
+// ─── Policy — parameter matching (D-016) ─────────────────────────────────────
+
+/** Conditions to match against a tool input parameter value (recursive key lookup, depth ≤ 5). */
+export interface ParameterMatcher {
+  contains?: string[]; // all substrings must be present (case-insensitive)
+  regex?: string; // full-match regex (pre-compiled at policy load time)
+  startsWith?: string;
+  gt?: number;
+  lt?: number;
+  gte?: number;
+  lte?: number;
+  eq?: unknown;
+  in?: unknown[];
+}
+
 // ─── Policy ──────────────────────────────────────────────────────────────────
 
 export interface PolicyRule {
@@ -96,20 +111,86 @@ export interface PolicyRule {
       daysOfWeek?: number[]; // 0=Sun, 1=Mon...6=Sat
       hours?: string; // "09:00-18:00" UTC
     };
+    // D-016: input parameter matching — recursive key lookup in tool input
+    parameters?: Record<string, ParameterMatcher>;
   };
   action: PolicyAction;
+  // D-013: REQUIRE_APPROVAL metadata (parsed but async flow is Phase 2)
+  approval?: {
+    timeout?: string; // e.g. "30m" — informational in Phase 1
+    onTimeout?: 'DENY' | 'ALLOW'; // informational in Phase 1
+  };
+  // D-014: cost tracking
+  costEstimate?: number; // USD per call charged to session when this rule matches
+  limits?: {
+    maxCallsPerSession?: number;
+    maxCallsPerHour?: number;
+    maxCostPerSession?: number;
+    maxCostPerHour?: number;
+  };
+  // D-017: rate limiting (used when action === 'RATE_LIMIT')
+  rateLimit?: {
+    limit: number;
+    window: string; // "1m" | "1h" | "1d" | etc.
+    scope: 'per_agent' | 'per_tool' | 'global';
+  };
+  // D-022: error handling fail mode
+  failMode?: 'closed' | 'open'; // default 'closed': if evaluation throws, DENY
 }
 
 export interface PolicyConfig {
   policies: PolicyRule[];
 }
 
+// ─── Audit trail (D-020) ─────────────────────────────────────────────────────
+
+/** Every policy decision produces an AuditEntry written to the JSONL audit log. */
+export interface AuditEntry {
+  timestamp: string; // ISO 8601
+  eventType:
+    | 'tool:call'
+    | 'tool:blocked'
+    | 'tool:response'
+    | 'tool:threat'
+    | 'scan:complete'
+    | 'session:created'
+    | 'session:killed';
+  sessionId: string;
+  agentId: string;
+  serverId: string;
+  action: string; // ALLOW, DENY, BLOCKED_*, etc.
+  policyRule?: string; // name of matching rule, or undefined for default-allow
+  toolName?: string;
+  reason?: string;
+  threats?: ResponseThreat[];
+  input?: unknown; // always included (needed for security investigation)
+  output?: unknown; // only included when auditIncludeOutput is true
+}
+
 // ─── Proxy config ─────────────────────────────────────────────────────────────
+
+// Injectable forward function — used by the simulation to replace real network calls
+// with cassette playback or an in-process mock MCP server.
+// If omitted, the proxy falls back to fetch(upstreamMcpUrl + '/tool-call').
+export type ForwardFn = (
+  toolName: string,
+  input: unknown,
+) => Promise<{ output: unknown; durationMs: number }>;
 
 export interface ProxyConfig {
   port: number;
   agentId: string;
   upstreamMcpUrl: string; // the MCP server to proxy to
   policyFile?: string; // path to aegis.policy.yaml
+  policy?: PolicyConfig; // in-memory policy — takes precedence over policyFile; used in tests and simulation
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
+  // Optional DI override for the forward function — used in tests and simulation
+  forwardFn?: ForwardFn;
+  // D-018: observability pipeline
+  auditLogPath?: string; // path to JSONL audit log (default: ./aegis-audit.jsonl)
+  ringBufferSize?: number; // max events in in-memory ring buffer (default: 10_000)
+  // D-020: audit configuration
+  auditIncludeOutput?: boolean; // include tool output in audit entries (default: false — privacy)
+  // D-022: upstream timeout
+  upstreamTimeoutMs?: number; // fetch timeout for upstream MCP server (default: 30_000)
 }
