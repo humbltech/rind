@@ -8,7 +8,7 @@
 //   Phase 2: ApiBackedPolicyStore (REST API calls store.update() → cache invalidation → next request sees new policies)
 //   Phase 3: PersistentPolicyStore (DB-backed, pg_notify / Redis pub/sub for invalidation)
 
-import type { PolicyConfig } from '../types.js';
+import type { PolicyConfig, PolicyRule } from '../types.js';
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 
@@ -21,6 +21,17 @@ export interface PolicyStore {
 
   /** Subscribe to policy changes. Returns an unsubscribe function. */
   subscribe(callback: () => void): () => void;
+
+  // ─ Convenience mutations (D-036: CRUD API support) ───────────────────────
+
+  /** Appends a rule. Throws if a rule with the same name already exists. */
+  addRule(rule: PolicyRule): void;
+
+  /** Replaces the rule with the matching name. Throws if not found. */
+  updateRule(name: string, rule: PolicyRule): void;
+
+  /** Removes the rule with the given name. Returns false if not found. */
+  removeRule(name: string): boolean;
 }
 
 // ─── Phase 1 implementation ───────────────────────────────────────────────────
@@ -62,5 +73,26 @@ export class InMemoryPolicyStore implements PolicyStore {
       const idx = this.subscribers.indexOf(callback);
       if (idx !== -1) this.subscribers.splice(idx, 1);
     };
+  }
+
+  addRule(rule: PolicyRule): void {
+    const exists = this.config.policies.some((r) => r.name === rule.name);
+    if (exists) throw new Error(`Rule with name "${rule.name}" already exists`);
+    this.update({ policies: [...this.config.policies, rule] });
+  }
+
+  updateRule(name: string, rule: PolicyRule): void {
+    const idx = this.config.policies.findIndex((r) => r.name === name);
+    if (idx === -1) throw new Error(`Rule "${name}" not found`);
+    const updated = [...this.config.policies];
+    updated[idx] = rule;
+    this.update({ policies: updated });
+  }
+
+  removeRule(name: string): boolean {
+    const next = this.config.policies.filter((r) => r.name !== name);
+    if (next.length === this.config.policies.length) return false;
+    this.update({ policies: next });
+    return true;
   }
 }

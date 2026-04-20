@@ -47,6 +47,13 @@ const LimitsSchema = z.object({
   maxCostPerHour: z.number().nonnegative().optional(),
 });
 
+// D-036: rule metadata schema (authoring provenance, not used by engine)
+const PolicyRuleMetaSchema = z.object({
+  source: z.string(), // 'manual' | 'yaml' | 'pack:sql-protection' | 'ai-assisted'
+  createdAt: z.string(),
+  modifiedFromPack: z.boolean().optional(),
+});
+
 // ─── Full policy rule schema ──────────────────────────────────────────────────
 
 const PolicyRuleSchema = z.object({
@@ -64,6 +71,10 @@ const PolicyRuleSchema = z.object({
   limits: LimitsSchema.optional(), // D-014
   rateLimit: RateLimitSchema.optional(), // D-017
   failMode: z.enum(['closed', 'open']).default('closed'), // D-022
+  // D-036: priority — lower = evaluated first; custom rules default to 50, pack rules to 100
+  priority: z.number().int().min(0).default(50),
+  // D-036: authoring metadata — stripped before engine eval, preserved for API responses
+  _meta: PolicyRuleMetaSchema.optional(),
 });
 
 const PolicyConfigSchema = z.object({

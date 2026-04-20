@@ -10,7 +10,7 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import pino from 'pino';
 import { randomUUID } from 'node:crypto';
-import type { ProxyConfig, ToolCallEvent, AuditEntry } from './types.js';
+import type { ProxyConfig, ToolCallEvent, AuditEntry, PolicyRule } from './types.js';
 import { runFullScan, listStoredSchemas } from './scanner/index.js';
 import { intercept } from './interceptor.js';
 import { PolicyEngine } from './policy/engine.js';
@@ -22,6 +22,58 @@ import { RingBuffer } from './ring-buffer.js';
 import { AuditWriter } from './audit-writer.js';
 import { LoopDetector } from './loop-detector.js';
 import { RateLimiter } from './rate-limiter.js';
+import { listPacks, getPack, expandPackRules, rulesFromPack, recommendPacks } from './policy/packs.js';
+import { z } from 'zod';
+
+// ─── Inline validation schemas for policy CRUD ───────────────────────────────
+// Mirrors the loader's Zod schema — kept minimal here since the loader owns the
+// canonical schema. These are used for API request validation only.
+
+const PolicyRuleSchema: z.ZodType<PolicyRule> = z.object({
+  name: z.string(),
+  agent: z.string().default('*'),
+  match: z.object({
+    tool: z.array(z.string()).optional(),
+    toolPattern: z.string().optional(),
+    timeWindow: z
+      .object({
+        daysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
+        hours: z.string().regex(/^\d{2}:\d{2}-\d{2}:\d{2}$/).optional(),
+      })
+      .optional(),
+    parameters: z.record(z.object({
+      contains: z.array(z.string()).optional(),
+      regex: z.string().optional(),
+      startsWith: z.string().optional(),
+      gt: z.number().optional(),
+      lt: z.number().optional(),
+      gte: z.number().optional(),
+      lte: z.number().optional(),
+      eq: z.unknown().optional(),
+      in: z.array(z.unknown()).optional(),
+    })).optional(),
+  }),
+  action: z.enum(['ALLOW', 'DENY', 'REQUIRE_APPROVAL', 'RATE_LIMIT']),
+  approval: z.object({ timeout: z.string().optional(), onTimeout: z.enum(['DENY', 'ALLOW']).optional() }).optional(),
+  costEstimate: z.number().nonnegative().optional(),
+  limits: z.object({
+    maxCallsPerSession: z.number().int().positive().optional(),
+    maxCallsPerHour: z.number().int().positive().optional(),
+    maxCostPerSession: z.number().nonnegative().optional(),
+    maxCostPerHour: z.number().nonnegative().optional(),
+  }).optional(),
+  rateLimit: z.object({
+    limit: z.number().int().positive(),
+    window: z.string().regex(/^\d+(s|m|h|d)$/),
+    scope: z.enum(['per_agent', 'per_tool', 'global']),
+  }).optional(),
+  failMode: z.enum(['closed', 'open']).default('closed'),
+  priority: z.number().int().min(0).default(50),
+}) as z.ZodType<PolicyRule>;
+
+const PolicyConfigSchema = z.object({
+  policies: z.array(PolicyRuleSchema),
+});
 
 export function createProxyServer(config: ProxyConfig) {
   const logger = pino({
@@ -100,8 +152,138 @@ export function createProxyServer(config: ProxyConfig) {
     return c.json(schemas);
   });
 
-  // ─── Policy management (D-021) ────────────────────────────────────────────────
+  // ─── Policy management (D-021 + D-036) ───────────────────────────────────────
+
+  // List active rules
   app.get('/policies', (c) => c.json({ policies: policyEngine.getRules() }));
+
+  // Add a single rule
+  app.post('/policies/rules', async (c) => {
+    const body = await c.req.json<unknown>();
+    const parsed = PolicyRuleSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+    try {
+      policyStore.addRule(parsed.data);
+      emitPolicyAudit(bus, 'rule-added', parsed.data.name, config);
+      return c.json({ added: true, rule: parsed.data }, 201);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : 'Unknown error' }, 409);
+    }
+  });
+
+  // Replace a rule by name
+  app.put('/policies/rules/:name', async (c) => {
+    const { name } = c.req.param();
+    const body = await c.req.json<unknown>();
+    const parsed = PolicyRuleSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+    try {
+      policyStore.updateRule(name, parsed.data);
+      emitPolicyAudit(bus, 'rule-updated', name, config);
+      return c.json({ updated: true, rule: parsed.data });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : 'Unknown error' }, 404);
+    }
+  });
+
+  // Delete a rule by name
+  app.delete('/policies/rules/:name', (c) => {
+    const { name } = c.req.param();
+    const removed = policyStore.removeRule(name);
+    if (!removed) return c.json({ error: `Rule "${name}" not found` }, 404);
+    emitPolicyAudit(bus, 'rule-removed', name, config);
+    return c.json({ removed: true, name });
+  });
+
+  // Replace entire config (for YAML upload or GitOps)
+  app.put('/policies', async (c) => {
+    const body = await c.req.json<unknown>();
+    const parsed = PolicyConfigSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+    policyStore.update(parsed.data);
+    emitPolicyAudit(bus, 'config-replaced', '*', config);
+    return c.json({ replaced: true, ruleCount: parsed.data.policies.length });
+  });
+
+  // Dry-run validation (no write)
+  app.post('/policies/validate', async (c) => {
+    const body = await c.req.json<unknown>();
+    const parsed = PolicyConfigSchema.safeParse(body);
+    if (!parsed.success) return c.json({ valid: false, error: parsed.error.flatten() }, 400);
+    return c.json({ valid: true, ruleCount: parsed.data.policies.length });
+  });
+
+  // ─── Policy packs (D-036) ─────────────────────────────────────────────────────
+
+  // List all available packs (with enabled state)
+  app.get('/packs', (c) => {
+    const activePolicies = policyStore.get().policies;
+    const packs = listPacks().map((pack) => {
+      const enabledRules = rulesFromPack(activePolicies, pack.id);
+      return { ...pack, enabled: enabledRules.length > 0 };
+    });
+    return c.json(packs);
+  });
+
+  // Get a single pack
+  app.get('/packs/:packId', (c) => {
+    const { packId } = c.req.param();
+    const pack = getPack(packId);
+    if (!pack) return c.json({ error: `Pack "${packId}" not found` }, 404);
+    const activePolicies = policyStore.get().policies;
+    return c.json({ ...pack, enabled: rulesFromPack(activePolicies, pack.id).length > 0 });
+  });
+
+  // Enable a pack — expands its rules into the active config
+  app.post('/packs/:packId/enable', (c) => {
+    const { packId } = c.req.param();
+    const pack = getPack(packId);
+    if (!pack) return c.json({ error: `Pack "${packId}" not found` }, 404);
+
+    const current = policyStore.get();
+    const alreadyEnabled = rulesFromPack(current.policies, packId);
+    if (alreadyEnabled.length > 0) return c.json({ error: `Pack "${packId}" is already enabled` }, 409);
+
+    const newRules = expandPackRules(pack);
+    policyStore.update({ policies: [...current.policies, ...newRules] });
+    emitPolicyAudit(bus, 'pack-enabled', packId, config);
+    logger.info({ packId, ruleCount: newRules.length }, 'Policy pack enabled');
+    return c.json({ enabled: true, packId, ruleCount: newRules.length }, 201);
+  });
+
+  // Disable a pack — removes all its rules from the active config
+  app.delete('/packs/:packId', (c) => {
+    const { packId } = c.req.param();
+    const pack = getPack(packId);
+    if (!pack) return c.json({ error: `Pack "${packId}" not found` }, 404);
+
+    const current = policyStore.get();
+    const prefix = `pack:${packId}`;
+    const next = current.policies.filter(
+      (r) => !('_meta' in r && (r as { _meta?: { source?: string } })._meta?.source === prefix),
+    );
+    if (next.length === current.policies.length) {
+      return c.json({ error: `Pack "${packId}" is not enabled` }, 404);
+    }
+    policyStore.update({ policies: next });
+    emitPolicyAudit(bus, 'pack-disabled', packId, config);
+    logger.info({ packId }, 'Policy pack disabled');
+    return c.json({ disabled: true, packId });
+  });
+
+  // Recommendations: packs relevant to discovered tools
+  app.get('/suggestions', (c) => {
+    const schemas = listStoredSchemas();
+    const toolNames = schemas.flatMap((s) => s.tools.map((t) => t.name));
+    const recommendations = recommendPacks(toolNames);
+    const activePolicies = policyStore.get().policies;
+    return c.json(
+      recommendations.map((pack) => ({
+        ...pack,
+        enabled: rulesFromPack(activePolicies, pack.id).length > 0,
+      })),
+    );
+  });
 
   // ─── Session management ────────────────────────────────────────────────────────
   app.post('/sessions', async (c) => {
@@ -388,7 +570,7 @@ export function createProxyServer(config: ProxyConfig) {
   };
 }
 
-// ─── Audit helper ─────────────────────────────────────────────────────────────
+// ─── Audit helpers ────────────────────────────────────────────────────────────
 
 function emitAudit(
   bus: RindEventBus,
@@ -398,5 +580,23 @@ function emitAudit(
   bus.emit('audit', {
     timestamp: new Date().toISOString(),
     ...fields,
+  } as AuditEntry);
+}
+
+// Records every policy mutation in the audit trail with a structured event type.
+function emitPolicyAudit(
+  bus: RindEventBus,
+  operation: 'rule-added' | 'rule-updated' | 'rule-removed' | 'config-replaced' | 'pack-enabled' | 'pack-disabled',
+  target: string,
+  config: ProxyConfig,
+): void {
+  bus.emit('audit', {
+    timestamp: new Date().toISOString(),
+    eventType: 'tool:call', // reuse existing event type for audit stream
+    sessionId: '',
+    agentId: 'rind:policy-api',
+    serverId: '',
+    action: 'ALLOW',
+    reason: `policy:${operation}:${target}`,
   } as AuditEntry);
 }

@@ -1,5 +1,6 @@
 // Policy evaluation engine: evaluates tool call events against loaded policy rules.
-// First matching rule wins (top-to-bottom). Default action is ALLOW.
+// Rules are sorted by priority (ascending) — lower priority number = evaluated first.
+// Within the same priority, insertion order is preserved. Default action is ALLOW.
 //
 // The engine reads from a PolicyStore (D-021) and caches the current config.
 // When the store is updated (via API in Phase 2), the cache is invalidated
@@ -8,6 +9,11 @@
 import type { PolicyAction, PolicyConfig, PolicyRule, ToolCallEvent } from '../types.js';
 import type { PolicyStore } from './store.js';
 import { matchesRule } from './rules.js';
+
+// Stable sort: lower priority number = evaluated first. Rules without priority default to 50.
+function sortByPriority(rules: PolicyConfig['policies']): PolicyConfig['policies'] {
+  return [...rules].sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50));
+}
 
 export interface PolicyEvalResult {
   action: PolicyAction;
@@ -20,12 +26,12 @@ export class PolicyEngine {
   private compiledRegexes = new Map<string, RegExp>();
 
   constructor(store: PolicyStore) {
-    this.rules = store.get().policies;
+    this.rules = sortByPriority(store.get().policies);
     this.compileRegexes();
 
-    // Subscribe to store updates — swap cache + recompile immediately
+    // Subscribe to store updates — swap cache + recompile + re-sort immediately
     store.subscribe(() => {
-      this.rules = store.get().policies;
+      this.rules = sortByPriority(store.get().policies);
       this.compileRegexes();
     });
   }

@@ -137,10 +137,69 @@ export interface PolicyRule {
   };
   // D-022: error handling fail mode
   failMode?: 'closed' | 'open'; // default 'closed': if evaluation throws, DENY
+  // D-036: evaluation priority — lower number = evaluated first (default 50 for custom, 100 for packs)
+  priority?: number;
 }
 
 export interface PolicyConfig {
   policies: PolicyRule[];
+}
+
+// ─── Policy packs (D-036) ─────────────────────────────────────────────────────
+
+/** Tracks which authoring path created or last modified a rule. */
+export type PolicyRuleSource = 'manual' | 'yaml' | `pack:${string}` | 'ai-assisted';
+
+export interface PolicyRuleMeta {
+  source: PolicyRuleSource;
+  createdAt: string; // ISO 8601
+  modifiedFromPack?: boolean; // true if user customized a rule that originated from a pack
+}
+
+/** A PolicyRule augmented with authoring metadata (used by the API layer, stripped before engine eval). */
+export interface PolicyRuleWithMeta extends PolicyRule {
+  _meta?: PolicyRuleMeta;
+}
+
+/** Describes a field in a pack that the user can customize without editing raw YAML. */
+export interface PackCustomization {
+  ruleIndex: number; // index into PolicyPack.rules
+  field: string; // dot-path to the field, e.g. "rateLimit.limit"
+  label: string; // human-readable: "Max calls per minute"
+  type: 'number' | 'string' | 'enum' | 'boolean';
+  options?: string[]; // for enum type
+  default: unknown;
+}
+
+export type PackCategory = 'data-protection' | 'infrastructure' | 'compliance' | 'communication';
+export type PackSeverity = 'strict' | 'moderate' | 'permissive';
+
+export interface PolicyPack {
+  id: string; // e.g. "sql-protection"
+  version: string; // semver, e.g. "1.0.0"
+  name: string; // "SQL Protection"
+  description: string; // one-sentence summary
+  category: PackCategory;
+  tags: string[];
+  severity: PackSeverity;
+  rules: PolicyRule[];
+  customizable: PackCustomization[];
+  // Tool name prefixes that suggest this pack is relevant (for smart defaults)
+  requiredTools?: string[];
+}
+
+/** Tracks which packs are enabled and their per-instance customizations. */
+export interface PackState {
+  packId: string;
+  enabled: boolean;
+  enabledAt?: string; // ISO 8601
+  customizations?: Record<string, unknown>; // field path → value overrides
+}
+
+/** Extended PolicyConfig that tracks pack state alongside rules. */
+export interface PolicyConfigV2 {
+  policies: PolicyRuleWithMeta[];
+  enabledPacks: PackState[];
 }
 
 // ─── Audit trail (D-020) ─────────────────────────────────────────────────────
