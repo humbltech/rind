@@ -14,6 +14,14 @@ const INPUT_INJECTION_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /system\s*:/i, label: 'SYSTEM: directive in argument' },
   { pattern: /<\/?(?:system|assistant|user|prompt|instruction)>/i, label: 'role injection tag in argument' },
   { pattern: /\bexfiltrate\b|\bsteal\b/i, label: 'data exfiltration directive in argument' },
+  // Shell/RCE injection — attacker embeds shell commands in tool arguments to hijack agent
+  // Ref: CVE-2025-53773 (Copilot RCE via PR review)
+  { pattern: /\bcurl\s+(?:-[a-zA-Z\s]*)?https?:\/\//i, label: 'shell command (curl) injection in argument' },
+  { pattern: /\bwget\s+https?:\/\//i, label: 'shell command (wget) injection in argument' },
+  { pattern: /\|\s*(?:sh|bash|zsh|ash)\b/i, label: 'shell pipe execution injection in argument' },
+  { pattern: /;\s*(?:sh|bash|rm|curl|wget|python|node)\s/i, label: 'shell command chaining injection in argument' },
+  { pattern: /\$\(.*\)/i, label: 'shell command substitution injection in argument' },
+  { pattern: /`[^`]{3,}`/i, label: 'shell backtick execution injection in argument' },
 ];
 
 function extractStrings(value: unknown, depth = 0): string[] {

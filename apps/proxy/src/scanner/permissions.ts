@@ -44,6 +44,16 @@ const UNRESTRICTED_FS_PATTERNS = [
   /\barbitrary\s+path\b/i,
 ];
 
+// Outbound HTTP to external URLs — data exfiltration vector
+// Any tool that can POST/GET to a caller-supplied URL is a one-call exfiltration path
+const OUTBOUND_HTTP_PATTERNS = [
+  /\bhttp(?:s)?\s*(?:post|get|put|patch|request)\b.{0,60}external/i,
+  /\bsend\s+(?:an?\s+)?http/i,
+  /\bwebhook\b/i,
+  /\bpost\s+(?:to\s+)?(?:an?\s+)?(?:external\s+)?url\b/i,
+  /\bhttp\s+request\s+to\b/i,
+];
+
 export function checkPermissions(tools: ToolDefinition[]): ScanFinding[] {
   const findings: ScanFinding[] = [];
 
@@ -84,6 +94,15 @@ export function checkPermissions(tools: ToolDefinition[]): ScanFinding[] {
         severity: 'high',
         toolName: tool.name,
         detail: `Tool "${tool.name}" appears to provide unrestricted file system access. Verify it enforces path allowlisting.`,
+      });
+    }
+
+    if (OUTBOUND_HTTP_PATTERNS.some((p) => p.test(text))) {
+      findings.push({
+        category: 'OVER_PERMISSIONED',
+        severity: 'critical',
+        toolName: tool.name,
+        detail: `Tool "${tool.name}" can send HTTP requests to caller-supplied external URLs. This is a one-call data exfiltration path — any prompt injection into this tool's arguments can exfiltrate data.`,
       });
     }
   }

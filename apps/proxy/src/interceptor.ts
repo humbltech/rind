@@ -113,6 +113,10 @@ export async function intercept(
   opts.onToolCallEvent(event, evalResult?.matchedRule);
 
   const { action, matchedRule } = evalResult ?? { action: 'ALLOW' as PolicyAction };
+  // effectiveAction starts as the policy action but is normalised to ALLOW after
+  // a RATE_LIMIT check passes — the tool call proceeds but we don't leak RATE_LIMIT
+  // in the final interceptor result when the caller was actually allowed through.
+  let effectiveAction: InterceptedAction = action;
 
   if (action === 'DENY') {
     return blocked('DENY', `Tool call "${event.toolName}" denied by policy rule "${matchedRule?.name ?? 'unknown'}".`);
@@ -159,6 +163,8 @@ export async function intercept(
           },
         };
       }
+      // Rate limit check passed — normalise so the tool call proceeds as ALLOW
+      effectiveAction = 'ALLOW';
     } else {
       // RATE_LIMIT action but no rate limiter or config — treat as DENY (safety)
       return blocked('DENY', `Rate limit configured but limiter not available for "${event.toolName}".`);
@@ -226,7 +232,7 @@ export async function intercept(
 
   return {
     output,
-    interceptorResult: { action },
+    interceptorResult: { action: effectiveAction },
   };
 }
 
