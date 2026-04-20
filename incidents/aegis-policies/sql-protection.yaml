@@ -1,6 +1,6 @@
-# Aegis SQL Protection Policy
+# Rind SQL Protection Policy
 # Prevents catastrophic database operations like the Replit incident
-apiVersion: aegis/v1
+apiVersion: rind/v1
 kind: SecurityPolicy
 metadata:
   name: sql-protection

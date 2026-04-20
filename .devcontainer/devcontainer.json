@@ -1,5 +1,5 @@
 {
-  "name": "Aegis Simulation",
+  "name": "Rind Simulation",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
 
   "features": {

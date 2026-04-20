@@ -1,12 +1,12 @@
 # Real-World Incident Simulations
 
-**Purpose:** Replicate documented AI agent security incidents to demonstrate Aegis prevention capabilities.
+**Purpose:** Replicate documented AI agent security incidents to demonstrate Rind prevention capabilities.
 
 ---
 
 ## Incidents Covered
 
-| # | Incident | Source | Damage | Aegis Prevention |
+| # | Incident | Source | Damage | Rind Prevention |
 |---|----------|--------|--------|------------------|
 | 1 | **Replit DB Deletion** | AI Incident Database #1152 | 2,400+ records deleted | SQL destructive block |
 | 2 | **Amazon Kiro Outage** | Particula Tech, 2025 | 13-hour production outage | Infrastructure approval |
@@ -29,7 +29,7 @@ make incident-echoleak
 make incident-cost-loop
 make incident-rce
 
-# Compare with/without Aegis protection
+# Compare with/without Rind protection
 make incident-compare INCIDENT=replit
 ```
 
@@ -69,7 +69,7 @@ incidents/
 │   ├── attack.py                 # Malicious PR injection
 │   └── mock_github/              # Mock PR/repo
 │
-└── aegis-policies/               # Aegis policies that block each attack
+└── aegis-policies/               # Rind policies that block each attack
     ├── sql-protection.yaml
     ├── infra-protection.yaml
     ├── exfil-protection.yaml
@@ -100,7 +100,7 @@ incidents/
 
 ```
 ┌────────────────┐     ┌────────────────┐     ┌────────────────┐
-│  Attack Trigger │────▶│   Aegis Proxy  │──X──│   Agent        │
+│  Attack Trigger │────▶│   Rind Proxy  │──X──│   Agent        │
 │  (attack.py)    │     │   (Blocks!)    │     │   (Protected)  │
 └────────────────┘     └────────────────┘     └────────────────┘
                               │
@@ -134,24 +134,24 @@ Example output:
   ├── executives: 1,206 records
   └── companies: 1,196 records
 
-[PHASE 1] Running WITHOUT Aegis protection...
+[PHASE 1] Running WITHOUT Rind protection...
   ├── Agent: "I'll clean up the database schema..."
   ├── Tool call: sql_execute("DROP TABLE executives")
   ├── Tool call: sql_execute("DROP TABLE companies")
   └── Result: ❌ 2,402 RECORDS DELETED
 
-[PHASE 2] Running WITH Aegis protection...
+[PHASE 2] Running WITH Rind protection...
   ├── Agent: "I'll clean up the database schema..."
   ├── Tool call: sql_execute("DROP TABLE executives")
-  ├── Aegis: 🛡️ BLOCKED by policy 'sql-destructive-block'
+  ├── Rind: 🛡️ BLOCKED by policy 'sql-destructive-block'
   ├── Alert: Sent to #security-alerts
   └── Result: ✅ 0 RECORDS DELETED
 
 ═══════════════════════════════════════════════════════════════
   SUMMARY
 ═══════════════════════════════════════════════════════════════
-  Without Aegis: 2,402 records lost, unknown recovery time
-  With Aegis:    0 records lost, attack logged and alerted
+  Without Rind: 2,402 records lost, unknown recovery time
+  With Rind:    0 records lost, attack logged and alerted
   ROI:           Complete disaster prevention
 ═══════════════════════════════════════════════════════════════
 ```

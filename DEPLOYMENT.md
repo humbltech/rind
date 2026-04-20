@@ -1,4 +1,4 @@
-# Deployment Options for Aegis Simulations
+# Deployment Options for Rind Simulations
 
 ## Local Development (Recommended for Testing)
 
@@ -61,7 +61,7 @@ npm install -g @railway/cli
 railway login
 
 # 3. Initialize project
-cd aegis-simulation
+cd rind-simulation
 railway init
 
 # 4. Deploy
@@ -83,7 +83,7 @@ Render offers a generous free tier and easy Docker deployment.
 # render.yaml - Add this to your repo root
 services:
   - type: web
-    name: aegis-replit-agent
+    name: rind-replit-agent
     env: docker
     dockerfilePath: ./incidents/01-replit-db-deletion/Dockerfile
     dockerContext: ./incidents/01-replit-db-deletion
@@ -94,7 +94,7 @@ services:
         value: https://api.openai.com/v1
 
   - type: web
-    name: aegis-echoleak-agent
+    name: rind-echoleak-agent
     env: docker
     dockerfilePath: ./incidents/03-echoleak-exfiltration/Dockerfile
     dockerContext: ./incidents/03-echoleak-exfiltration
@@ -131,7 +131,7 @@ fly deploy
 
 **fly.toml:**
 ```toml
-app = "aegis-replit-demo"
+app = "rind-replit-demo"
 primary_region = "sjc"
 
 [build]
@@ -163,11 +163,11 @@ gcloud config set project YOUR_PROJECT_ID
 
 # 3. Build and push image
 cd incidents/01-replit-db-deletion
-gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/aegis-replit
+gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/rind-replit
 
 # 4. Deploy
-gcloud run deploy aegis-replit \
-  --image gcr.io/YOUR_PROJECT_ID/aegis-replit \
+gcloud run deploy rind-replit \
+  --image gcr.io/YOUR_PROJECT_ID/rind-replit \
   --platform managed \
   --region us-central1 \
   --allow-unauthenticated \
@@ -187,8 +187,8 @@ For a persistent demo environment you fully control.
 
 # 2. SSH in and clone repo
 ssh root@YOUR_DROPLET_IP
-git clone https://github.com/YOUR_REPO/aegis-simulation
-cd aegis-simulation
+git clone https://github.com/YOUR_REPO/rind-simulation
+cd rind-simulation
 
 # 3. Create .env
 echo "OPENAI_API_KEY=sk-xxx" > .env
@@ -222,7 +222,7 @@ Once deployed, update the agent URL in your attack scripts:
 export AGENT_URL=http://localhost:8010
 
 # Cloud (Railway example)
-export AGENT_URL=https://aegis-replit.up.railway.app
+export AGENT_URL=https://rind-replit.up.railway.app
 
 # Run attack
 cd incidents

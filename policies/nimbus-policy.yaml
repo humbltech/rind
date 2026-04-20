@@ -1,6 +1,6 @@
-# Aegis Policy for Nimbus SaaS
+# Rind Policy for Nimbus SaaS
 # B2B Task Management Platform
-apiVersion: aegis/v1
+apiVersion: rind/v1
 kind: SecurityPolicy
 metadata:
   name: nimbus-task-agent

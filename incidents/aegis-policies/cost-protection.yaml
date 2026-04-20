@@ -1,6 +1,6 @@
-# Aegis Cost & Loop Protection Policy
+# Rind Cost & Loop Protection Policy
 # Prevents runaway costs like the $47K infinite loop incident
-apiVersion: aegis/v1
+apiVersion: rind/v1
 kind: SecurityPolicy
 metadata:
   name: cost-protection

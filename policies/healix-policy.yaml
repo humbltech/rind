@@ -1,6 +1,6 @@
-# Aegis Policy for Healix Medical
+# Rind Policy for Healix Medical
 # Healthcare Scheduling - HIPAA Compliant
-apiVersion: aegis/v1
+apiVersion: rind/v1
 kind: SecurityPolicy
 metadata:
   name: healix-schedule-agent

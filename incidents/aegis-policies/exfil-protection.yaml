@@ -1,6 +1,6 @@
-# Aegis Data Exfiltration Protection Policy
+# Rind Data Exfiltration Protection Policy
 # Prevents data theft like the EchoLeak (CVE-2025-32711) attack
-apiVersion: aegis/v1
+apiVersion: rind/v1
 kind: SecurityPolicy
 metadata:
   name: exfil-protection
