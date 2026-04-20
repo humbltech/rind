@@ -1,0 +1,197 @@
+// Shared types for the Rind MCP proxy
+// All events are structurally compatible with OpenTelemetry spans for future export
+
+export type PolicyAction = 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL' | 'RATE_LIMIT';
+
+// ─── Tool call events ────────────────────────────────────────────────────────
+
+export interface ToolCallEvent {
+  sessionId: string;
+  agentId: string; // identity-aware from day 1
+  serverId: string;
+  toolName: string;
+  input: unknown;
+  timestamp: number;
+}
+
+export interface ToolResponseEvent {
+  sessionId: string;
+  agentId: string;
+  serverId: string;
+  toolName: string;
+  output: unknown;
+  durationMs: number;
+  threats: ResponseThreat[]; // prompt injection, credential patterns
+}
+
+// ─── Response-side threat detection ─────────────────────────────────────────
+
+export interface ResponseThreat {
+  type: 'PROMPT_INJECTION' | 'CREDENTIAL_LEAK' | 'SUSPICIOUS_REDIRECT' | 'INDIRECT_PROMPT_INJECTION';
+  severity: 'critical' | 'high' | 'medium';
+  pattern: string;
+  sanitized: boolean;
+}
+
+// ─── Schema + scan ───────────────────────────────────────────────────────────
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface ServerSchema {
+  serverId: string;
+  hash: string; // SHA-256 of sorted tool definitions
+  tools: ToolDefinition[];
+  scannedAt: number;
+  findings: ScanFinding[];
+}
+
+export type ScanFindingSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+export type ScanFindingCategory =
+  | 'AUTH_MISSING'
+  | 'TOOL_POISONING'
+  | 'OVER_PERMISSIONED'
+  | 'SCHEMA_DRIFT'
+  | 'SCHEMA_DRIFT_TOOL_ADDED'
+  | 'SCHEMA_DRIFT_TOOL_MODIFIED'
+  | 'SCHEMA_DRIFT_TOOL_REMOVED'
+  | 'CROSS_SERVER_SHADOWING';
+
+export interface ScanFinding {
+  category: ScanFindingCategory;
+  severity: ScanFindingSeverity;
+  toolName?: string;
+  detail: string;
+}
+
+export interface ScanResult {
+  serverId: string;
+  scannedAt: number;
+  findings: ScanFinding[];
+  passed: boolean; // true = no critical/high findings
+}
+
+// ─── Session ─────────────────────────────────────────────────────────────────
+
+export interface Session {
+  sessionId: string;
+  agentId: string;
+  startedAt: number;
+  active: boolean; // false = killed via kill-switch
+  toolCallCount: number;
+  estimatedCostUsd: number;
+}
+
+// ─── Policy — parameter matching (D-016) ─────────────────────────────────────
+
+/** Conditions to match against a tool input parameter value (recursive key lookup, depth ≤ 5). */
+export interface ParameterMatcher {
+  contains?: string[]; // all substrings must be present (case-insensitive)
+  regex?: string; // full-match regex (pre-compiled at policy load time)
+  startsWith?: string;
+  gt?: number;
+  lt?: number;
+  gte?: number;
+  lte?: number;
+  eq?: unknown;
+  in?: unknown[];
+}
+
+// ─── Policy ──────────────────────────────────────────────────────────────────
+
+export interface PolicyRule {
+  name: string;
+  agent: string; // '*' = all agents
+  match: {
+    tool?: string[];
+    toolPattern?: string; // glob pattern e.g. "billing.*"
+    timeWindow?: {
+      daysOfWeek?: number[]; // 0=Sun, 1=Mon...6=Sat
+      hours?: string; // "09:00-18:00" UTC
+    };
+    // D-016: input parameter matching — recursive key lookup in tool input
+    parameters?: Record<string, ParameterMatcher>;
+  };
+  action: PolicyAction;
+  // D-013: REQUIRE_APPROVAL metadata (parsed but async flow is Phase 2)
+  approval?: {
+    timeout?: string; // e.g. "30m" — informational in Phase 1
+    onTimeout?: 'DENY' | 'ALLOW'; // informational in Phase 1
+  };
+  // D-014: cost tracking
+  costEstimate?: number; // USD per call charged to session when this rule matches
+  limits?: {
+    maxCallsPerSession?: number;
+    maxCallsPerHour?: number;
+    maxCostPerSession?: number;
+    maxCostPerHour?: number;
+  };
+  // D-017: rate limiting (used when action === 'RATE_LIMIT')
+  rateLimit?: {
+    limit: number;
+    window: string; // "1m" | "1h" | "1d" | etc.
+    scope: 'per_agent' | 'per_tool' | 'global';
+  };
+  // D-022: error handling fail mode
+  failMode?: 'closed' | 'open'; // default 'closed': if evaluation throws, DENY
+}
+
+export interface PolicyConfig {
+  policies: PolicyRule[];
+}
+
+// ─── Audit trail (D-020) ─────────────────────────────────────────────────────
+
+/** Every policy decision produces an AuditEntry written to the JSONL audit log. */
+export interface AuditEntry {
+  timestamp: string; // ISO 8601
+  eventType:
+    | 'tool:call'
+    | 'tool:blocked'
+    | 'tool:response'
+    | 'tool:threat'
+    | 'scan:complete'
+    | 'session:created'
+    | 'session:killed';
+  sessionId: string;
+  agentId: string;
+  serverId: string;
+  action: string; // ALLOW, DENY, BLOCKED_*, etc.
+  policyRule?: string; // name of matching rule, or undefined for default-allow
+  toolName?: string;
+  reason?: string;
+  threats?: ResponseThreat[];
+  input?: unknown; // always included (needed for security investigation)
+  output?: unknown; // only included when auditIncludeOutput is true
+}
+
+// ─── Proxy config ─────────────────────────────────────────────────────────────
+
+// Injectable forward function — used by the simulation to replace real network calls
+// with cassette playback or an in-process mock MCP server.
+// If omitted, the proxy falls back to fetch(upstreamMcpUrl + '/tool-call').
+export type ForwardFn = (
+  toolName: string,
+  input: unknown,
+) => Promise<{ output: unknown; durationMs: number }>;
+
+export interface ProxyConfig {
+  port: number;
+  agentId: string;
+  upstreamMcpUrl: string; // the MCP server to proxy to
+  policyFile?: string; // path to rind.policy.yaml
+  policy?: PolicyConfig; // in-memory policy — takes precedence over policyFile; used in tests and simulation
+  logLevel?: 'debug' | 'info' | 'warn' | 'error';
+  // Optional DI override for the forward function — used in tests and simulation
+  forwardFn?: ForwardFn;
+  // D-018: observability pipeline
+  auditLogPath?: string; // path to JSONL audit log (default: ./rind-audit.jsonl)
+  ringBufferSize?: number; // max events in in-memory ring buffer (default: 10_000)
+  // D-020: audit configuration
+  auditIncludeOutput?: boolean; // include tool output in audit entries (default: false — privacy)
+  // D-022: upstream timeout
+  upstreamTimeoutMs?: number; // fetch timeout for upstream MCP server (default: 30_000)
+}

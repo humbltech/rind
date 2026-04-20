@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Rind favicon — compact variant (heavier strokes for small-size legibility) -->
+  <!-- Standard mark uses stroke-width 1.8; compact variant uses 2.5 for ≤32px rendering -->
+  <rect width="32" height="32" rx="6" fill="#09090b"/>
+  <!-- Left diagonal: bottom-left to apex -->
+  <line x1="5" y1="27" x2="16" y2="5" stroke="#14b8a6" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Right diagonal: bottom-right to apex -->
+  <line x1="27" y1="27" x2="16" y2="5" stroke="#14b8a6" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Crossbar at 55% height — extends 2px beyond diagonal edges -->
+  <line x1="7.5" y1="19" x2="24.5" y2="19" stroke="#14b8a6" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

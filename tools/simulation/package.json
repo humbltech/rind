@@ -1,0 +1,24 @@
+{
+  "name": "@rind/simulation",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sim": "tsx src/cli.ts",
+    "sim:record": "tsx src/cli.ts --mode record",
+    "sim:replay": "tsx src/cli.ts --mode replay",
+    "sim:live": "tsx src/cli.ts --mode live",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rind/proxy": "workspace:*",
+    "hono": "^4.6.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0"
+  }
+}

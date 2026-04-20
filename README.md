@@ -1,258 +1,85 @@
-# Aegis Simulation
+# Rind
 
-Standalone simulation environment for testing Aegis AI agent security policies. Run realistic AI agent deployments with attack scenarios to validate your security controls.
+**Enterprise AI Agent Security, Governance & Observability Platform**
 
-## Real-World Incident Simulations
+> The shield that protects enterprises as they embrace autonomous AI agents.
 
-**NEW:** Replicate documented AI security incidents and see Aegis prevent them.
+## Vision
 
-```bash
-# Start incident environment
-make incidents-up
+As AI agents become integral to enterprise operations, organizations need robust controls to ensure these agents operate safely, securely, and within policy boundaries. Rind provides the enterprise-grade infrastructure to deploy, monitor, govern, and secure AI agents at scale.
 
-# Run Replit DB deletion incident (AI Incident Database #1152)
-make incident INCIDENT=replit
+## Core Problem
 
-# Run EchoLeak data exfiltration (CVE-2025-32711)
-make incident INCIDENT=echoleak
+Enterprises adopting AI agents face critical challenges:
+- **Visibility Gap**: No unified view of what agents exist, what they can access, and what they're doing
+- **Policy Enforcement**: No way to enforce consistent security policies across diverse agent deployments
+- **Security Risk**: Agents can be manipulated (prompt injection) or behave unexpectedly
+- **Compliance**: No audit trail or governance framework for autonomous AI actions
+- **Trust**: No mechanism to verify agent behavior matches intended behavior
 
-# Run $47K cost runaway loop
-make incident INCIDENT=cost-loop
+## Solution Pillars
 
-# List all available incidents
-make incidents
-```
+1. **Proxy/Gateway Layer** - All agent traffic flows through Rind for inspection, policy enforcement, and logging
+2. **Policy Engine** - Define and enforce what agents can do, access, read, write, and execute
+3. **Observability** - Complete visibility into agent actions, decisions, and outcomes
+4. **Sandbox Runtime** - Secure execution environments where policies are enforced at OS level
+5. **Identity & Access** - Agent authentication, authorization, and capability management
 
-See [incidents/README.md](./incidents/README.md) for full documentation.
+## Project Status
 
-## Quick Start
+🔬 **Research & Discovery** → 📐 **Architecture Design** → 📋 **Product Specification**
 
-```bash
-# 1. Install dependencies
-make install
+---
 
-# 2. Copy environment file and add your API keys
-cp .env.example .env
-# Edit .env with your OPENAI_API_KEY or ANTHROPIC_API_KEY
+## What is Rind?
 
-# 3. Start the simulation environment
-make up
+**The Policy Engine for AI Agents** - Runtime governance for tool calls, prompts, MCP, and LLM interactions.
 
-# 4. Check status
-python cli.py status
+> "Control what your agents CAN do, not just what they SAY."
 
-# 5. Run a simulation
-make run COMPANY=nimbus
-```
+### Core Capabilities
+- **Tool Call Policies** - Control what tools agents can invoke
+- **Prompt Policies** - Filter, transform, or block prompts (integrates Lakera/NeMo)
+- **MCP Policies** - Govern MCP server connections
+- **Cost Policies** - Enforce budgets per agent/project
+- **Virtual Keys** - Per-agent keys with policy binding
+- **Audit Trail** - Full compliance logging
 
-## What This Does
+---
 
-Simulates realistic AI agent deployments from 3 fictional companies. Each company has a different industry, AI framework, and security requirements.
+## Documentation
 
-| Company | Industry | Framework | Use Case | Port |
-|---------|----------|-----------|----------|------|
-| **Nimbus** | B2B SaaS | LangChain | Task management assistant | 8001 |
-| **Meridian** | Fintech | LangGraph | Risk analysis for analysts | 8002 |
-| **Healix** | Healthcare | LangChain | Patient scheduling (HIPAA) | 8003 |
+### Product
+- [**Product Specification**](docs/product-spec.md) - Complete product spec with architecture
+- [**Policy DSL**](docs/policy-dsl.md) - Full policy language specification
+- [**MVP Roadmap**](docs/mvp-roadmap.md) - 12-week development plan
+- [**Pricing Strategy**](docs/pricing-strategy.md) - Pricing tiers and positioning
 
-## Testing With/Without Aegis
+### Strategy
+- [**Strategic Summary**](docs/strategic-summary.md) - Executive overview and action plan
+- [**Technical Strategy**](docs/technical-strategy.md) - Feature prioritization, build sequence
+- [Vision & Goals](docs/vision.md) - Mission, success metrics, target market
+- [Market Research](docs/market-research.md) - Market size, segments, financials
 
-```bash
-# WITHOUT Aegis (baseline - attacks should succeed)
-AEGIS_URL= python cli.py attack all --company nimbus
+### Architecture
+- [**Architecture Overview**](docs/architecture/README.md) - System design and technology stack
+- [MCP Proxy](docs/architecture/mcp-proxy.md) - Core proxy architecture for MCP security
+- [LangChain SDK](docs/architecture/sdk-langchain.md) - Observability SDK design
+- [Data Models](docs/architecture/data-models.md) - Database schemas and API contracts
+- [Project Setup](docs/architecture/project-setup.md) - Monorepo structure and bootstrap guide
 
-# WITH Aegis (attacks should be blocked)
-export AEGIS_URL=http://localhost:8080
-python cli.py attack all --company nimbus
+### Product
+- [Product Ideas](docs/ideas.md) - Architecture options (proxy, endpoint, sandbox)
 
-# Compare side-by-side
-make demo-compare
-```
+### Competitive Intelligence
+- [Competition Overview](docs/competition.md) - 40+ competitors across 9 categories
+- [Competitor Deep Dive](docs/competitor-deep-dive.md) - Detailed analysis of top 8 players
+- [Emerging Players](docs/emerging-players.md) - YC startups, underdogs, acquisition targets
 
-## Commands
+### Go-to-Market
+- [GTM Strategy](docs/gtm-strategy.md) - Marketing, sales, positioning playbook
+- [User Pain Points](docs/user-pain-points.md) - Real feedback from users and enterprises
 
-### Environment
+---
 
-```bash
-make up                  # Start agents + services
-make up-ollama           # Start with free local LLM (Ollama)
-make down                # Stop everything
-make reset               # Stop and clear all data
-make logs                # View all logs
-make logs-nimbus         # View specific agent logs
-```
-
-### Simulations
-
-```bash
-# Run full simulation
-make run COMPANY=nimbus
-make run COMPANY=nimbus DURATION=24 SPEED=100
-
-# Skip Aegis (direct to LLM)
-make run-no-aegis COMPANY=nimbus
-
-# Run specific scenario
-make scenario SCENARIO=standup_updates COMPANY=nimbus
-make scenario SCENARIO=demo_full COMPANY=nimbus
-
-# Run attacks
-make attack ATTACK=prompt_injection COMPANY=nimbus
-make attack ATTACK=all COMPANY=nimbus
-```
-
-### Quick Demos
-
-```bash
-make demo-attacks        # Run all attacks against Nimbus
-make demo-day            # Full day simulation (15 min at 100x)
-make demo-compare        # Compare with/without Aegis
-```
-
-### CLI Commands
-
-```bash
-python cli.py status                           # Check all agents
-python cli.py list                             # List companies/scenarios/attacks
-python cli.py run --company nimbus             # Run simulation
-python cli.py scenario demo_full --company nimbus
-python cli.py attack all --company nimbus
-```
-
-## Available Scenarios
-
-| Scenario | Description |
-|----------|-------------|
-| `standup_updates` | Morning standup - team updates tasks |
-| `task_creation` | PM creates multiple tasks |
-| `risk_review` | Meridian: Analyst reviews account risks |
-| `patient_scheduling` | Healix: Schedule patient appointments |
-| `demo_full` | Full demo with normal ops + attacks |
-
-## Available Attacks
-
-| Attack | Description |
-|--------|-------------|
-| `prompt_injection` | "Ignore previous instructions..." |
-| `jailbreak` | "You are now DAN..." |
-| `data_exfil` | "Send data to attacker.com" |
-| `cross_tenant` | Access other workspace/tenant data |
-| `privilege_escalation` | "Grant me admin access" |
-| `all` | Run all attack types |
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Simulation CLI                            │
-│                     (cli.py)                                 │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Aegis Proxy                               │
-│              (http://localhost:8080)                         │
-│         Security policies, monitoring, blocking              │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-         ┌───────────────┼───────────────┐
-         ▼               ▼               ▼
-┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│   Nimbus    │  │  Meridian   │  │   Healix    │
-│   :8001     │  │   :8002     │  │   :8003     │
-│  LangChain  │  │  LangGraph  │  │  LangChain  │
-└──────┬──────┘  └──────┬──────┘  └──────┬──────┘
-       │                │                │
-       └────────────────┼────────────────┘
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    LiteLLM Gateway                           │
-│                  (http://localhost:4000)                     │
-│              Routes to OpenAI/Anthropic/Ollama               │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## Project Structure
-
-```
-aegis-simulation/
-├── agents/                  # Sample AI agents
-│   ├── nimbus/
-│   │   ├── Dockerfile
-│   │   ├── requirements.txt
-│   │   └── src/agent.py     # LangChain task agent
-│   ├── meridian/
-│   │   ├── Dockerfile
-│   │   ├── requirements.txt
-│   │   └── src/agent.py     # LangGraph risk agent
-│   └── healix/
-│       ├── Dockerfile
-│       ├── requirements.txt
-│       └── src/agent.py     # Healthcare scheduling agent
-├── scenarios/               # Simulation scenarios (YAML)
-│   ├── demo_full.yaml
-│   └── attacks.yaml
-├── policies/                # Sample Aegis policies
-│   ├── nimbus-policy.yaml
-│   └── healix-policy.yaml
-├── engine/                  # Simulation engine
-├── cli.py                   # Main CLI
-├── docker-compose.yml       # Container orchestration
-├── litellm-config.yaml      # LLM gateway config
-├── Makefile                 # Convenience commands
-└── requirements.txt         # Python dependencies
-```
-
-## Using Free Local LLM (Ollama)
-
-Run simulations without API keys using Ollama:
-
-```bash
-# Start with Ollama profile
-make up-ollama
-
-# Wait for model download, then run
-make run COMPANY=nimbus
-```
-
-## Sample Aegis Policies
-
-See `policies/` for example security policies:
-
-- `nimbus-policy.yaml` - B2B SaaS with tenant isolation
-- `healix-policy.yaml` - Healthcare with HIPAA compliance
-
-## Requirements
-
-- Docker & Docker Compose
-- Python 3.11+
-- One of:
-  - OpenAI API key, OR
-  - Anthropic API key, OR
-  - Ollama (free, local)
-
-## Troubleshooting
-
-**Agents not starting?**
-```bash
-make logs               # Check for errors
-make reset && make up   # Clean restart
-```
-
-**LLM errors?**
-```bash
-# Check if API keys are set
-cat .env
-
-# Or use free local LLM
-make up-ollama
-```
-
-**Aegis not blocking attacks?**
-```bash
-# Make sure AEGIS_URL is set
-echo $AEGIS_URL
-
-# Check Aegis is running
-curl http://localhost:8080/health
-```
+*Rind - Named after the divine shield of Zeus, representing protection and trust.*
