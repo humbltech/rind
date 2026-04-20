@@ -278,7 +278,7 @@ Architecture decisions (AD-001 through AD-009) are in `docs/architecture/archite
 ## Project Structure
 
 ```
-rind/                                   # Repo root (directory rename pending)
+rind/                                   # Repo root
 ├── CLAUDE.md                           # This file — project instructions for Claude Code
 ├── README.md                           # Full documentation index
 ├── apps/
