@@ -56,7 +56,7 @@ for ecosystem, pkg in packages:
         results.append(pypi_downloads(pkg))
 
 # Save to markdown
-output_path = "/Users/atinderpalsingh/projects/aegis-bundle/aegis/research/competitors/pkg-stats.md"
+output_path = "/Users/atinderpalsingh/projects/rind-bundle/rind/research/competitors/pkg-stats.md"
 with open(output_path, "w") as f:
     f.write(f"# Package Download Stats\n**Pulled**: {datetime.now().strftime('%Y-%m-%d')}\n\n")
     f.write("| Package | Ecosystem | Weekly Downloads | Monthly Downloads | Version |\n")

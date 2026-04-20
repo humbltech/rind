@@ -1,6 +1,6 @@
 # LiteLLM's Supply Chain Attack Exposes MCP's Security Gap
 
-**Published by Aegis Team | April 2026**
+**Published by Rind Team | April 2026**
 
 > **Draft status**: Challenger/steelman loop complete. Ready for user review before publishing.
 >
@@ -9,8 +9,8 @@
 > - Slug: `litellm-supply-chain-attack-mcp-security-runtime-trust`
 > - Meta description: `The LiteLLM supply chain attack reveals two distinct MCP security failures: compromised packages and inherited runtime trust. Here's what's actually exposed.`
 > - dev.to tags: `security`, `ai`, `devops`, `typescript`, `webdev`
-> - Publish platform: dev.to (Aegis brand account), canonical → aegis GitHub Pages blog
-> - Author: Aegis Team (no personal name)
+> - Publish platform: dev.to (Rind brand account), canonical → rind GitHub Pages blog
+> - Author: Rind Team (no personal name)
 
 ---
 
@@ -161,7 +161,7 @@ Runtime verification of AI infrastructure is a missing control in most current d
 
 ---
 
-*The Aegis team is building open-source tooling for MCP runtime verification and observability. Follow along as we build in public.*
+*The Rind team is building open-source tooling for MCP runtime verification and observability. Follow along as we build in public.*
 
 ---
 

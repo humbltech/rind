@@ -1,4 +1,4 @@
-# Aegis MCP Proxy Architecture
+# Rind MCP Proxy Architecture
 
 ## Overview
 
@@ -17,7 +17,7 @@ The MCP Proxy is the core security enforcement point for MCP (Model Context Prot
                                     │ MCP Protocol (stdio/SSE/HTTP)
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           AEGIS MCP PROXY                                    │
+│                           RIND MCP PROXY                                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
@@ -72,7 +72,7 @@ interface AuthNConfig {
 
   // API Keys (simpler, for development/internal)
   apiKeys?: {
-    header: string; // e.g., "X-Aegis-API-Key"
+    header: string; // e.g., "X-Rind-API-Key"
     keys: Map<string, AgentIdentity>;
   };
 
@@ -251,7 +251,7 @@ interface AuditEvent {
 ## Request Flow
 
 ```
-1. Agent connects to Aegis MCP Proxy
+1. Agent connects to Rind MCP Proxy
    │
    ▼
 2. AuthN: Verify identity (OAuth/API Key/mTLS)
@@ -301,11 +301,11 @@ interface AuditEvent {
 ### Model 1: Sidecar (Kubernetes)
 
 ```yaml
-# aegis-sidecar.yaml
+# rind-sidecar.yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  name: agent-with-aegis
+  name: agent-with-rind
 spec:
   containers:
   - name: ai-agent
@@ -314,25 +314,25 @@ spec:
     - name: MCP_PROXY_URL
       value: "http://localhost:8080"
 
-  - name: aegis-proxy
-    image: aegis/mcp-proxy:latest
+  - name: rind-proxy
+    image: rind/mcp-proxy:latest
     ports:
     - containerPort: 8080
     env:
-    - name: AEGIS_API_KEY
+    - name: RIND_API_KEY
       valueFrom:
         secretKeyRef:
-          name: aegis-secrets
+          name: rind-secrets
           key: api-key
-    - name: AEGIS_POLICY_URL
-      value: "https://api.aegis.security/v1/policies"
+    - name: RIND_POLICY_URL
+      value: "https://api.rind.dev/v1/policies"
 ```
 
 ### Model 2: Standalone Gateway
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Agent Pool    │────▶│  Aegis Gateway  │────▶│   MCP Servers   │
+│   Agent Pool    │────▶│  Rind Gateway  │────▶│   MCP Servers   │
 │   (multiple)    │     │  (load balanced)│     │   (multiple)    │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
@@ -341,10 +341,10 @@ spec:
 
 ```
 ┌─────────────────┐     ┌─────────────────────────────────────────┐
-│   Your Agent    │────▶│         Aegis Cloud                      │
+│   Your Agent    │────▶│         Rind Cloud                      │
 │                 │     │  ┌─────────────────────────────────────┐ │
 │  MCP_PROXY=     │     │  │  Regional Edge (low latency)        │ │
-│  aegis.cloud/   │     │  │  ┌───────┐ ┌───────┐ ┌───────┐     │ │
+│  rind.cloud/   │     │  │  ┌───────┐ ┌───────┐ ┌───────┐     │ │
 │  org/abc123     │     │  │  │ us-e1 │ │ eu-w1 │ │ ap-s1 │     │ │
 └─────────────────┘     │  │  └───────┘ └───────┘ └───────┘     │ │
                         │  └─────────────────────────────────────┘ │

@@ -1,8 +1,8 @@
-# Targeted Opportunities: Specific Issues Aegis Can Solve
+# Targeted Opportunities: Specific Issues Rind Can Solve
 
 *Last Updated: March 2026*
 
-This document maps specific community discussions, GitHub issues, and CVEs to concrete Aegis features. Use this for positioning, design partner conversations, and feature prioritization.
+This document maps specific community discussions, GitHub issues, and CVEs to concrete Rind features. Use this for positioning, design partner conversations, and feature prioritization.
 
 ---
 
@@ -28,9 +28,9 @@ This document maps specific community discussions, GitHub issues, and CVEs to co
 **CrewAI #5150 (Tool Sandboxing):**
 > "Tools execute with full access to the host system. Need capability-based restrictions: filesystem paths, network access, subprocess spawning."
 
-### How Aegis Solves This
+### How Rind Solves This
 
-**Aegis Policy (tool-execution.yaml):**
+**Rind Policy (tool-execution.yaml):**
 ```yaml
 policies:
   - name: sandbox-code-execution
@@ -63,12 +63,12 @@ policies:
 
 **Demo Script for Design Partners:**
 ```python
-from aegis import AegisClient
+from rind import RindClient
 
-aegis = AegisClient(api_key="ak_...")
+rind = RindClient(api_key="ak_...")
 
 # This tool call will be sandboxed according to policy
-result = aegis.execute_tool(
+result = rind.execute_tool(
     agent_id="agent-123",
     tool_name="python_repl",
     tool_input={"code": "import os; os.listdir('/')"}
@@ -105,9 +105,9 @@ result = aegis.execute_tool(
 **Postmark MCP Breach:**
 > "npm package backdoor blind-copied all outgoing emails to attackers. Supply chain attack via MCP server. Nobody noticed for weeks."
 
-### How Aegis Solves This
+### How Rind Solves This
 
-**Aegis MCP Security Features:**
+**Rind MCP Security Features:**
 
 1. **MCP Server Registry & Scanning**
 ```yaml
@@ -149,8 +149,8 @@ mcp_policies:
 
       rewrite_descriptions:
         enabled: true
-        # Use Aegis-verified descriptions instead of server-provided
-        source: "aegis_registry"
+        # Use Rind-verified descriptions instead of server-provided
+        source: "rind_registry"
 ```
 
 3. **MCP Connection Governance**
@@ -177,12 +177,12 @@ mcp_policies:
 
 **Demo for Design Partners:**
 ```python
-from aegis import AegisClient
+from rind import RindClient
 
-aegis = AegisClient(api_key="ak_...")
+rind = RindClient(api_key="ak_...")
 
 # Scan MCP server before allowing connection
-scan_result = aegis.scan_mcp_server(
+scan_result = rind.scan_mcp_server(
     server_url="github.com/unknown/mcp-server",
     version="1.0.0"
 )
@@ -235,7 +235,7 @@ scan_result = aegis.scan_mcp_server(
 **HN "Securing AI Agents" Thread:**
 > "Current controls are 'opt-in' not 'enforced'. Agent can socially engineer approval through conversational persuasion. Guardrails must be mechanical, not conversational."
 
-### How Aegis Solves This
+### How Rind Solves This
 
 **1. Tool Call Policy Engine (Core Differentiator)**
 ```yaml
@@ -288,7 +288,7 @@ agents:
   - id: "finance-agent-001"
     identity:
       keypair: "ed25519"           # Cryptographic identity
-      certificate: "aegis-issued"  # Verifiable credential
+      certificate: "rind-issued"  # Verifiable credential
 
     boundaries:
       spending_limit:
@@ -311,18 +311,18 @@ agents:
 
 **3. Real-Time Enforcement (Not Advisory)**
 ```python
-from aegis import AegisClient
+from rind import RindClient
 
-aegis = AegisClient(api_key="ak_...")
+rind = RindClient(api_key="ak_...")
 
-# Every tool call goes through Aegis
-@aegis.enforce_policy
+# Every tool call goes through Rind
+@rind.enforce_policy
 def transfer_funds(amount: float, recipient: str):
     # This function CANNOT execute if policy denies
     # No way to bypass - enforcement is at proxy level
     return bank_api.transfer(amount, recipient)
 
-# Aegis intercepts, evaluates policy, then:
+# Rind intercepts, evaluates policy, then:
 # - ALLOW: Function executes
 # - DENY: Exception raised, audit logged
 # - MODIFY: Parameters adjusted per policy, then executes
@@ -358,7 +358,7 @@ def transfer_funds(amount: float, recipient: str):
 **LangChain #36317 (Observability Request):**
 > "Need end-to-end traces including external API calls. Current tracing stops at LangChain boundary."
 
-### How Aegis Solves This
+### How Rind Solves This
 
 **1. Full-Stack Observability**
 ```yaml
@@ -376,7 +376,7 @@ observability:
       enabled: true
       # Link traces across multi-agent systems
       propagate_context: true
-      parent_span_header: "x-aegis-trace-id"
+      parent_span_header: "x-rind-trace-id"
 
   metrics:
     enabled: true
@@ -445,12 +445,12 @@ observability:
 
 **Demo for Design Partners:**
 ```python
-from aegis import AegisClient
+from rind import RindClient
 
-aegis = AegisClient(api_key="ak_...")
+rind = RindClient(api_key="ak_...")
 
 # Get cost breakdown
-costs = aegis.get_costs(
+costs = rind.get_costs(
     agent_id="agent-123",
     period="today"
 )
@@ -466,7 +466,7 @@ costs = aegis.get_costs(
 # }
 
 # Get trace with external calls
-trace = aegis.get_trace(request_id="req-456")
+trace = rind.get_trace(request_id="req-456")
 # Full trace including:
 # - LLM calls (prompt, response, tokens, cost)
 # - Tool calls (input, output, duration)
@@ -497,7 +497,7 @@ trace = aegis.get_trace(request_id="req-456")
 
 > "Supply chain attacks on AI infrastructure are the new hotness. LLM wrappers are high-value targets - they have all the API keys."
 
-### How Aegis Solves This
+### How Rind Solves This
 
 **1. Dependency Scanning & Pinning**
 ```yaml
@@ -536,7 +536,7 @@ supply_chain:
 **2. Runtime Credential Protection**
 ```yaml
 credential_management:
-  # Aegis stores credentials, not your code
+  # Rind stores credentials, not your code
   storage:
     encrypted: true
     rotation:
@@ -545,7 +545,7 @@ credential_management:
 
   access:
     # Credentials never exposed to agent code
-    injection_method: "proxy_header"  # Aegis adds at request time
+    injection_method: "proxy_header"  # Rind adds at request time
 
     # Even if agent code is compromised:
     per_agent_scoping: true           # Agent only sees its own keys
@@ -587,7 +587,7 @@ credential_management:
 **CrewAI #5057 (Memory Injection):**
 > "Memory content injected into system prompt without sanitization. Attacker-controlled data becomes instructions."
 
-### How Aegis Solves This
+### How Rind Solves This
 
 **1. Prompt Policy with External Guardrails**
 ```yaml
@@ -619,8 +619,8 @@ policies:
           - output_moderation
           - topic_restriction
 
-      # Aegis native checks
-      aegis:
+      # Rind native checks
+      rind:
         max_prompt_length: 10000
 
         # Detect instruction injection patterns
@@ -672,9 +672,9 @@ policies:
 
 ---
 
-## Summary: Aegis Feature → Community Issue Mapping
+## Summary: Rind Feature → Community Issue Mapping
 
-| Aegis Feature | GitHub Issues | HN Threads | CVEs |
+| Rind Feature | GitHub Issues | HN Threads | CVEs |
 |---------------|---------------|------------|------|
 | **Sandbox Execution** | AutoGen #7462, #7475; CrewAI #5150, #5056 | - | - |
 | **MCP Security** | AutoGen #7427 | item?id=46552254 | CVE-2025-6514, CVE-2025-49596 |

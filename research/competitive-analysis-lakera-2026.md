@@ -7,11 +7,11 @@
 
 ## Executive Summary
 
-Lakera, the leading AI runtime defense startup, is being acquired by Check Point for ~$300M. This creates a significant market opening for Aegis, particularly in the mid-market segment that Check Point will likely deprioritize.
+Lakera, the leading AI runtime defense startup, is being acquired by Check Point for ~$300M. This creates a significant market opening for Rind, particularly in the mid-market segment that Check Point will likely deprioritize.
 
 ### Key Findings
 
-| Finding | Implication for Aegis |
+| Finding | Implication for Rind |
 |---------|----------------------|
 | Lakera acquired for $300M | Validates market, creates opportunity |
 | Check Point = enterprise DNA | Mid-market/startup segment abandoned |
@@ -35,7 +35,7 @@ Lakera, the leading AI runtime defense startup, is being acquired by Check Point
 
 #### Performance Metrics
 
-| Metric | Lakera Spec | Aegis Target |
+| Metric | Lakera Spec | Rind Target |
 |--------|-------------|--------------|
 | Detection accuracy | 98%+ | 95%+ (MVP), 98%+ (v2) |
 | Latency | <50ms | <100ms (MVP), <50ms (v2) |
@@ -122,7 +122,7 @@ Lakera, the leading AI runtime defense startup, is being acquired by Check Point
 
 ### Market Segments Left Behind
 
-| Segment | Pre-Acquisition | Post-Acquisition | Aegis Opportunity |
+| Segment | Pre-Acquisition | Post-Acquisition | Rind Opportunity |
 |---------|-----------------|------------------|-------------------|
 | **Series A-B startups** | Viable customer | Too small for Check Point | HIGH |
 | **Mid-market ($50-500M)** | Good fit | Edge case | HIGH |
@@ -145,7 +145,7 @@ Lakera, the leading AI runtime defense startup, is being acquired by Check Point
 
 ### Feature Comparison Matrix
 
-| Feature | Lakera | LLM Guard | Cloudflare | Straiker | Aegis (Target) |
+| Feature | Lakera | LLM Guard | Cloudflare | Straiker | Rind (Target) |
 |---------|--------|-----------|------------|----------|----------------|
 | Prompt injection | Yes | Yes | Yes | Yes | Yes |
 | PII detection | Yes | Yes | Yes | Yes | Yes |
@@ -160,12 +160,12 @@ Lakera, the leading AI runtime defense startup, is being acquired by Check Point
 
 ---
 
-## Aegis Differentiation Strategy
+## Rind Differentiation Strategy
 
-### Where Lakera Stops, Aegis Starts
+### Where Lakera Stops, Rind Starts
 
 ```
-Lakera (Prompt Layer)              Aegis (Execution Layer)
+Lakera (Prompt Layer)              Rind (Execution Layer)
 ─────────────────────              ─────────────────────────
 ✓ Prompt injection                 ✓ Prompt injection (integrate Lakera/NeMo)
 ✓ PII detection                    ✓ PII detection
@@ -182,19 +182,19 @@ Lakera (Prompt Layer)              Aegis (Execution Layer)
 
 1. **Execution Layer Control**
    - Lakera: "Is this prompt safe?"
-   - Aegis: "Should this agent be allowed to delete this database?"
+   - Rind: "Should this agent be allowed to delete this database?"
 
 2. **Human-in-the-Loop**
    - Lakera: Block or allow (binary)
-   - Aegis: Block, allow, OR route to human approval
+   - Rind: Block, allow, OR route to human approval
 
 3. **Agent-Centric Policies**
    - Lakera: Per-request evaluation
-   - Aegis: Per-agent policies (Agent A can do X, Agent B cannot)
+   - Rind: Per-agent policies (Agent A can do X, Agent B cannot)
 
 4. **MCP Native**
    - Lakera: No MCP awareness
-   - Aegis: MCP proxy with tool-level policies
+   - Rind: MCP proxy with tool-level policies
 
 ---
 
@@ -219,9 +219,9 @@ Agent action: DELETE FROM users WHERE created_at < '2024-01-01'
 Result: Production data deleted
 ```
 
-Lakera saw a clean prompt. Aegis would have blocked the DELETE on a production table.
+Lakera saw a clean prompt. Rind would have blocked the DELETE on a production table.
 
-### Aegis Approach: Tiered Risk Controls
+### Rind Approach: Tiered Risk Controls
 
 Based on [McKinsey's framework](https://galileo.ai/blog/ai-agent-guardrails-framework) and [OpenAI's implementation guide](https://machinelearningmastery.com/building-a-human-in-the-loop-approval-gate-for-autonomous-agents/):
 
@@ -231,10 +231,10 @@ Based on [McKinsey's framework](https://galileo.ai/blog/ai-agent-guardrails-fram
 | **Tier 2 (Medium)** | Reversible actions, non-sensitive writes | Real-time guardrails, rate limits |
 | **Tier 3 (High)** | Financial transactions, data deletion, production changes | Human-in-the-loop approval required |
 
-### Implementation in Aegis
+### Implementation in Rind
 
 ```yaml
-# aegis-policies.yaml
+# rind-policies.yaml
 
 - name: "require-approval-destructive-db"
   type: tool_call

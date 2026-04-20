@@ -34,7 +34,7 @@ queries = [
     ("MCP Protocol", "model context protocol mcp"),
 ]
 
-output_path = "/Users/atinderpalsingh/projects/aegis-bundle/aegis/research/competitors/hn-mentions.md"
+output_path = "/Users/atinderpalsingh/projects/rind-bundle/rind/research/competitors/hn-mentions.md"
 with open(output_path, "w") as f:
     f.write(f"# HN Mentions — Competitor & Market Research\n**Pulled**: {datetime.now().strftime('%Y-%m-%d')}\n\n")
     for label, query in queries:

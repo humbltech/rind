@@ -5,20 +5,22 @@ import type { Metadata } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 
+// Use distinct variable names so next/font and Tailwind v4 @theme don't collide.
+// @theme references these via var(--font-inter) and var(--font-jetbrains-mono).
 const inter = Inter({
   subsets: ['latin'],
-  variable: '--font-sans',
+  variable: '--font-inter',
   display: 'swap',
 });
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
-  variable: '--font-mono',
+  variable: '--font-jetbrains-mono',
   display: 'swap',
 });
 
 export const metadata: Metadata = {
-  title: 'Aegis — Control Plane',
+  title: 'Rind — Control Plane',
   description: 'Observability, safety, and security for AI agents.',
   icons: { icon: '/favicon.svg' },
 };

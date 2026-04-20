@@ -645,7 +645,7 @@ Sources:
 
 ---
 
-## 9. Key Recommendations for Aegis
+## 9. Key Recommendations for Rind
 
 ### 9.1 Product Positioning
 

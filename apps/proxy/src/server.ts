@@ -1,4 +1,4 @@
-// Aegis MCP proxy server.
+// Rind MCP proxy server.
 // Listens on a local port, accepts MCP connections from AI agents, and
 // proxies every tool call through the interceptor before forwarding to
 // the upstream MCP server.
@@ -17,7 +17,7 @@ import { PolicyEngine } from './policy/engine.js';
 import { InMemoryPolicyStore } from './policy/store.js';
 import { loadPolicyFile, emptyPolicyConfig } from './policy/loader.js';
 import { createSession, killSession, listSessions } from './session.js';
-import { AegisEventBus } from './event-bus.js';
+import { RindEventBus } from './event-bus.js';
 import { RingBuffer } from './ring-buffer.js';
 import { AuditWriter } from './audit-writer.js';
 import { LoopDetector } from './loop-detector.js';
@@ -43,7 +43,7 @@ export function createProxyServer(config: ProxyConfig) {
   const policyEngine = new PolicyEngine(policyStore);
 
   // ── Event bus (D-019) ────────────────────────────────────────────────────────
-  const bus = new AegisEventBus((event, err) => {
+  const bus = new RindEventBus((event, err) => {
     logger.error({ event, err }, 'Event bus subscriber error');
   });
 
@@ -378,7 +378,7 @@ export function createProxyServer(config: ProxyConfig) {
       const server = serve({ fetch: app.fetch, port: config.port });
       logger.info(
         { port: config.port, upstreamMcpUrl: config.upstreamMcpUrl },
-        'Aegis proxy started',
+        'Rind proxy started',
       );
       return server;
     },
@@ -391,7 +391,7 @@ export function createProxyServer(config: ProxyConfig) {
 // ─── Audit helper ─────────────────────────────────────────────────────────────
 
 function emitAudit(
-  bus: AegisEventBus,
+  bus: RindEventBus,
   fields: Omit<AuditEntry, 'timestamp'>,
   config: ProxyConfig,
 ): void {

@@ -1,4 +1,4 @@
-# Aegis — Competitive Positioning
+# Rind — Competitive Positioning
 
 > **Living document.** Update when competitors ship new features, when positioning language is validated or invalidated through customer conversations, or after any strategic-council session that touches product framing.
 
@@ -6,7 +6,7 @@
 
 ---
 
-## What Aegis Is
+## What Rind Is
 
 **The control plane for AI agents.**
 
@@ -27,12 +27,12 @@ The proxy is not four separate products. It is one interception point that makes
 
 **Everyone else either detects (before the agent acts) or monitors (after the agent acts).**
 
-Aegis sits at the execution layer and controls what agents **can do** — in real time, before actions are taken.
+Rind sits at the execution layer and controls what agents **can do** — in real time, before actions are taken.
 
 ```
 BEFORE action:    Prompt filters (Lakera, NeMo Guardrails)
                   ↓ agent acts ↓
-DURING action:    ← Aegis sits here → enforce / allow / require approval
+DURING action:    ← Rind sits here → enforce / allow / require approval
                   ↓ action completes ↓
 AFTER action:     Observability dashboards (LangSmith, Langfuse, Arize)
 ```
@@ -46,27 +46,27 @@ The proof: the Replit DB deletion, Amazon Kiro outage, $47K agent loop — none 
 ### Layer 1: Prompt Filtering
 **What it does**: Scans inputs and outputs for injection, jailbreaks, PII, harmful content. Acts before the agent runs.
 **Who owns it**: Lakera (→Check Point), CalypsoAI (→F5), Prompt Security (→SentinelOne), NeMo Guardrails (NVIDIA, open source), Guardrails AI (open source)
-**Aegis stance**: Do NOT compete here. This layer is commoditized and consolidated into security giants. The bypass rate for novel attacks is 76-98% — it is necessary but insufficient.
+**Rind stance**: Do NOT compete here. This layer is commoditized and consolidated into security giants. The bypass rate for novel attacks is 76-98% — it is necessary but insufficient.
 
 ### Layer 2: AI Observability
 **What it does**: Traces, logs, cost tracking, evaluation, prompt management. After the agent acts.
 **Who owns it**: LangSmith, Langfuse (open source), Arize AI/Phoenix, Helicone, Datadog LLM Obs
-**Aegis stance**: Use as the entry point, not the moat. Observability is the "foot in the door" — it generates the "oh shit" moment that converts to paid. But observability alone has no moat (LangSmith/Langfuse are free and well-loved). Differentiate by combining observability with enforcement.
+**Rind stance**: Use as the entry point, not the moat. Observability is the "foot in the door" — it generates the "oh shit" moment that converts to paid. But observability alone has no moat (LangSmith/Langfuse are free and well-loved). Differentiate by combining observability with enforcement.
 
 ### Layer 3: AI Governance
 **What it does**: Policy documentation, compliance frameworks (EU AI Act, ISO 42001, NIST), risk assessment processes. Governance as paperwork, not enforcement.
 **Who owns it**: Credo AI, Holistic AI, IBM watsonx.governance, OneTrust
-**Aegis stance**: Do NOT compete here. Different buyer (GRC teams, not engineers), different motion (months-long implementation), different value (audit evidence vs. runtime control). Aegis generates the audit trail that governance platforms require — complementary, not competitive.
+**Rind stance**: Do NOT compete here. Different buyer (GRC teams, not engineers), different motion (months-long implementation), different value (audit evidence vs. runtime control). Rind generates the audit trail that governance platforms require — complementary, not competitive.
 
 ### Layer 4: Enterprise Security Extensions
 **What it does**: AI security features bolted onto existing security platforms. Requires the existing vendor relationship.
 **Who owns it**: Palo Alto Prisma AI-SPM, Wiz AI-SPM, Varonis Atlas, Check Point, Cisco, Microsoft Agent 365, Cloudflare AI Gateway, Kong AI Gateway
-**Aegis stance**: Do NOT compete directly. These are ecosystem extensions — they only win if the enterprise already uses Palo Alto, Wiz, Microsoft, etc. Aegis is cross-framework and cloud-native. The vulnerability: these tools protect the cloud posture around AI, not the agent's runtime behavior.
+**Rind stance**: Do NOT compete directly. These are ecosystem extensions — they only win if the enterprise already uses Palo Alto, Wiz, Microsoft, etc. Rind is cross-framework and cloud-native. The vulnerability: these tools protect the cloud posture around AI, not the agent's runtime behavior.
 
 ### Layer 5: Execution-Layer Control Plane
 **What it does**: Intercepts agent actions at the execution layer. Controls tool calls, MCP connections, API access. Combines observability + safety + security + adoption.
 **Who owns it**: **Nobody** — this is the gap.
-**Aegis stance**: Own this entirely.
+**Rind stance**: Own this entirely.
 
 ---
 
@@ -139,7 +139,7 @@ The developer must be served first or the deal never starts.
 
 ### Three Asymmetric Entry Assets
 
-**1. `npx aegis-scan` — Free MCP Vulnerability Scanner**
+**1. `npx rind-scan` — Free MCP Vulnerability Scanner**
 - Scans any MCP server config in 60 seconds
 - Returns: missing auth, tool poisoning patterns, over-permissioning, rug pull risk
 - No signup, no account, immediate value
@@ -150,13 +150,13 @@ The developer must be served first or the deal never starts.
 - "How the Replit DB deletion would have been prevented with one policy rule"
 - "The $47K agent loop: what a cost limit would have cost ($0)"
 - "Amazon Kiro outage: why REQUIRE_APPROVAL for production infra matters"
-- Search-optimized, shareable, no identity required to publish under Aegis brand
+- Search-optimized, shareable, no identity required to publish under Rind brand
 - Outcome: inbound from engineers who had similar near-misses
 
 **3. 2-Line LangChain Integration**
 ```python
-from aegis import AegisPolicyMiddleware
-agent = create_react_agent(llm, tools, checkpointer=AegisPolicyMiddleware())
+from rind import RindPolicyMiddleware
+agent = create_react_agent(llm, tools, checkpointer=RindPolicyMiddleware())
 ```
 - Free tier installs generate "oh shit" moments: unauthorized tool calls, unexpected data access
 - The free dashboard shows what's happening — the paid tier stops what shouldn't happen
@@ -194,28 +194,28 @@ That moment creates urgency no sales email can match. The product creates its ow
 
 ## Developer Discovery Strategy
 
-> How developers find Aegis without founder identity. All assets operate under the Aegis brand.
+> How developers find Rind without founder identity. All assets operate under the Rind brand.
 
 ### The Flywheel
 
 ```
-[Incident posts / SEO] → [Install aegis-sdk] → ["Oh shit" moment] → [Paid conversion]
+[Incident posts / SEO] → [Install rind-sdk] → ["Oh shit" moment] → [Paid conversion]
          ↑                                                                    |
          └────────────────────── [Word of mouth] ──────────────────────────┘
 ```
 
 ### Discovery Assets (In Build Priority Order)
 
-**1. `npx aegis-scan` — Free MCP Vulnerability Scanner** (H1, Day 1)
+**1. `npx rind-scan` — Free MCP Vulnerability Scanner** (H1, Day 1)
 - Scans any MCP server config in 60 seconds, no signup
 - Returns: missing auth, tool poisoning patterns, over-permissioning, rug pull risk, version pinning
-- Distributable: `npx aegis-scan ./mcp-config.json` — paste in any README
+- Distributable: `npx rind-scan ./mcp-config.json` — paste in any README
 - GitHub stars target: 500 in month 1 (via HN, LangChain Discord, Reddit)
 - Precedent: Lakera Gandalf (1M users), Snyk CLI (vulnerability database flywheel)
 
 **2. Incident Prevention Content** (H1, Week 2+)
-SEO-optimized posts, no identity required, published under Aegis brand:
-- **"The LiteLLM supply chain attack: what it means for your agent stack"** — PRIORITY #1 (March 2026 incident, 938 HN points, 171M monthly downloads affected, still active). Frame: Aegis detects unsigned/unverified MCP servers — same risk vector as a compromised PyPI package.
+SEO-optimized posts, no identity required, published under Rind brand:
+- **"The LiteLLM supply chain attack: what it means for your agent stack"** — PRIORITY #1 (March 2026 incident, 938 HN points, 171M monthly downloads affected, still active). Frame: Rind detects unsigned/unverified MCP servers — same risk vector as a compromised PyPI package.
 - "How the Replit DB deletion would have been prevented with one policy rule"
 - "The $47K agent loop: what a cost limit would have cost ($0)"
 - "Amazon Kiro outage: why REQUIRE_APPROVAL for production infra matters"
@@ -224,11 +224,11 @@ SEO-optimized posts, no identity required, published under Aegis brand:
 
 **3. 2-Line LangChain Integration** (H1, Day 1)
 ```python
-from aegis import AegisSDK
-tools = AegisSDK().wrap(tools)
+from rind import RindSDK
+tools = RindSDK().wrap(tools)
 ```
 - Free tier reveals unexpected agent behavior → creates urgency → converts to paid
-- Published to PyPI (`aegis-sdk`) and npm (`@aegis/sdk`) on day one
+- Published to PyPI (`rind-sdk`) and npm (`@rind/sdk`) on day one
 - Searchable: "langchain agent guardrails", "langchain cost limit", "mcp security python"
 
 ### SEO / Discovery Keywords
@@ -240,23 +240,23 @@ tools = AegisSDK().wrap(tools)
 | Solution-aware | "mcp security proxy" | Growing |
 | Solution-aware | "langchain agent guardrails" | Medium |
 | Solution-aware | "ai agent audit trail" | Medium |
-| Product-aware | "aegis mcp proxy" | Low (grow to high) |
-| Comparison | "langsmith vs aegis" | Low (grow) |
+| Product-aware | "rind mcp proxy" | Low (grow to high) |
+| Comparison | "langsmith vs rind" | Low (grow) |
 
 ### Package Names (Searchable, Memorable)
-- Python: `aegis-sdk` on PyPI
-- Node: `@aegis/sdk` on npm
-- CLI: `aegis-scan` (npx executable)
-- Proxy: `aegis-proxy` (Docker Hub, Helm chart)
+- Python: `rind-sdk` on PyPI
+- Node: `@rind/sdk` on npm
+- CLI: `rind-scan` (npx executable)
+- Proxy: `rind-proxy` (Docker Hub, Helm chart)
 
 ### Community Presence (Brand-Only, No Founder Identity)
 | Channel | Handle | Strategy |
 |---------|--------|---------|
-| GitHub | `aegis-dev` org | Open source scanner + SDK; issues as support channel |
-| Twitter/X | `@AegisDev` | Incident analysis posts, product updates |
-| HN | Posts as "Aegis team" | "Show HN: Free MCP vulnerability scanner" |
-| LangChain Discord | `aegis-dev` bot + community member | Answer questions, never spam |
-| Reddit r/MachineLearning, r/LocalLLaMA | Posts as `AegisDev` | Incident analysis, not product pitches |
+| GitHub | `rind-dev` org | Open source scanner + SDK; issues as support channel |
+| Twitter/X | `@RindDev` | Incident analysis posts, product updates |
+| HN | Posts as "Rind team" | "Show HN: Free MCP vulnerability scanner" |
+| LangChain Discord | `rind-dev` bot + community member | Answer questions, never spam |
+| Reddit r/MachineLearning, r/LocalLLaMA | Posts as `RindDev` | Incident analysis, not product pitches |
 
 ### Landing Page Flow
 ```

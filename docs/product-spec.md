@@ -1,4 +1,4 @@
-# Aegis Product Specification
+# Rind Product Specification
 
 ## The Policy Engine for AI Agents
 
@@ -25,7 +25,7 @@ From Zscaler ThreatLabz 2026 AI Security Report:
 **Lakera acquired by Check Point for ~$300M** (closing Q4 2025)
 - Validates the market
 - Check Point = enterprise DNA, will abandon mid-market/startups
-- Creates opening for Aegis in the $50M-$500M revenue segment
+- Creates opening for Rind in the $50M-$500M revenue segment
 
 ### Target Market (Updated)
 
@@ -38,9 +38,9 @@ From Zscaler ThreatLabz 2026 AI Security Report:
 
 See [market-targeting-rsac-2026.md](../research/market-targeting-rsac-2026.md) for detailed analysis.
 
-### Real-World Incidents Aegis Prevents
+### Real-World Incidents Rind Prevents
 
-| Incident | Impact | How Aegis Prevents |
+| Incident | Impact | How Rind Prevents |
 |----------|--------|-------------------|
 | **Replit DB Deletion** (July 2025) | 1,206 records lost, agent lied about damage | REQUIRE_APPROVAL for DELETE queries |
 | **Amazon Kiro Outage** (Dec 2025) | 13-hour AWS outage | Multi-approver for production infra |
@@ -53,7 +53,7 @@ See [case-studies-incident-prevention.md](../research/case-studies-incident-prev
 
 ## Executive Summary
 
-Aegis is a **policy-first control plane** for AI agents. It provides runtime governance for tool calls, prompts, MCP connections, and LLM interactions through a unified policy engine and single pane of glass.
+Rind is a **policy-first control plane** for AI agents. It provides runtime governance for tool calls, prompts, MCP connections, and LLM interactions through a unified policy engine and single pane of glass.
 
 **Core Value Proposition:**
 > "Control what your agents CAN do, not just what they SAY."
@@ -102,7 +102,7 @@ Agent action: DELETE FROM users WHERE created_at < '2024-01-01'
 Result: Production data deleted 💀
 ```
 
-**Aegis approach:** Tiered risk controls based on McKinsey's framework:
+**Rind approach:** Tiered risk controls based on McKinsey's framework:
 
 | Risk Tier | Actions | Control |
 |-----------|---------|---------|
@@ -116,11 +116,11 @@ See [competitive-analysis-lakera-2026.md](../research/competitive-analysis-laker
 
 ## Product Vision
 
-### What Aegis Is
+### What Rind Is
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         AEGIS CONTROL PLANE                                  │
+│                         RIND CONTROL PLANE                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │   ┌─────────────────────────────────────────────────────────────────────┐   │
@@ -149,7 +149,7 @@ See [competitive-analysis-lakera-2026.md](../research/competitive-analysis-laker
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### What Aegis Is NOT
+### What Rind Is NOT
 
 - Not an LLM provider (use OpenAI, Anthropic, etc.)
 - Not replacing LangChain/CrewAI (agents run as-is)
@@ -175,7 +175,7 @@ See [competitive-analysis-lakera-2026.md](../research/competitive-analysis-laker
 │           │ All outbound calls                                              │
 │           ▼                                                                  │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                     AEGIS PROXY (Sidecar or Gateway)                 │    │
+│  │                     RIND PROXY (Sidecar or Gateway)                 │    │
 │  │                                                                      │    │
 │  │  ┌──────────────────────────────────────────────────────────────┐   │    │
 │  │  │                    POLICY EVALUATION                          │   │    │
@@ -206,7 +206,7 @@ See [competitive-analysis-lakera-2026.md](../research/competitive-analysis-laker
                                     │ Audit logs, metrics
                                     ▼
                          ┌─────────────────────┐
-                         │  AEGIS CONTROL      │
+                         │  RIND CONTROL      │
                          │  PLANE (Cloud/      │
                          │  Self-hosted)       │
                          │                     │
@@ -223,7 +223,7 @@ See [competitive-analysis-lakera-2026.md](../research/competitive-analysis-laker
 1. Agent initiates action (tool call, LLM request, MCP connection)
    │
    ▼
-2. Aegis Proxy intercepts request
+2. Rind Proxy intercepts request
    │
    ▼
 3. Parse request type and extract metadata
@@ -272,7 +272,7 @@ See [competitive-analysis-lakera-2026.md](../research/competitive-analysis-laker
 **Best for:** Kubernetes deployments, per-pod isolation
 
 ```yaml
-# Kubernetes deployment with Aegis sidecar
+# Kubernetes deployment with Rind sidecar
 apiVersion: v1
 kind: Pod
 metadata:
@@ -284,22 +284,22 @@ spec:
     image: my-agent:latest
     env:
     - name: OPENAI_BASE_URL
-      value: "http://localhost:8080/v1"  # Route through Aegis
+      value: "http://localhost:8080/v1"  # Route through Rind
     - name: MCP_PROXY_URL
       value: "http://localhost:8080/mcp"
 
-  # Aegis sidecar
-  - name: aegis-proxy
-    image: aegis/proxy:latest
+  # Rind sidecar
+  - name: rind-proxy
+    image: rind/proxy:latest
     ports:
     - containerPort: 8080
     env:
-    - name: AEGIS_API_KEY
+    - name: RIND_API_KEY
       valueFrom:
         secretKeyRef:
-          name: aegis-secrets
+          name: rind-secrets
           key: api-key
-    - name: AEGIS_PROJECT_ID
+    - name: RIND_PROJECT_ID
       value: "proj_abc123"
 ```
 
@@ -330,7 +330,7 @@ spec:
 │                     │                                        │
 │                     ▼                                        │
 │            ┌─────────────────┐                               │
-│            │  Aegis Gateway  │  (Deployment with replicas)   │
+│            │  Rind Gateway  │  (Deployment with replicas)   │
 │            │  Service        │                               │
 │            └────────┬────────┘                               │
 │                     │                                        │
@@ -345,8 +345,8 @@ spec:
 
 **Deployment:**
 ```bash
-helm install aegis-gateway aegis/gateway \
-  --set apiKey=$AEGIS_API_KEY \
+helm install rind-gateway rind/gateway \
+  --set apiKey=$RIND_API_KEY \
   --set replicas=3 \
   --set ingress.enabled=true
 ```
@@ -358,7 +358,7 @@ helm install aegis-gateway aegis/gateway \
 **Best for:** Enterprises with existing service mesh
 
 ```yaml
-# Istio VirtualService routing AI traffic through Aegis
+# Istio VirtualService routing AI traffic through Rind
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
@@ -371,7 +371,7 @@ spec:
   http:
   - route:
     - destination:
-        host: aegis-gateway
+        host: rind-gateway
         port:
           number: 8080
 ```
@@ -395,7 +395,7 @@ spec:
 │           │ OpenAI-compatible API calls                                     │
 │           ▼                                                                  │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │              AEGIS GATEWAY (Helm chart deployment)                   │    │
+│  │              RIND GATEWAY (Helm chart deployment)                   │    │
 │  │                                                                      │    │
 │  │  Same policy engine, deployed in-cluster                            │    │
 │  │  Exposes OpenAI-compatible endpoint                                 │    │
@@ -413,7 +413,7 @@ spec:
                                     │ Audit logs, metrics (outbound only)
                                     ▼
                          ┌─────────────────────┐
-                         │  AEGIS CONTROL      │
+                         │  RIND CONTROL      │
                          │  PLANE (Cloud)      │
                          │                     │
                          │  • Dashboard        │
@@ -430,8 +430,8 @@ spec:
 
 **Deployment:**
 ```bash
-helm install aegis-gateway aegis/gateway \
-  --set apiKey=$AEGIS_API_KEY \
+helm install rind-gateway rind/gateway \
+  --set apiKey=$RIND_API_KEY \
   --set upstream.url="http://ollama:11434/v1" \
   --set upstream.type="ollama"
 ```
@@ -445,21 +445,21 @@ helm install aegis-gateway aegis/gateway \
 **Best for:** Quick start, development, simple deployments
 
 ```python
-from aegis import AegisClient
+from rind import RindClient
 from langchain_openai import ChatOpenAI
 
 # Wrap your LLM client
-aegis = AegisClient(api_key="aegis_...")
+rind = RindClient(api_key="rind_...")
 
 llm = ChatOpenAI(
     model="gpt-4o",
-    http_client=aegis.http_client(),  # Routes through Aegis
+    http_client=rind.http_client(),  # Routes through Rind
 )
 
 # Or wrap tools directly
-@aegis.tool_policy("database_tools")
+@rind.tool_policy("database_tools")
 def execute_sql(query: str) -> str:
-    # Aegis enforces policies before this runs
+    # Rind enforces policies before this runs
     return db.execute(query)
 ```
 
@@ -492,7 +492,7 @@ def execute_sql(query: str) -> str:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         AEGIS (What We Build)                                │
+│                         RIND (What We Build)                                │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
@@ -570,7 +570,7 @@ See [policy-dsl.md](./policy-dsl.md) for complete specification.
 ### Quick Overview
 
 ```yaml
-# aegis-policies.yaml
+# rind-policies.yaml
 
 version: "1.0"
 policies:
@@ -715,7 +715,7 @@ policies:
 | Tool Call Interceptor | Intercept tool calls, apply policies | P0 |
 | Virtual Keys | Generate keys, bind to policies, track usage | P0 |
 | Basic Dashboard | View policies, see audit logs | P0 |
-| LiteLLM Integration | Route LLM calls through Aegis | P0 |
+| LiteLLM Integration | Route LLM calls through Rind | P0 |
 | Docker Deployment | Single container deployment | P0 |
 
 **Not in Phase 1:**
@@ -792,7 +792,7 @@ policies:
 | **Langfuse** | Events | Free → $29-$2,499/mo |
 | **Lakera** | Per-request | ~$0.001-0.003/request |
 
-### Recommended Aegis Pricing (Updated April 2026)
+### Recommended Rind Pricing (Updated April 2026)
 
 **Note:** Canonical pricing — all other docs should match this table. Source of truth: `pricing-strategy.md`.
 

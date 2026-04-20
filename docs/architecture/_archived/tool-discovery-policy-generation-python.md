@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Aegis uses a **hybrid approach** to policy management:
+Rind uses a **hybrid approach** to policy management:
 
 1. **Pre-built catalog** for known tools (SQL, filesystem, payments, etc.)
 2. **AI-generated policies** for unknown/custom tools
@@ -85,7 +85,7 @@ The key insight: **Tool calls are finite and known at deployment time.** Unlike 
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         AEGIS POLICY LAYERS                                  │
+│                         RIND POLICY LAYERS                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  LAYER 3: Simple Toggles (90% of users)                                     │
@@ -141,7 +141,7 @@ def sql_execute(query: str) -> str:
     """Execute a SQL query against the database."""
     # ...
 
-# Aegis extracts:
+# Rind extracts:
 # - name: "sql_execute"
 # - description: "Execute a SQL query against the database."
 # - parameters: [{"name": "query", "type": "str", "required": true}]
@@ -1045,7 +1045,7 @@ pack:
 
 async def handle_new_agent(agent: AgentConnection) -> OnboardingResult:
     """
-    Handle a new agent connecting to Aegis.
+    Handle a new agent connecting to Rind.
     """
     # 1. Discover all tools
     tools = await discover_tools(agent)
@@ -1359,7 +1359,7 @@ async def notify_new_tool_needs_review(
                     "type": "button",
                     "text": {"type": "plain_text", "text": "Configure Policy"},
                     "style": "primary",
-                    "url": f"https://app.aegis.io/tools/{tool.id}/configure"
+                    "url": f"https://app.rind.io/tools/{tool.id}/configure"
                 },
                 {
                     "type": "button",

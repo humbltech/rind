@@ -1,8 +1,8 @@
-# Aegis SDK Architecture: LangChain/LangGraph
+# Rind SDK Architecture: LangChain/LangGraph
 
 ## Overview
 
-The Aegis SDK provides observability and security instrumentation for LangChain and LangGraph applications. It captures traces, tool calls, LLM interactions, and costs while enabling policy enforcement and anomaly detection.
+The Rind SDK provides observability and security instrumentation for LangChain and LangGraph applications. It captures traces, tool calls, LLM interactions, and costs while enabling policy enforcement and anomaly detection.
 
 ---
 
@@ -12,7 +12,7 @@ The Aegis SDK provides observability and security instrumentation for LangChain 
 2. **Non-invasive** - No changes to existing agent code
 3. **Low overhead** - < 1ms latency per operation
 4. **Async-first** - Non-blocking telemetry export
-5. **Graceful degradation** - Agents work if Aegis is down
+5. **Graceful degradation** - Agents work if Rind is down
 
 ---
 
@@ -23,15 +23,15 @@ The Aegis SDK provides observability and security instrumentation for LangChain 
 │                         YOUR LANGCHAIN APPLICATION                           │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│   import { AegisCallbackHandler } from '@aegis/langchain';                  │
+│   import { RindCallbackHandler } from '@rind/langchain';                  │
 │                                                                              │
-│   const aegis = new AegisCallbackHandler({ apiKey: '...' });                │
-│   const agent = createReactAgent({ llm, tools, callbacks: [aegis] });       │
+│   const rind = new RindCallbackHandler({ apiKey: '...' });                │
+│   const agent = createReactAgent({ llm, tools, callbacks: [rind] });       │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                     ┌───────────────┴───────────────┐
-                    │       AEGIS SDK               │
+                    │       RIND SDK               │
                     ├───────────────────────────────┤
                     │  ┌─────────────────────────┐  │
                     │  │   Callback Handler      │  │
@@ -65,7 +65,7 @@ The Aegis SDK provides observability and security instrumentation for LangChain 
                                     │ HTTPS (batched, async)
                                     ▼
                     ┌───────────────────────────────┐
-                    │       AEGIS PLATFORM          │
+                    │       RIND PLATFORM          │
                     │   (or OpenTelemetry endpoint) │
                     └───────────────────────────────┘
 ```
@@ -82,14 +82,14 @@ The primary integration point with LangChain's callback system.
 import { BaseCallbackHandler } from '@langchain/core/callbacks/base';
 import type { Serialized } from '@langchain/core/load/serializable';
 
-export class AegisCallbackHandler extends BaseCallbackHandler {
-  name = 'AegisCallbackHandler';
+export class RindCallbackHandler extends BaseCallbackHandler {
+  name = 'RindCallbackHandler';
 
-  private config: AegisConfig;
+  private config: RindConfig;
   private spanBuilder: SpanBuilder;
   private exporter: SpanExporter;
 
-  constructor(config: AegisConfig) {
+  constructor(config: RindConfig) {
     super();
     this.config = config;
     this.spanBuilder = new SpanBuilder(config);
@@ -220,12 +220,12 @@ export class AegisCallbackHandler extends BaseCallbackHandler {
 ### 2. Configuration
 
 ```typescript
-interface AegisConfig {
+interface RindConfig {
   // Required
   apiKey: string;
 
   // Optional - defaults shown
-  endpoint?: string;              // Default: 'https://api.aegis.security'
+  endpoint?: string;              // Default: 'https://api.rind.dev'
   projectId?: string;             // Auto-detected from API key
   environment?: string;           // Default: 'production'
 
@@ -252,7 +252,7 @@ interface AegisConfig {
 ### 3. Span Model
 
 ```typescript
-interface AegisSpan {
+interface RindSpan {
   // Identity
   traceId: string;         // Root trace ID
   spanId: string;          // This span's ID
@@ -297,7 +297,7 @@ interface AegisSpan {
 
   // SDK info
   sdk: {
-    name: string;          // '@aegis/langchain'
+    name: string;          // '@rind/langchain'
     version: string;
   };
 }
@@ -345,11 +345,11 @@ function calculateCost(
 For LangGraph's graph-based workflows:
 
 ```typescript
-import { AegisCallbackHandler } from '@aegis/langchain';
+import { RindCallbackHandler } from '@rind/langchain';
 import { StateGraph } from '@langchain/langgraph';
 
-const aegis = new AegisCallbackHandler({
-  apiKey: process.env.AEGIS_API_KEY,
+const rind = new RindCallbackHandler({
+  apiKey: process.env.RIND_API_KEY,
 });
 
 // Option 1: Pass to graph compilation
@@ -358,13 +358,13 @@ const graph = new StateGraph({ channels: { messages: [] } })
   .addNode('tools', toolsNode)
   .addEdge('agent', 'tools')
   .compile({
-    callbacks: [aegis],
+    callbacks: [rind],
   });
 
 // Option 2: Pass at invocation
 await graph.invoke(
   { messages: [new HumanMessage('Hello')] },
-  { callbacks: [aegis] }
+  { callbacks: [rind] }
 );
 ```
 
@@ -372,7 +372,7 @@ await graph.invoke(
 
 ```typescript
 // Additional span type for LangGraph
-interface GraphSpan extends AegisSpan {
+interface GraphSpan extends RindSpan {
   type: 'graph';
   graph: {
     name: string;
@@ -440,16 +440,16 @@ interface PrivacyConfig {
 
 ```typescript
 class SpanExporter {
-  private buffer: AegisSpan[] = [];
+  private buffer: RindSpan[] = [];
   private flushTimer: NodeJS.Timer | null = null;
-  private config: AegisConfig;
+  private config: RindConfig;
 
-  constructor(config: AegisConfig) {
+  constructor(config: RindConfig) {
     this.config = config;
     this.startFlushTimer();
   }
 
-  add(span: AegisSpan): void {
+  add(span: RindSpan): void {
     this.buffer.push(span);
 
     if (this.buffer.length >= this.config.batchSize) {
@@ -471,7 +471,7 @@ class SpanExporter {
   }
 
   private async sendWithRetry(
-    spans: AegisSpan[],
+    spans: RindSpan[],
     attempt = 1
   ): Promise<void> {
     try {
@@ -480,7 +480,7 @@ class SpanExporter {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.apiKey}`,
-          'X-Aegis-SDK-Version': SDK_VERSION,
+          'X-Rind-SDK-Version': SDK_VERSION,
         },
         body: JSON.stringify({ spans }),
         signal: AbortSignal.timeout(5000),
@@ -499,9 +499,9 @@ class SpanExporter {
     }
   }
 
-  private async writeToFallback(spans: AegisSpan[]): Promise<void> {
-    // Write to ~/.aegis/fallback/ for later recovery
-    const fallbackDir = path.join(os.homedir(), '.aegis', 'fallback');
+  private async writeToFallback(spans: RindSpan[]): Promise<void> {
+    // Write to ~/.rind/fallback/ for later recovery
+    const fallbackDir = path.join(os.homedir(), '.rind', 'fallback');
     await fs.mkdir(fallbackDir, { recursive: true });
 
     const filename = `spans-${Date.now()}.json`;
@@ -529,24 +529,24 @@ class OTLPBridge {
     });
   }
 
-  convertSpan(aegisSpan: AegisSpan): OTLPSpan {
+  convertSpan(rindSpan: RindSpan): OTLPSpan {
     return {
-      traceId: aegisSpan.traceId,
-      spanId: aegisSpan.spanId,
-      parentSpanId: aegisSpan.parentSpanId,
-      name: `${aegisSpan.type}:${aegisSpan.name}`,
-      startTimeUnixNano: aegisSpan.startTime * 1_000_000,
-      endTimeUnixNano: (aegisSpan.endTime ?? Date.now()) * 1_000_000,
+      traceId: rindSpan.traceId,
+      spanId: rindSpan.spanId,
+      parentSpanId: rindSpan.parentSpanId,
+      name: `${rindSpan.type}:${rindSpan.name}`,
+      startTimeUnixNano: rindSpan.startTime * 1_000_000,
+      endTimeUnixNano: (rindSpan.endTime ?? Date.now()) * 1_000_000,
       attributes: [
-        { key: 'aegis.type', value: { stringValue: aegisSpan.type } },
-        { key: 'aegis.tokens.prompt', value: { intValue: aegisSpan.tokens?.prompt } },
-        { key: 'aegis.tokens.completion', value: { intValue: aegisSpan.tokens?.completion } },
-        { key: 'aegis.cost.usd', value: { doubleValue: aegisSpan.cost } },
-        { key: 'aegis.model', value: { stringValue: aegisSpan.model } },
+        { key: 'rind.type', value: { stringValue: rindSpan.type } },
+        { key: 'rind.tokens.prompt', value: { intValue: rindSpan.tokens?.prompt } },
+        { key: 'rind.tokens.completion', value: { intValue: rindSpan.tokens?.completion } },
+        { key: 'rind.cost.usd', value: { doubleValue: rindSpan.cost } },
+        { key: 'rind.model', value: { stringValue: rindSpan.model } },
       ].filter(a => a.value !== undefined),
       status: {
-        code: aegisSpan.status === 'error' ? 2 : 1,
-        message: aegisSpan.error?.message,
+        code: rindSpan.status === 'error' ? 2 : 1,
+        message: rindSpan.error?.message,
       },
     };
   }
@@ -560,26 +560,26 @@ class OTLPBridge {
 ### Basic Setup
 
 ```typescript
-import { AegisCallbackHandler } from '@aegis/langchain';
+import { RindCallbackHandler } from '@rind/langchain';
 import { ChatOpenAI } from '@langchain/openai';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 
 // One-line setup
-const aegis = new AegisCallbackHandler({
-  apiKey: process.env.AEGIS_API_KEY,
+const rind = new RindCallbackHandler({
+  apiKey: process.env.RIND_API_KEY,
 });
 
 // Use with any LangChain component
 const llm = new ChatOpenAI({
   model: 'gpt-4o',
-  callbacks: [aegis],
+  callbacks: [rind],
 });
 
 // Or with agents
 const agent = createReactAgent({
   llm,
   tools: [searchTool, calculatorTool],
-  callbacks: [aegis],
+  callbacks: [rind],
 });
 ```
 
@@ -587,41 +587,41 @@ const agent = createReactAgent({
 
 ```bash
 # .env
-AEGIS_API_KEY=aegis_sk_...
-AEGIS_ENVIRONMENT=staging
-AEGIS_CAPTURE_OUTPUT=false  # Privacy mode
+RIND_API_KEY=rind_sk_...
+RIND_ENVIRONMENT=staging
+RIND_CAPTURE_OUTPUT=false  # Privacy mode
 ```
 
 ```typescript
-import { AegisCallbackHandler } from '@aegis/langchain';
+import { RindCallbackHandler } from '@rind/langchain';
 
 // Auto-configures from environment
-const aegis = AegisCallbackHandler.fromEnv();
+const rind = RindCallbackHandler.fromEnv();
 ```
 
 ### Custom Metadata
 
 ```typescript
-const aegis = new AegisCallbackHandler({
-  apiKey: process.env.AEGIS_API_KEY,
+const rind = new RindCallbackHandler({
+  apiKey: process.env.RIND_API_KEY,
 });
 
 // Add custom context
-aegis.setMetadata({
+rind.setMetadata({
   userId: 'user_123',
   sessionId: 'session_456',
   feature: 'customer-support',
 });
 
 // Add tags for filtering
-aegis.addTags(['production', 'high-priority']);
+rind.addTags(['production', 'high-priority']);
 ```
 
 ### Sampling for High Volume
 
 ```typescript
-const aegis = new AegisCallbackHandler({
-  apiKey: process.env.AEGIS_API_KEY,
+const rind = new RindCallbackHandler({
+  apiKey: process.env.RIND_API_KEY,
   sampleRate: 0.1,  // Only trace 10% of requests
 });
 ```
@@ -631,10 +631,10 @@ const aegis = new AegisCallbackHandler({
 ## Package Structure
 
 ```
-@aegis/langchain/
+@rind/langchain/
 ├── src/
 │   ├── index.ts                 # Main exports
-│   ├── callback-handler.ts      # AegisCallbackHandler
+│   ├── callback-handler.ts      # RindCallbackHandler
 │   ├── span-builder.ts          # Trace/span construction
 │   ├── exporter.ts              # Batch export logic
 │   ├── otlp-bridge.ts           # OpenTelemetry conversion
@@ -650,9 +650,9 @@ const aegis = new AegisCallbackHandler({
 
 ```json
 {
-  "name": "@aegis/langchain",
+  "name": "@rind/langchain",
   "version": "0.1.0",
-  "description": "Aegis observability SDK for LangChain/LangGraph",
+  "description": "Rind observability SDK for LangChain/LangGraph",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -684,7 +684,7 @@ const aegis = new AegisCallbackHandler({
 ## MVP Scope (Month 1)
 
 ### In Scope
-- [ ] AegisCallbackHandler for LangChain
+- [ ] RindCallbackHandler for LangChain
 - [ ] LLM, Tool, Chain, Agent event capture
 - [ ] Token counting and cost calculation
 - [ ] Async batched export

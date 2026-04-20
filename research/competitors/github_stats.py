@@ -104,4 +104,4 @@ for owner, repo in repos:
     print(f"Fetching {owner}/{repo}...")
     results.append(get_repo_stats(owner, repo))
 
-save_markdown(results, "/Users/atinderpalsingh/projects/aegis-bundle/aegis/research/competitors/github-stats.md")
+save_markdown(results, "/Users/atinderpalsingh/projects/rind-bundle/rind/research/competitors/github-stats.md")

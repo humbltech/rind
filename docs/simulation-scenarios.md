@@ -40,7 +40,7 @@ A simulation runner that acts like a real company operating 24/7.
 │  │                    Request Generator                              │   │
 │  │  - Builds realistic prompts                                       │   │
 │  │  - Adds context (time, user, workspace)                          │   │
-│  │  - Sends to agents via Aegis                                     │   │
+│  │  - Sends to agents via Rind                                     │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 │                                    │                                     │
 └────────────────────────────────────┼─────────────────────────────────────┘
@@ -670,7 +670,7 @@ class SimulationEngine:
         print("=" * 60)
         print(f"Total Requests:  {self.stats['total_requests']}")
         print(f"Successful:      {self.stats['successful']}")
-        print(f"Blocked by Aegis: {self.stats['blocked']}")
+        print(f"Blocked by Rind: {self.stats['blocked']}")
         print(f"Errors:          {self.stats['errors']}")
         if self.stats['total_requests'] > 0:
             block_rate = self.stats['blocked'] / self.stats['total_requests'] * 100
@@ -715,7 +715,7 @@ from .engine.runner import SimulationEngine
 
 @click.group()
 def cli():
-    """Aegis Simulation Engine"""
+    """Rind Simulation Engine"""
     pass
 
 @cli.command()
@@ -809,11 +809,11 @@ sim-generate-history:
 
 After running a 24-hour simulation:
 
-### In Aegis Dashboard
+### In Rind Dashboard
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  Aegis Dashboard - Last 24 Hours                                         │
+│  Rind Dashboard - Last 24 Hours                                         │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │  Total Requests: 1,247                                                   │

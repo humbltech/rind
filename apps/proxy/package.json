@@ -1,5 +1,5 @@
 {
-  "name": "@aegis/proxy",
+  "name": "@rind/proxy",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     }
   },
   "bin": {
-    "aegis-proxy": "./dist/index.js"
+    "rind-proxy": "./dist/index.js"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aegis/core": "workspace:*",
+    "@rind/core": "workspace:*",
     "@hono/node-server": "^1.13.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "hono": "^4.6.0",

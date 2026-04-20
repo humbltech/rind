@@ -1,4 +1,4 @@
-# Equity Framework — Aegis
+# Equity Framework — Rind
 **Private — do not commit to public repo**
 **Last updated:** April 2026
 
@@ -10,7 +10,7 @@
 
 | Person | Role | Contribution |
 |--------|------|-------------|
-| **Founder (you)** | CTO / Senior Architect | Deepest technical expertise in security. Building the core product. Initiated Aegis concept from security architecture perspective. |
+| **Founder (you)** | CTO / Senior Architect | Deepest technical expertise in security. Building the core product. Initiated Rind concept from security architecture perspective. |
 | **Director** | CEO / Co-founder | Coined the original idea. Also coding. Will likely become CEO (public face, enterprise relationships). "Unevenly" working on it. |
 | **CISO** | CSO / Advisor-to-Active | EVP at multi-billion-dollar company. Enterprise credibility + network access. Highest opportunity cost (most to lose by being associated with early-stage startup). |
 
@@ -30,7 +30,7 @@ equity = (time_commitment × 0.40)
 
 **Factor definitions:**
 - **Time commitment**: Hours per week dedicated. 10+ hrs/week = 10, 5-10 hrs = 7, 2-5 hrs = 4, advisory = 2
-- **Expertise relevance**: How directly does their expertise build Aegis's moat? Security architect in MCP = 10; generalist director = 6; CISO (buyer perspective) = 7
+- **Expertise relevance**: How directly does their expertise build Rind's moat? Security architect in MCP = 10; generalist director = 6; CISO (buyer perspective) = 7
 - **Network value**: Quality of relationships for customers, investors, partners. CISO at Fortune 100 = 10; Director with enterprise network = 7; Technical founder = 4
 - **Idea origination**: Who conceived the core idea? 10 = primary, 5 = co-conceived, 0 = neither
 - **Risk taken**: Opportunity cost + financial risk. Full-time = 10; evenings/weekends while employed = 5; advisory-only = 2
@@ -98,7 +98,7 @@ All of these must be signed BEFORE any team member writes code or makes commits:
 
 1. **Co-Founder Agreement** — roles, decision rights (CEO has final say on product/GTM; CTO has final say on architecture), vesting terms, departure terms, IP ownership
 2. **PIIA (Proprietary Information and Inventions Assignment)** — every contributor assigns IP to the parent company; signed by all founders, advisors, and contractors
-3. **NDA** — mutual, covers Aegis's technical architecture and strategic plans
+3. **NDA** — mutual, covers Rind's technical architecture and strategic plans
 4. **If CISO is advisory:** Formal Advisor Agreement with defined scope (introductions, feedback sessions) and defined time commitment
 
 **Template sources:**

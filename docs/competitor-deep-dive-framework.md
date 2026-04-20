@@ -60,17 +60,17 @@ For each competitor, answer these 10 questions:
 - What features are missing that users request?
 - Where is their architecture limited?
 
-### 8. Aegis Positioning Against Them
-- What does Aegis do that they don't?
-- What do they do that Aegis doesn't (and shouldn't)?
-- What do they do that Aegis doesn't (and should consider)?
+### 8. Rind Positioning Against Them
+- What does Rind do that they don't?
+- What do they do that Rind doesn't (and shouldn't)?
+- What do they do that Rind doesn't (and should consider)?
 - What specific messaging differentiates us?
 
 ### 9. Threat Level Assessment
 | Dimension | Score (1-10) |
 |-----------|:---:|
-| Feature overlap with Aegis | |
-| Market overlap with Aegis | |
+| Feature overlap with Rind | |
+| Market overlap with Rind | |
 | Technical depth in overlapping area | |
 | Adoption momentum | |
 | Likelihood they expand into our space | |

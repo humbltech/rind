@@ -1,6 +1,6 @@
 // Terminal reporter — prints scenario results as a human story.
 // Uses raw ANSI escape codes (no extra deps).
-// Output format: situation → without Aegis → with Aegis → the moment → test results.
+// Output format: situation → without Rind → with Rind → the moment → test results.
 
 import type { Scenario, ScenarioResult, SimMode } from './scenarios/types.js';
 
@@ -54,17 +54,17 @@ export function printScenarioHeader(scenario: Scenario, mode: SimMode): void {
   console.log('');
 }
 
-export function printWithoutAegis(scenario: Scenario): void {
+export function printWithoutRind(scenario: Scenario): void {
   console.log(c.red + divider('─') + c.reset);
-  console.log(`  ${c.bold}${c.red}WITHOUT AEGIS${c.reset}`);
+  console.log(`  ${c.bold}${c.red}WITHOUT RIND${c.reset}`);
   console.log('');
-  console.log(`  ${scenario.withoutAegis}`);
+  console.log(`  ${scenario.withoutRind}`);
   console.log('');
 }
 
-export function printWithAegisHeader(): void {
+export function printWithRindHeader(): void {
   console.log(c.green + divider('─') + c.reset);
-  console.log(`  ${c.bold}${c.green}WITH AEGIS${c.reset}`);
+  console.log(`  ${c.bold}${c.green}WITH RIND${c.reset}`);
   console.log('');
 }
 

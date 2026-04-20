@@ -1,4 +1,4 @@
-// Policy loader: reads aegis.policy.yaml from disk and validates it.
+// Policy loader: reads rind.policy.yaml from disk and validates it.
 // Returns a PolicyConfig suitable for constructing an InMemoryPolicyStore.
 
 import { readFileSync } from 'node:fs';

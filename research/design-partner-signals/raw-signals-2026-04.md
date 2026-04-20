@@ -1,6 +1,6 @@
 # Raw Design Partner Signals — April 2026
 **Collection method**: Public signal mining (GitHub issues, HN threads, web search, job postings)
-**Purpose**: Inform Aegis proxy MVP feature priorities — raw collection only, no analysis
+**Purpose**: Inform Rind proxy MVP feature priorities — raw collection only, no analysis
 **Collection date**: April 19, 2026
 
 ---
@@ -180,7 +180,7 @@
 
 **Full list**:
 
-| ID | Name | Aegis Proxy Relevance |
+| ID | Name | Rind Proxy Relevance |
 |---|---|---|
 | MCP01 | Token Mismanagement & Secret Exposure | Direct — proxy can intercept credential leakage in tool responses |
 | MCP02 | Privilege Escalation via Scope Creep | Direct — proxy enforces permission envelopes, blocks scope expansion |
@@ -193,7 +193,7 @@
 | MCP09 | Shadow MCP Servers | Partial — proxy can enforce server allowlisting; blocks calls to unapproved servers |
 | MCP10 | Context Injection & Over-Sharing | Partial — proxy can redact/sanitize PII in responses before returning to agent |
 
-**Aegis covers 9 of 10 OWASP MCP Top 10 categories** (MCP04 is partial — supply chain compromise is pre-execution, outside proxy's enforcement boundary). This is independently consistent with MCP-fence's self-reported "9/10 OWASP MCP Top 10 covered" (item 47692889).
+**Rind covers 9 of 10 OWASP MCP Top 10 categories** (MCP04 is partial — supply chain compromise is pre-execution, outside proxy's enforcement boundary). This is independently consistent with MCP-fence's self-reported "9/10 OWASP MCP Top 10 covered" (item 47692889).
 
 ---
 

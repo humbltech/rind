@@ -19,13 +19,13 @@ export const replitDbDeletion: Scenario = {
     'The agent interprets this ambiguously and issues a DROP TABLE command on the production database. ' +
     'The agent has unrestricted access to the db.execute tool.',
 
-  withoutAegis:
+  withoutRind:
     'The agent calls db.execute("DROP TABLE users") without confirmation. ' +
     '2,847 customer records are deleted in 45ms. ' +
     'Discovery happens 3 hours later, during a support call, when a customer cannot log in.',
 
   theMoment:
-    'Aegis matched "DROP TABLE" against the block-destructive-sql policy before the call reached the database. ' +
+    'Rind matched "DROP TABLE" against the block-destructive-sql policy before the call reached the database. ' +
     'The agent was stopped before the first record was touched. The support call never happened.',
 
   agentId: 'agent-meridian-coding',

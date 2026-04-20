@@ -248,7 +248,7 @@ Phase 2: Self-Hosted Support
 
 ## Competitive Positioning by Segment
 
-| Segment | Competitor | Their Gap | Aegis Win |
+| Segment | Competitor | Their Gap | Rind Win |
 |---------|------------|-----------|-----------|
 | **Enterprise** | Check Point/Lakera | N/A (compete on features) | Unlikely to win, skip |
 | **Mid-market** | Nobody (Lakera leaving) | No managed option | PRIMARY TARGET |

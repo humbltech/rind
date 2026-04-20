@@ -1,14 +1,14 @@
-# Aegis Gateway Architecture
+# Rind Gateway Architecture
 
 **Last Updated:** April 2026
 **Status:** Architectural Decision Record (ADR)
-**Authors:** Aegis Team
+**Authors:** Rind Team
 
 ---
 
 ## Executive Summary
 
-Aegis is a **security gateway** that sits between AI agents and the resources they interact with (LLMs, tools, APIs, databases). Unlike LLM gateways (LiteLLM, OpenRouter) that only route LLM traffic, Aegis provides comprehensive security across the entire agent execution lifecycle.
+Rind is a **security gateway** that sits between AI agents and the resources they interact with (LLMs, tools, APIs, databases). Unlike LLM gateways (LiteLLM, OpenRouter) that only route LLM traffic, Rind provides comprehensive security across the entire agent execution lifecycle.
 
 **Key Insight:** The most dangerous actions happen at the **tool execution layer**, not the LLM layer. An LLM deciding to delete data is harmless—the actual DELETE query executing is what causes damage.
 
@@ -62,11 +62,11 @@ They cannot see or control:
 - What data is returned from tools
 - Whether an action is destructive
 
-**Aegis must operate at the tool execution layer to prevent catastrophic actions.**
+**Rind must operate at the tool execution layer to prevent catastrophic actions.**
 
 ---
 
-## Hook Points: Where Aegis Intercepts
+## Hook Points: Where Rind Intercepts
 
 There are 6 points in the agent lifecycle where security controls can be applied:
 
@@ -153,17 +153,17 @@ All critical incidents happened at the **tool execution layer**, not the LLM lay
 
 ## Integration Patterns
 
-Customers deploy AI agents in different ways. Aegis must support multiple integration patterns:
+Customers deploy AI agents in different ways. Rind must support multiple integration patterns:
 
 ### Pattern 1: SDK Integration
 
 For customers using Python frameworks (LangChain, CrewAI, etc.):
 
 ```python
-from aegis import AegisGuard
+from rind import RindGuard
 
-# Wrap the agent - Aegis intercepts all hooks
-guard = AegisGuard(policies="./policies.yaml")
+# Wrap the agent - Rind intercepts all hooks
+guard = RindGuard(policies="./policies.yaml")
 
 @guard.protect
 def sql_execute(query: str):
@@ -183,7 +183,7 @@ protected_agent = guard.wrap(my_langchain_agent)
 For customers who want to protect LLM interactions without code changes:
 
 ```
-Agent → Aegis LLM Proxy → OpenAI/Anthropic
+Agent → Rind LLM Proxy → OpenAI/Anthropic
             │
             └── OpenAI-compatible API
                 /v1/chat/completions
@@ -199,7 +199,7 @@ Agent → Aegis LLM Proxy → OpenAI/Anthropic
 For customers who want to protect tool execution:
 
 ```
-Agent Tool Call → Aegis Tool Proxy → Actual Tool
+Agent Tool Call → Rind Tool Proxy → Actual Tool
                        │
                        └── REST API or gRPC
 ```
@@ -214,7 +214,7 @@ Agent Tool Call → Aegis Tool Proxy → Actual Tool
 For MCP-based agents (Claude Desktop, Cursor, etc.):
 
 ```
-Claude Desktop → Aegis MCP Proxy → Actual MCP Server
+Claude Desktop → Rind MCP Proxy → Actual MCP Server
                       │
                       └── MCP Protocol (stdio/SSE)
 ```
@@ -224,13 +224,13 @@ Claude Desktop → Aegis MCP Proxy → Actual MCP Server
 **Cons:** MCP-specific
 **Best for:** Claude Desktop, MCP-based agents
 
-### Pattern 5: Aegis Gateway (Recommended)
+### Pattern 5: Rind Gateway (Recommended)
 
 Single deployment that provides all proxy types:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                       AEGIS GATEWAY                              │
+│                       RIND GATEWAY                              │
 │                                                                  │
 │   ┌─────────────────────────────────────────────────────────┐   │
 │   │                    ENDPOINTS                             │   │
@@ -274,7 +274,7 @@ Single deployment that provides all proxy types:
 
 ### Decision
 
-Aegis will be deployed as a **single gateway** that exposes multiple protocol endpoints, rather than separate products for each integration pattern.
+Rind will be deployed as a **single gateway** that exposes multiple protocol endpoints, rather than separate products for each integration pattern.
 
 ### Reasoning
 
@@ -329,7 +329,7 @@ Aegis will be deployed as a **single gateway** that exposes multiple protocol en
 │          └───────────────────┼───────────────────┘              │
 │                              │                                   │
 │                    ┌─────────▼─────────┐                        │
-│                    │   AEGIS GATEWAY   │                        │
+│                    │   RIND GATEWAY   │                        │
 │                    │   (Self-hosted)   │                        │
 │                    └─────────┬─────────┘                        │
 │                              │                                   │
@@ -356,8 +356,8 @@ Aegis will be deployed as a **single gateway** that exposes multiple protocol en
            └───────────────────┼───────────────────┘
                                │
                     ┌──────────▼──────────┐
-                    │    AEGIS CLOUD      │
-                    │  (api.aegis.dev)    │
+                    │    RIND CLOUD      │
+                    │  (api.rind.dev)    │
                     └──────────┬──────────┘
                                │
            ┌───────────────────┼───────────────────┐
@@ -371,7 +371,7 @@ Aegis will be deployed as a **single gateway** that exposes multiple protocol en
 
 ## Comparison with Existing Solutions
 
-| Capability | LiteLLM | Helicone | Lakera | **Aegis** |
+| Capability | LiteLLM | Helicone | Lakera | **Rind** |
 |------------|---------|----------|--------|-----------|
 | LLM routing | ✅ | ✅ | ❌ | ✅ |
 | Cost tracking | ✅ | ✅ | ❌ | ✅ |
@@ -382,7 +382,7 @@ Aegis will be deployed as a **single gateway** that exposes multiple protocol en
 | Policy DSL | ❌ | ❌ | ❌ | ✅ |
 | Catastrophic prevention | ❌ | ❌ | ❌ | ✅ |
 
-**Aegis is the only solution that protects the tool execution layer.**
+**Rind is the only solution that protects the tool execution layer.**
 
 ---
 
@@ -390,8 +390,8 @@ Aegis will be deployed as a **single gateway** that exposes multiple protocol en
 
 1. **Threats exist at multiple layers** - input, LLM, tools, output
 2. **Most critical threats are at the tool layer** - where actual damage happens
-3. **Aegis Gateway provides unified protection** - single deployment, multiple protocols
+3. **Rind Gateway provides unified protection** - single deployment, multiple protocols
 4. **Customers choose their integration** - SDK, LLM proxy, tool proxy, MCP proxy
 5. **Shared services benefit all integrations** - policies, audit, HITL, dashboard
 
-This architecture positions Aegis as the comprehensive security solution for AI agents, differentiated from LLM-only gateways and prompt-only security tools.
+This architecture positions Rind as the comprehensive security solution for AI agents, differentiated from LLM-only gateways and prompt-only security tools.

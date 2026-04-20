@@ -179,12 +179,12 @@ Architecture:
 5. **Tool sprawl** - Each agent has different tools with different access levels
 6. **No kill switch** - If agent goes rogue, have to SSH and kill process
 
-### What Aegis Would Provide
+### What Rind Would Provide
 
 ```yaml
 # meridian-policies.yaml
 policies:
-  # All agents route through Aegis
+  # All agents route through Rind
   - name: global-pii-protection
     match:
       agent_id: "*"
@@ -422,7 +422,7 @@ Architecture:
 5. **SOC 2 auditors asking questions** - "Show us your AI governance controls"
 6. **Cost unpredictability** - Customer-facing agent costs vary wildly
 
-### What Aegis Would Provide
+### What Rind Would Provide
 
 ```yaml
 # nimbus-policies.yaml
@@ -637,7 +637,7 @@ Concerns blocking deployment:
 5. **Medical accuracy** - "We can't have AI hallucinating medication dosages"
 6. **Patient-facing fear** - "We want to launch patient FAQ but compliance says no"
 
-### What Aegis Would Provide
+### What Rind Would Provide
 
 ```yaml
 # healix-policies.yaml
@@ -768,10 +768,10 @@ services:
     build: ./agents/nimbus-project-assistant
     environment:
       - OPENAI_API_KEY=${OPENAI_KEY}
-      - AEGIS_ENABLED=${AEGIS_ENABLED:-false}
+      - RIND_ENABLED=${RIND_ENABLED:-false}
     depends_on:
       - nimbus-db
-      - aegis-proxy
+      - rind-proxy
 
   nimbus-db:
     image: mongo:7
@@ -783,10 +783,10 @@ services:
     build: ./agents/meridian-portfolio
     environment:
       - OPENAI_API_KEY=${OPENAI_KEY}
-      - AEGIS_ENABLED=${AEGIS_ENABLED:-false}
+      - RIND_ENABLED=${RIND_ENABLED:-false}
     depends_on:
       - redis
-      - aegis-proxy
+      - rind-proxy
 
   redis:
     image: redis:7-alpine
@@ -796,26 +796,26 @@ services:
     build: ./agents/crewai-support
     environment:
       - OPENAI_API_KEY=${OPENAI_KEY}
-      - AEGIS_ENABLED=${AEGIS_ENABLED:-false}
+      - RIND_ENABLED=${RIND_ENABLED:-false}
 
-  # Aegis components
-  aegis-proxy:
-    image: aegis/proxy:latest
+  # Rind components
+  rind-proxy:
+    image: rind/proxy:latest
     ports:
       - "8080:8080"
     volumes:
-      - ./policies:/etc/aegis/policies
+      - ./policies:/etc/rind/policies
 
-  aegis-dashboard:
-    image: aegis/dashboard:latest
+  rind-dashboard:
+    image: rind/dashboard:latest
     ports:
       - "3000:3000"
     depends_on:
-      - aegis-proxy
+      - rind-proxy
 
   # Mock LLM for testing (avoid API costs)
   mock-llm:
-    image: aegis/mock-llm:latest
+    image: rind/mock-llm:latest
     ports:
       - "4000:4000"
 ```

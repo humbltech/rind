@@ -138,7 +138,7 @@ For a well-funded startup in 24 months:
                               |
               HIGH   +--------+--------+
                      |                 |
-                     |   OPPORTUNITY   | Aegis Target
+                     |   OPPORTUNITY   | Rind Target
                      |     ZONE        | Position
                      |                 |
                      +--------+--------+
@@ -160,7 +160,7 @@ For a well-funded startup in 24 months:
                     (Designed for agents vs. general LLM)
 ```
 
-### Competitive Gaps (Aegis Opportunity)
+### Competitive Gaps (Rind Opportunity)
 
 1. **No single platform** covers proxy + sandbox + OS-level enforcement
 2. **MCP security** is nascent - opportunity for category leadership
@@ -170,7 +170,7 @@ For a well-funded startup in 24 months:
 
 ### Differentiation Opportunities
 
-| Gap | Aegis Opportunity |
+| Gap | Rind Opportunity |
 |-----|-------------------|
 | Detection-only | Enforcement at proxy AND OS level |
 | LLM-focused | Agent-native (tools, MCP, actions) |
@@ -191,7 +191,7 @@ For a well-funded startup in 24 months:
 | Governance | $75K-$200K/yr | Per model or enterprise |
 | Full Platform | $100K-$500K/yr | Enterprise license |
 
-### Aegis Pricing Strategy Options
+### Rind Pricing Strategy Options
 
 **Option A: Usage-Based**
 - Per agent monitored: $50-100/agent/month
@@ -265,7 +265,7 @@ For a well-funded startup in 24 months:
 **Mitigation**: Architecture-agnostic core, protocol adapters
 
 ### Risk 5: Security Incidents
-**Risk**: Aegis itself becomes attack vector
+**Risk**: Rind itself becomes attack vector
 **Mitigation**: Security-first engineering, third-party audits, bug bounty
 
 ---

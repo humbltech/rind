@@ -1,4 +1,4 @@
-# Aegis Design Partner Signal Mining — Final Report
+# Rind Design Partner Signal Mining — Final Report
 **Research completed**: April 2026
 **Method**: Public signal mining (14 sources, challenge/rectify loop)
 **Replaces**: Traditional design partner interviews (deferred — legal/stealth constraints)
@@ -7,11 +7,11 @@
 
 ## Executive Summary
 
-- **The enforcement gap is the dominant signal.** Across every source — HN threads, GitHub issues, industry surveys, job postings, and competitor launches — developers and security teams can observe what AI agents do but cannot stop them. The exact framing: "63% of organizations cannot enforce purpose limitations on their AI agents" (Kiteworks 2026, n=225). This is the market's defining pain point, and it maps directly to Aegis's core proposition.
+- **The enforcement gap is the dominant signal.** Across every source — HN threads, GitHub issues, industry surveys, job postings, and competitor launches — developers and security teams can observe what AI agents do but cannot stop them. The exact framing: "63% of organizations cannot enforce purpose limitations on their AI agents" (Kiteworks 2026, n=225). This is the market's defining pain point, and it maps directly to Rind's core proposition.
 - **Auth ≠ authz ≠ policy — developers understand this distinction.** Multiple independent sources articulate a three-layer problem: authentication (who), authorization (what endpoint), and policy (what specific action, in what context, at what cost, under what delegation). MCP only partially solves layer one. Layers two and three are wide open.
 - **Response-side enforcement is the most underbuilt feature in every competing tool.** MCP-fence is the only proxy that scans both request and response. Every other tool — including Vectimus, Permit MCP Gateway, and Snyk agent-scan — is request-only. Developer quotes confirm this is a known gap.
 - **Cost and loop safety are secondary but validated.** Budget enforcement ("Agent stuck in a retry loop against a $0.10/call API burns real money" — SatGate) and loop detection appear in proxy tool positioning but are underrepresented in organic developer complaint threads, suggesting they are real problems that developers have mostly accepted as unsolved rather than actively complained about.
-- **Supply chain risk (LiteLLM attack) has moved scan-on-connect from nice-to-have to urgent.** The March 24, 2026 attack — malicious litellm versions live for approximately 3 hours before quarantine, with detection burden falling entirely on users — demonstrates that static import is no longer safe. Developers are independently converging on runtime sandboxing and out-of-process isolation as the correct mitigation class, which validates Aegis's proxy model.
+- **Supply chain risk (LiteLLM attack) has moved scan-on-connect from nice-to-have to urgent.** The March 24, 2026 attack — malicious litellm versions live for approximately 3 hours before quarantine, with detection burden falling entirely on users — demonstrates that static import is no longer safe. Developers are independently converging on runtime sandboxing and out-of-process isolation as the correct mitigation class, which validates Rind's proxy model.
 
 ---
 
@@ -29,7 +29,7 @@
 - "The challenge with AI agents is not generating answers. It is governing actions." — Thomas Scola, Medium
 - "I wouldn't allow an LLM to communicate with the outside world in any capacity at the same time as it has access to any sensitive data" — alkonaut, HN #44219755 (developer resorting to binary all-or-nothing access because per-action enforcement doesn't exist)
 
-**Aegis feature map**: Feature #3 (Block tool calls based on policy rules) directly addresses this. Feature #7 (Allow/deny lists) is the simplest implementation of enforcement. Both are validated. Gap: the Kiteworks data also shows 60% cannot terminate misbehaving agents quickly — an active kill-switch capability (session termination, not just call blocking) is not in the current MVP plan.
+**Rind feature map**: Feature #3 (Block tool calls based on policy rules) directly addresses this. Feature #7 (Allow/deny lists) is the simplest implementation of enforcement. Both are validated. Gap: the Kiteworks data also shows 60% cannot terminate misbehaving agents quickly — an active kill-switch capability (session termination, not just call blocking) is not in the current MVP plan.
 
 ---
 
@@ -46,7 +46,7 @@
 - "Teams are stitching together custom logging, bolting on their own trace identifiers" — WorkOS
 - "what we are hoping to do next iteration is to add audit logs of actions taken (of high risk actions)" — jodoking, HN #44904974 (MCP Security Suite author — logging is the stated roadmap item even for tools that already scan)
 
-**Aegis feature map**: Feature #2 (Log every tool call with full context) maps to this directly. Gap identified: OTel export drops I/O content (Langfuse issue #5971 — "input/output values being set seem to be getting lost in transit"). Aegis must not rely on OTel passthrough for security-critical data; log at the proxy level before forwarding.
+**Rind feature map**: Feature #2 (Log every tool call with full context) maps to this directly. Gap identified: OTel export drops I/O content (Langfuse issue #5971 — "input/output values being set seem to be getting lost in transit"). Rind must not rely on OTel passthrough for security-critical data; log at the proxy level before forwarding.
 
 ---
 
@@ -63,7 +63,7 @@
 - "permissions system itself, so even if the GitHub token has permissions, different projects have their tool calls filtered" — frabcus, HN #44097390
 - "No per-tool policy, no way to scope what an agent can do" — gap statement, HN proxy enforcement thread
 
-**Aegis feature map**: Feature #7 (Allow/deny lists) is a basic form of this. Feature #3 (Block tool calls based on policy rules) is the full implementation. Gap: the signal specifically calls for per-agent and per-context scoping, not just global allow/deny. The planned MVP has string-match policy rules; the market wants identity-aware, context-aware per-tool RBAC. This is a prioritization signal — the allow/deny list alone will feel incomplete to this audience.
+**Rind feature map**: Feature #7 (Allow/deny lists) is a basic form of this. Feature #3 (Block tool calls based on policy rules) is the full implementation. Gap: the signal specifically calls for per-agent and per-context scoping, not just global allow/deny. The planned MVP has string-match policy rules; the market wants identity-aware, context-aware per-tool RBAC. This is a prioritization signal — the allow/deny list alone will feel incomplete to this audience.
 
 ---
 
@@ -80,7 +80,7 @@
 - "Building sandboxed VM technology for isolated runtime environments to prevent credential theft" — jFriedensreich, HN LiteLLM thread #47501426 (comment #47502586, VERIFIED)
 - "Even just having an import statement triggers malware in 1.82.8" — dot_treo, HN #47501426 (comment #47502067, VERIFIED) — confirms the need for pre-connection verification
 
-**Aegis feature map**: Feature #4 (Scan-on-connect) directly addresses this. The signal is stronger than anticipated — it covers both static pre-connect scanning AND runtime behavioral monitoring for schema drift. The MVP plan should treat scan-on-connect as a real-time behavioral comparison (declared vs. actual capabilities) not just a one-time static check.
+**Rind feature map**: Feature #4 (Scan-on-connect) directly addresses this. The signal is stronger than anticipated — it covers both static pre-connect scanning AND runtime behavioral monitoring for schema drift. The MVP plan should treat scan-on-connect as a real-time behavioral comparison (declared vs. actual capabilities) not just a one-time static check.
 
 ---
 
@@ -97,7 +97,7 @@
 - "the lethal trifecta — data access + malicious instruction exposure + exfiltration capability" — simonw, HN #44219755
 - "notion of 'tainted' sessions" — btown, HN #44097390
 
-**Aegis feature map**: No planned MVP feature addresses response-side inspection. This is a gap. Every competing proxy (Vectimus, Permit MCP Gateway, Snyk agent-scan) is request-only. MCP-fence is the only tool with bidirectional inspection and it explicitly markets this as a differentiator. Aegis's proxy position makes response-side inspection architecturally natural — it is in the data path for both request and response.
+**Rind feature map**: No planned MVP feature addresses response-side inspection. This is a gap. Every competing proxy (Vectimus, Permit MCP Gateway, Snyk agent-scan) is request-only. MCP-fence is the only tool with bidirectional inspection and it explicitly markets this as a differentiator. Rind's proxy position makes response-side inspection architecturally natural — it is in the data path for both request and response.
 
 ---
 
@@ -119,7 +119,7 @@
 
 - **Feature**: Response-side inspection (scan tool responses for prompt injection, credential exfiltration, taint markers)
   - **Signal**: MCP-fence markets bidirectional scanning as its primary differentiator (HN #47692889, VERIFIED). JXavierH explicitly states Vectimus cannot catch poisoned outputs (comment #47534497, VERIFIED). simonw's "lethal trifecta" (HN #44219755) — all three legs of the attack are in the response path.
-  - **Recommendation**: Add to MVP. Aegis is in the response path by architecture — not inspecting responses is leaving the most dangerous attack vector unaddressed. Even basic response-side pattern matching (credential patterns, instruction injection markers) would be a meaningful differentiator vs. all request-only proxies.
+  - **Recommendation**: Add to MVP. Rind is in the response path by architecture — not inspecting responses is leaving the most dangerous attack vector unaddressed. Even basic response-side pattern matching (credential patterns, instruction injection markers) would be a meaningful differentiator vs. all request-only proxies.
 
 - **Feature**: Session/agent kill switch (terminate a running agent session, not just block individual calls)
   - **Signal**: Kiteworks survey — 60% cannot terminate misbehaving agents quickly. MintMCP: "Kill switches matter more than monitoring." This is the second most-cited enforcement gap after purpose limitations.
@@ -135,7 +135,7 @@
 
 - **Feature**: Offline/air-gap policy enforcement mode
   - **Signal**: Snyk agent-scan issue #125 — "--local-only flag not supported. Users want offline policy checks — privacy/air-gap requirement." The Snyk scanner's dependency on Invariant Labs external API (issue #75 — entire scanning capability blocked when upstream is down) is cited as an architecture risk.
-  - **Recommendation**: Add to roadmap. Air-gap mode is a named enterprise requirement. Design the policy evaluation engine to run locally from day one; avoid architectural dependency on Aegis cloud for basic enforcement.
+  - **Recommendation**: Add to roadmap. Air-gap mode is a named enterprise requirement. Design the policy evaluation engine to run locally from day one; avoid architectural dependency on Rind cloud for basic enforcement.
 
 ---
 
@@ -201,26 +201,26 @@
 
 **What the thread reveals about what developers want**:
 
-The HN post-mortem thread converged independently on the same solution class as Aegis:
+The HN post-mortem thread converged independently on the same solution class as Rind:
 
 1. **Out-of-process isolation** — jFriedensreich (comment #47502586) and kstenerud (comment #47502549) are both building sandboxed execution frameworks. staticassertion (comment #47502971) explicitly calls for "sandboxing at language/runtime level." This is the proxy model validated by developers building workarounds.
 
 2. **Runtime enforcement over install-time trust** — The thread rejects hash verification as insufficient ("Hash verification confirms a file matches what PyPI advertised, but does not indicate whether the advertised content is malicious" — Snyk post-mortem). Developers are asking for runtime behavioral monitoring, not better install-time checks.
 
-3. **Supply chain verification primitives** — rdevilla (comment #47502459) calls for "enforcement of deterministic, verifiable build chains." binsquare (comment #47503625) calls for "signed, verifiable artifacts." This maps to Aegis's scan-on-connect feature.
+3. **Supply chain verification primitives** — rdevilla (comment #47502459) calls for "enforcement of deterministic, verifiable build chains." binsquare (comment #47503625) calls for "signed, verifiable artifacts." This maps to Rind's scan-on-connect feature.
 
-4. **The LiteLLM attack is existential for proxy adoption**: LiteLLM is the AI gateway/proxy that thousands of companies run in production. A supply chain attack on the gateway attacks every agent calling through it. This both validates the need for a trustworthy proxy layer and raises the question Aegis must answer: "How do we know Aegis itself hasn't been compromised?" Reproducible builds, signed releases, and SBOM publication should be in the Aegis security posture from day one.
+4. **The LiteLLM attack is existential for proxy adoption**: LiteLLM is the AI gateway/proxy that thousands of companies run in production. A supply chain attack on the gateway attacks every agent calling through it. This both validates the need for a trustworthy proxy layer and raises the question Rind must answer: "How do we know Rind itself hasn't been compromised?" Reproducible builds, signed releases, and SBOM publication should be in the Rind security posture from day one.
 
 ---
 
 ## OWASP MCP Top 10 — Feature Coverage
 
-| OWASP ID | Name | Aegis MVP Coverage | Feature Mapping |
+| OWASP ID | Name | Rind MVP Coverage | Feature Mapping |
 |---|---|---|---|
 | MCP01 | Token Mismanagement & Secret Exposure | FULL | Feature #2 (log) + response-side inspection (gap) — proxy intercepts credential leakage in tool responses |
 | MCP02 | Privilege Escalation via Scope Creep | FULL | Feature #3 (block) + Feature #7 (allow/deny) — proxy enforces permission envelopes, blocks scope expansion |
 | MCP03 | Tool Poisoning | FULL | Feature #4 (scan-on-connect) + runtime schema drift detection (gap) |
-| MCP04 | Software Supply Chain Attacks | PARTIAL | Feature #4 catches post-connect behavioral anomalies; pre-execution compromise (e.g., malicious import) is outside proxy enforcement boundary. Signed Aegis releases partially mitigate. |
+| MCP04 | Software Supply Chain Attacks | PARTIAL | Feature #4 catches post-connect behavioral anomalies; pre-execution compromise (e.g., malicious import) is outside proxy enforcement boundary. Signed Rind releases partially mitigate. |
 | MCP05 | Command Injection & Execution | FULL | Feature #1 (intercept) + Feature #3 (block) — proxy validates tool call parameters before forwarding |
 | MCP06 | Intent Flow Subversion | PARTIAL | Response-side inspection (currently a gap) would cover this. Proxy can detect instruction injection patterns in tool responses when response inspection is added. |
 | MCP07 | Insufficient Authentication & Authorization | FULL | Feature #3 (block) + Feature #7 (allow/deny) — proxy enforces authN/authZ at the tool call boundary |
@@ -228,7 +228,7 @@ The HN post-mortem thread converged independently on the same solution class as 
 | MCP09 | Shadow MCP Servers | PARTIAL | Feature #7 (allow/deny lists) enables server allowlisting; blocks calls to unapproved servers. Complete with server-level deny rules. |
 | MCP10 | Context Injection & Over-Sharing | PARTIAL | Response-side inspection (gap) would enable PII redaction/sanitization in responses before returning to agent. Not in current MVP. |
 
-**Coverage summary**: Aegis MVP covers 7 of 10 OWASP MCP Top 10 categories fully, and 3 partially. Adding response-side inspection (recommended gap) would bring full coverage to 9 of 10 (MCP04 remains partial by nature — pre-execution supply chain compromise cannot be stopped at the proxy layer). This matches MCP-fence's self-reported "9/10 OWASP MCP Top 10 covered."
+**Coverage summary**: Rind MVP covers 7 of 10 OWASP MCP Top 10 categories fully, and 3 partially. Adding response-side inspection (recommended gap) would bring full coverage to 9 of 10 (MCP04 remains partial by nature — pre-execution supply chain compromise cannot be stopped at the proxy layer). This matches MCP-fence's self-reported "9/10 OWASP MCP Top 10 covered."
 
 ---
 
@@ -284,7 +284,7 @@ Extend beyond one-time static scanning at connection time to include:
 The paolovella quote (VERIFIED) makes this distinction explicit: static scanners fail for servers that change their schema post-approval. Store baselines in the data model from day one.
 
 **3. Add to MVP: Response-side inspection**
-No planned feature covers this. It is a named gap by competing tools (MCP-fence markets bidirectional scanning as its primary differentiator). Aegis is architecturally in the response path — not inspecting responses is leaving the most dangerous attack vector (prompt injection via tool response, credential exfiltration in error messages, tainted data propagation) unaddressed. Minimum viable implementation: regex pattern matching for known credential formats, instruction injection markers in responses.
+No planned feature covers this. It is a named gap by competing tools (MCP-fence markets bidirectional scanning as its primary differentiator). Rind is architecturally in the response path — not inspecting responses is leaving the most dangerous attack vector (prompt injection via tool response, credential exfiltration in error messages, tainted data propagation) unaddressed. Minimum viable implementation: regex pattern matching for known credential formats, instruction injection markers in responses.
 
 **4. Scope up: Allow/deny lists (Feature #7) toward identity-aware policies**
 String-match on tool names will ship, but the market signal specifically requests per-agent, per-context, per-project scoping. Plain string matching will feel incomplete to developers who have articulated three-layer policy models. Plan the policy schema to support identity attributes from day one, even if v1 only evaluates tool name. This avoids a breaking schema change in v1.x.
@@ -296,7 +296,7 @@ String-match on tool names will ship, but the market signal specifically request
 Both are validated but neither is a primary purchase driver. Cost tracking is table stakes for observability completeness. Loop detection is a safety feature. Do not position either as selling points in the top-line narrative. They belong in the feature matrix, not the pitch.
 
 **7. Operational design note: Avoid external API dependencies for core enforcement**
-Snyk agent-scan's dependency on the Invariant Labs API (issue #75 — entire scanning capability blocked when upstream is down) is cited as an architecture risk. Aegis policy enforcement must work offline and without third-party availability dependencies. Air-gap mode is an explicit enterprise requirement (Snyk issue #125). Design the policy evaluation engine to run fully local.
+Snyk agent-scan's dependency on the Invariant Labs API (issue #75 — entire scanning capability blocked when upstream is down) is cited as an architecture risk. Rind policy enforcement must work offline and without third-party availability dependencies. Air-gap mode is an explicit enterprise requirement (Snyk issue #125). Design the policy evaluation engine to run fully local.
 
 ---
 

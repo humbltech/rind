@@ -1,4 +1,4 @@
-# Aegis Go-To-Market Strategy & Marketing Playbook
+# Rind Go-To-Market Strategy & Marketing Playbook
 
 **Document Date:** March 2026
 **Version:** 1.0
@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-This document outlines a comprehensive go-to-market strategy for Aegis, the Enterprise AI Agent Security, Governance & Observability Platform. Based on extensive analysis of successful AI security startups, cybersecurity GTM playbooks, and market dynamics, this playbook provides actionable strategies for marketing, sales, and positioning.
+This document outlines a comprehensive go-to-market strategy for Rind, the Enterprise AI Agent Security, Governance & Observability Platform. Based on extensive analysis of successful AI security startups, cybersecurity GTM playbooks, and market dynamics, this playbook provides actionable strategies for marketing, sales, and positioning.
 
 **Key Insight:** The AI agent security market is at a critical inflection point. The market is crowded with vendors making similar claims, but there's a significant differentiation opportunity: **enforcement-first security** vs. detection-only approaches.
 
@@ -20,7 +20,7 @@ This document outlines a comprehensive go-to-market strategy for Aegis, the Ente
 3. [Messaging & Positioning Framework](#3-messaging--positioning-framework)
 4. [Sales Motions](#4-sales-motions)
 5. [Case Study Analysis: How Winners Won](#5-case-study-analysis-how-winners-won)
-6. [Positioning Opportunities for Aegis](#6-positioning-opportunities-for-aegis)
+6. [Positioning Opportunities for Rind](#6-positioning-opportunities-for-rind)
 7. [12-Month GTM Execution Plan](#7-12-month-gtm-execution-plan)
 8. [Metrics & KPIs](#8-metrics--kpis)
 
@@ -100,7 +100,7 @@ This document outlines a comprehensive go-to-market strategy for Aegis, the Ente
                            ^
                            |
     Enforcement-First  +--------+
-    (Aegis Opportunity)| AEGIS  |  <-- Unique Position
+    (Rind Opportunity)| RIND  |  <-- Unique Position
                        +--------+
                            |
     Detection + Response  +---------+
@@ -117,7 +117,7 @@ This document outlines a comprehensive go-to-market strategy for Aegis, the Ente
                     Enterprise Integration Breadth
 ```
 
-**Aegis's Unique Position:** The only platform that enforces policies at the OS/execution layer, not just the prompt layer. This is analogous to how endpoint security evolved from antivirus (detection) to EDR (detection + response + enforcement).
+**Rind's Unique Position:** The only platform that enforces policies at the OS/execution layer, not just the prompt layer. This is analogous to how endpoint security evolved from antivirus (detection) to EDR (detection + response + enforcement).
 
 ---
 
@@ -131,7 +131,7 @@ Based on Wiz and Snyk success patterns:
 | Content Type | Target Keywords | Volume Goal |
 |-------------|-----------------|-------------|
 | Academy/Educational | "AI agent security", "MCP security", "prompt injection" | 50 pages |
-| Comparison Pages | "[Competitor] alternatives", "[Competitor] vs Aegis" | 20 pages |
+| Comparison Pages | "[Competitor] alternatives", "[Competitor] vs Rind" | 20 pages |
 | Threat Database | Searchable database of AI vulnerabilities | 1 database |
 | Use Case Pages | "AI security for [industry]" | 10 pages |
 
@@ -169,20 +169,20 @@ Based on Wiz and Snyk success patterns:
 ### 2.3 Community Building
 
 #### Open Source Strategy (Snyk Model)
-- Release a free, open-source component (e.g., "Aegis Scanner" for MCP security auditing)
+- Release a free, open-source component (e.g., "Rind Scanner" for MCP security auditing)
 - Build community around vulnerability database
 - Contribute to OpenSSF and OWASP AI security projects
 
 #### Developer Relations Program
 | Activity | Goal |
 |----------|------|
-| **Aegis SDK** | Make integration trivially easy |
+| **Rind SDK** | Make integration trivially easy |
 | **Documentation** | Best-in-class developer docs |
 | **Office Hours** | Weekly community calls |
 | **Ambassador Program** | Security researchers and DevRel advocates |
 
 #### Viral Educational Tool (Lakera Gandalf Model)
-**Concept: "Aegis Arena"**
+**Concept: "Rind Arena"**
 - Gamified AI agent security challenge
 - Users try to make agents escape their sandbox
 - Progressive difficulty levels
@@ -253,7 +253,7 @@ Based on Wiz and Snyk success patterns:
 3. **"AI Agent Security. Actually Enforced."** - Direct, competitive
 
 #### Value Proposition (30-Second Pitch)
-> "Aegis is the first AI agent security platform that actually enforces policies at the execution layer. While other tools rely on prompt-level detection that sophisticated attacks can bypass, Aegis controls what agents can do at the OS level - what files they access, what networks they reach, what commands they execute. We don't just ask agents to behave; we ensure they can't misbehave."
+> "Rind is the first AI agent security platform that actually enforces policies at the execution layer. While other tools rely on prompt-level detection that sophisticated attacks can bypass, Rind controls what agents can do at the OS level - what files they access, what networks they reach, what commands they execute. We don't just ask agents to behave; we ensure they can't misbehave."
 
 #### Elevator Pitch (10 Seconds)
 > "We're building the ZScaler/CrowdStrike for AI agents - complete visibility, policy control, and true enforcement."
@@ -279,16 +279,16 @@ Based on Wiz and Snyk success patterns:
 ### 3.4 Competitive Positioning Statements
 
 #### vs. Lakera/CalypsoAI (Prompt-layer security)
-> "They detect and block at the prompt layer. We enforce at the execution layer. When an agent decides to ignore prompt-level controls (or an attacker bypasses them), Aegis is the only solution that actually prevents unauthorized actions."
+> "They detect and block at the prompt layer. We enforce at the execution layer. When an agent decides to ignore prompt-level controls (or an attacker bypasses them), Rind is the only solution that actually prevents unauthorized actions."
 
 #### vs. Credo AI/Holistic AI (Governance platforms)
-> "Governance platforms help you document policies. Aegis enforces them in real-time at the execution layer."
+> "Governance platforms help you document policies. Rind enforces them in real-time at the execution layer."
 
 #### vs. Datadog/LangSmith (Observability)
-> "Observability tells you what happened. Aegis prevents what shouldn't happen while giving you complete visibility."
+> "Observability tells you what happened. Rind prevents what shouldn't happen while giving you complete visibility."
 
 #### vs. Microsoft Agent 365
-> "Works only in Microsoft ecosystem. Aegis is vendor-neutral - secure any agent, anywhere."
+> "Works only in Microsoft ecosystem. Rind is vendor-neutral - secure any agent, anywhere."
 
 ---
 
@@ -404,7 +404,7 @@ Sales should monitor for:
    - Started with CSPM, expanded to full CNAPP
    - Land and expand within accounts
 
-**Aegis Lessons:**
+**Rind Lessons:**
 - Founding team credibility matters - highlight relevant experience
 - Make deployment trivially easy
 - Build word-of-mouth through exceptional product experience
@@ -436,7 +436,7 @@ Sales should monitor for:
    - Top-down enterprise sales
    - Meet in the middle
 
-**Aegis Lessons:**
+**Rind Lessons:**
 - Build for developers first, even in enterprise security
 - Free tier + viral loops = scalable growth
 - Vulnerability/threat database = programmatic SEO goldmine
@@ -464,7 +464,7 @@ Sales should monitor for:
    - 120% NRR = expansion exceeds churn
    - Existing customers grow revenue year-over-year
 
-**Aegis Lessons:**
+**Rind Lessons:**
 - Start with one killer use case (agent visibility?)
 - Design for multi-product expansion from day one
 - Usage-based pricing aligns with value
@@ -491,7 +491,7 @@ Sales should monitor for:
    - 1M+ users = massive email list
    - Warm prospects who already understand the problem
 
-**Aegis Lessons:**
+**Rind Lessons:**
 - Educational games can drive massive awareness
 - Make learning interactive and fun
 - Viral mechanics compound growth
@@ -499,7 +499,7 @@ Sales should monitor for:
 
 ---
 
-## 6. Positioning Opportunities for Aegis
+## 6. Positioning Opportunities for Rind
 
 ### 6.1 Unique Angles Not Being Used
 
@@ -507,41 +507,41 @@ Based on competitive analysis, these positioning opportunities are underserved:
 
 #### 1. "Enforcement, Not Detection"
 - **Gap:** Most competitors focus on detection and alerting
-- **Aegis Opportunity:** Only platform with OS-level enforcement
+- **Rind Opportunity:** Only platform with OS-level enforcement
 - **Messaging:** "The only AI security platform that actually enforces policies"
 
 #### 2. "The Kill Switch for AI Agents"
 - **Gap:** 70% of organizations can monitor agents but can't stop them
-- **Aegis Opportunity:** Real-time intervention capabilities
+- **Rind Opportunity:** Real-time intervention capabilities
 - **Messaging:** "Know what's happening. Stop what shouldn't be."
 
 #### 3. "Zero Trust for AI Agents"
 - **Gap:** Zero Trust is understood but not applied to agents
-- **Aegis Opportunity:** Apply proven Zero Trust principles to AI
+- **Rind Opportunity:** Apply proven Zero Trust principles to AI
 - **Messaging:** "Every agent action verified. Nothing assumed. Zero Trust for AI."
 
 #### 4. "The Agent Identity Layer"
 - **Gap:** Agents lack proper identity infrastructure
-- **Aegis Opportunity:** Agent authentication, authorization, capability management
-- **Messaging:** "What Okta did for humans, Aegis does for agents"
+- **Rind Opportunity:** Agent authentication, authorization, capability management
+- **Messaging:** "What Okta did for humans, Rind does for agents"
 
 ### 6.2 Underserved Narratives
 
 #### Narrative 1: "The GPU Blind Spot"
 - Traditional EDR can't see GPU clusters where AI runs
 - AI factories represent new attack surface
-- **Aegis Story:** "We see what traditional security can't"
+- **Rind Story:** "We see what traditional security can't"
 
 #### Narrative 2: "The Governance-Containment Gap"
 - Organizations can observe but can't contain
 - Compliance without enforcement = checkbox theater
-- **Aegis Story:** "Governance that actually enforces"
+- **Rind Story:** "Governance that actually enforces"
 
 #### Narrative 3: "The MCP Security Crisis"
 - 7.2% of MCP servers have vulnerabilities
 - 5.5% have tool poisoning
 - All verified servers lack authentication
-- **Aegis Story:** "The security layer MCP needs"
+- **Rind Story:** "The security layer MCP needs"
 
 ### 6.3 Category Creation Considerations
 
@@ -569,7 +569,7 @@ Based on competitive analysis, these positioning opportunities are underserved:
 - [ ] Begin blog content production (2 posts/week)
 - [ ] Set up programmatic SEO infrastructure
 - [ ] Create comparison pages (Lakera, Prompt Security, etc.)
-- [ ] Build "Aegis Arena" gamified challenge
+- [ ] Build "Rind Arena" gamified challenge
 
 #### Sales
 - [ ] Define ICP (Ideal Customer Profile)
@@ -585,7 +585,7 @@ Based on competitive analysis, these positioning opportunities are underserved:
 ### Phase 2: Traction (Months 4-6)
 
 #### Marketing
-- [ ] Launch "Aegis Arena" viral challenge
+- [ ] Launch "Rind Arena" viral challenge
 - [ ] Present at 2 tier-2 conferences
 - [ ] Begin Gartner analyst briefings
 - [ ] Reach 10K monthly organic visitors
@@ -637,7 +637,7 @@ Based on competitive analysis, these positioning opportunities are underserved:
 | **Content Published** | 24 posts | 50 posts | 100 posts |
 | **Organic Keywords (Top 10)** | 50 | 200 | 500 |
 | **Social Followers** | 1,000 | 5,000 | 15,000 |
-| **Aegis Arena Users** | - | 10,000 | 50,000 |
+| **Rind Arena Users** | - | 10,000 | 50,000 |
 
 ### 8.2 Sales Metrics
 

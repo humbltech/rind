@@ -39,23 +39,23 @@ Also in play: **Operant AI** (discovered "Shadow Escape" zero-click MCP exploit)
 
 **"The space is open" conclusion was wrong.** Scanner strategy requires a `/strategic-council` decision before building. See strategic-analysis.md R-011.
 
-### 3. LiteLLM supply chain attack — the incident Aegis was built for
+### 3. LiteLLM supply chain attack — the incident Rind was built for
 On **2026-03-24**, LiteLLM versions 1.82.7 and 1.82.8 on PyPI contained a credential stealer. HN response:
 - "Tell HN: Litellm 1.82.7 and 1.82.8 on PyPI are compromised" — **938 points, 500 comments**
 - "Malicious litellm_init.pth in litellm 1.82.8 PyPI package" — **739 points**
 - "My minute-by-minute response to the LiteLLM malware attack" — **441 points, 157 comments**
 - Mercor company breached via compromised LiteLLM — **151 points**
 
-LiteLLM has **171M monthly downloads**. This is now the canonical "AI infrastructure supply chain attack" story. It happened 3 weeks ago. The community is still talking about it. **This is Aegis's first blog post.**
+LiteLLM has **171M monthly downloads**. This is now the canonical "AI infrastructure supply chain attack" story. It happened 3 weeks ago. The community is still talking about it. **This is Rind's first blog post.**
 
 ### 4. Middleware support is the #1 MCP TypeScript SDK feature request
-Issue #1238: "Feature Request: Middleware support for McpServer" — 2 reactions, **7 comments** (most engaged feature request). The MCP community explicitly wants a middleware/interception layer on the SDK. Aegis's proxy architecture IS this middleware.
+Issue #1238: "Feature Request: Middleware support for McpServer" — 2 reactions, **7 comments** (most engaged feature request). The MCP community explicitly wants a middleware/interception layer on the SDK. Rind's proxy architecture IS this middleware.
 
 ### 5. MCP TypeScript SDK is more active than Python SDK
 - TypeScript SDK: 68 commits in 30 days, 12,217 stars
 - Python SDK: 18 commits in 30 days, 22,687 stars
 
-Python SDK has more legacy stars but TypeScript SDK has >3x the recent development velocity. Confirms Aegis's TypeScript-first stack choice.
+Python SDK has more legacy stars but TypeScript SDK has >3x the recent development velocity. Confirms Rind's TypeScript-first stack choice.
 
 ### 6. LangSmith dissatisfaction is real
 - Open-source alternative ("RAG Logger") got **95 HN points** in Dec 2024
@@ -63,7 +63,7 @@ Python SDK has more legacy stars but TypeScript SDK has >3x the recent developme
 - Top bugs: Bedrock token miscalculation (cost tracking unreliable), pricing errors
 - Feature requests: all 0-1 reactions — community isn't engaged on GitHub
 
-LangSmith has weak community loyalty. Developers want alternatives for observability. Aegis's free tier observability is positioned to capture this.
+LangSmith has weak community loyalty. Developers want alternatives for observability. Rind's free tier observability is positioned to capture this.
 
 ### 7. NIST regulatory tailwind
 "NIST Seeking Public Comment on AI Agent Security" — 49 HN points, Feb 2026. Regulatory attention is real and accelerating. Compliance-driven purchases will follow (validates enterprise buyer thesis).
@@ -81,7 +81,7 @@ LangSmith has weak community loyalty. Developers want alternatives for observabi
 | Velocity | 100 commits/30d (capped — likely more) |
 | Top asks | FIPS compliance, Helm Gateway, SSO for Standard Plan |
 | Weakness | Supply chain attack (March 2026), no MCP-specific security, no agent tool-call enforcement |
-| **Aegis overlap** | Both proxy LLM calls — but LiteLLM is an LLM gateway, Aegis is an agent tool-call control plane. Different layer. |
+| **Rind overlap** | Both proxy LLM calls — but LiteLLM is an LLM gateway, Rind is an agent tool-call control plane. Different layer. |
 
 ### LangSmith
 | Dimension | Finding |
@@ -92,24 +92,24 @@ LangSmith has weak community loyalty. Developers want alternatives for observabi
 | Velocity | 88 commits/30d — active |
 | Top bugs | Token cost miscalculation (Bedrock), pricing errors |
 | Weakness | No enforcement capability, no MCP-specific tooling, locked to LangChain ecosystem |
-| **Aegis overlap** | Aegis's free tier competes on observability — but Aegis enforces, LangSmith only observes |
+| **Rind overlap** | Rind's free tier competes on observability — but Rind enforces, LangSmith only observes |
 
 ### MCP TypeScript SDK (competitor context)
 | Dimension | Finding |
 |-----------|---------|
 | Position | Official Anthropic SDK for MCP clients/servers |
 | Downloads | 32.8M/week — foundational infrastructure |
-| Top request | Middleware support (#1238) — **Aegis addresses this** |
+| Top request | Middleware support (#1238) — **Rind addresses this** |
 | Top bug | Session reconstruction from persisted state — proxy concern |
-| Auth bugs | Race condition in token refresh, 401 signaling gaps — **Aegis hardens these** |
-| **Aegis overlap** | Not a competitor — it's the surface Aegis proxies. Their pain = our market. |
+| Auth bugs | Race condition in token refresh, 401 signaling gaps — **Rind hardens these** |
+| **Rind overlap** | Not a competitor — it's the surface Rind proxies. Their pain = our market. |
 
 ### Snyk mcp-scan
 | Dimension | Finding |
 |-----------|---------|
 | Status | **404 — does not exist publicly** |
 | HN mentions | Zero |
-| **Aegis implication** | No direct competitor in open-source MCP scanning |
+| **Rind implication** | No direct competitor in open-source MCP scanning |
 
 ---
 
@@ -133,13 +133,13 @@ LangSmith has weak community loyalty. Developers want alternatives for observabi
 
 ### For OQ answers
 - **OQ-004** (MCP adoption): RESOLVED. 32.8M weekly npm + 217M monthly PyPI. MCP is everywhere. Skip adoption education, lead with security.
-- **OQ-002** (incident trigger): The LiteLLM breach IS the trigger. "Supply chain compromise of a widely-used AI package" is the category. Aegis's scanner detects unsigned/unverified MCP servers — same risk vector.
+- **OQ-002** (incident trigger): The LiteLLM breach IS the trigger. "Supply chain compromise of a widely-used AI package" is the category. Rind's scanner detects unsigned/unverified MCP servers — same risk vector.
 
 ---
 
 ## What to Do With This
 
-1. **Write the LiteLLM blog post NOW** — the story is 3 weeks old and still on HN's radar. Position Aegis as the control plane that would have prevented/detected this.
+1. **Write the LiteLLM blog post NOW** — the story is 3 weeks old and still on HN's radar. Position Rind as the control plane that would have prevented/detected this.
 2. **Confirm snyk-labs/mcp-scan doesn't exist** — check if it was renamed to `snyk/mcp-scan` or similar. If truly dead, remove from competition.md.
 3. **Update positioning.md** — add LiteLLM supply chain angle; update Snyk mcp-scan status.
-4. **Scanner spec confirmed** — no competition means scope can be Aegis-specific (auth gaps, tool poisoning, rug pull, unsigned servers).
+4. **Scanner spec confirmed** — no competition means scope can be Rind-specific (auth gaps, tool poisoning, rug pull, unsigned servers).

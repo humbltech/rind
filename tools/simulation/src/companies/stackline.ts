@@ -2,7 +2,7 @@
 // Deployment: Direct MCP (Claude Desktop, Cursor).
 // Primary risk: cost loops and RCE via shell execution.
 
-import type { PolicyConfig, ToolDefinition } from '@aegis/proxy';
+import type { PolicyConfig, ToolDefinition } from '@rind/proxy';
 
 export const stacklineTools: ToolDefinition[] = [
   {

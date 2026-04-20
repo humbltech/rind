@@ -1,5 +1,5 @@
 {
-  "name": "aegis",
+  "name": "rind",
   "private": true,
   "packageManager": "pnpm@10.25.0",
   "scripts": {
@@ -9,9 +9,9 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "typecheck": "turbo typecheck",
-    "sim": "pnpm --filter @aegis/simulation sim",
-    "sim:record": "pnpm --filter @aegis/simulation sim:record",
-    "sim:live": "pnpm --filter @aegis/simulation sim:live"
+    "sim": "pnpm --filter @rind/simulation sim",
+    "sim:record": "pnpm --filter @rind/simulation sim:record",
+    "sim:live": "pnpm --filter @rind/simulation sim:live"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",

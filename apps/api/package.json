@@ -1,5 +1,5 @@
 {
-  "name": "@aegis/api",
+  "name": "@rind/api",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aegis/core": "workspace:*",
+    "@rind/core": "workspace:*",
     "@hono/node-server": "^1.13.0",
     "hono": "^4.6.0",
     "pino": "^9.5.0",

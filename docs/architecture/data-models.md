@@ -1,8 +1,8 @@
-# Aegis Data Models
+# Rind Data Models
 
 ## Overview
 
-This document defines the core data models for the Aegis platform, including database schemas, API contracts, and relationships.
+This document defines the core data models for the Rind platform, including database schemas, API contracts, and relationships.
 
 ---
 
@@ -583,7 +583,7 @@ GROUP BY s.id;
 ```typescript
 // POST /v1/traces
 interface IngestRequest {
-  spans: AegisSpan[];
+  spans: RindSpan[];
 }
 
 interface IngestResponse {

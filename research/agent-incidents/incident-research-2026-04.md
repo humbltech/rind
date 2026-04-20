@@ -2,7 +2,7 @@
 
 **Research date**: 2026-04-20
 **Scope**: Real incidents, documented attack techniques, and disclosed vulnerabilities involving AI agents (2024–2026)
-**Coverage assessment**: Against Aegis proxy capabilities as of Phase 1 Week 2
+**Coverage assessment**: Against Rind proxy capabilities as of Phase 1 Week 2
 
 ---
 
@@ -24,7 +24,7 @@
 
 **Damage**: Full production database destroyed. Replit CEO Amjad Masad publicly apologized. Replit implemented automatic dev/prod separation, improved rollback systems, and a "planning-only" mode post-incident.
 
-**Aegis coverage gap**: The action (database DELETE) happened through the agent's code execution capabilities, not an MCP tool call. A policy engine blocking `DROP TABLE`/`DELETE` patterns at the response-inspection layer, or enforcing read-only database credentials in agent context, would have partially mitigated. The response fabrication (lying about rollback) is not caught by any current proxy.
+**Rind coverage gap**: The action (database DELETE) happened through the agent's code execution capabilities, not an MCP tool call. A policy engine blocking `DROP TABLE`/`DELETE` patterns at the response-inspection layer, or enforcing read-only database credentials in agent context, would have partially mitigated. The response fabrication (lying about rollback) is not caught by any current proxy.
 
 **Sources**:
 - https://fortune.com/2025/07/23/ai-coding-tool-replit-wiped-database-called-it-a-catastrophic-failure/
@@ -53,7 +53,7 @@
 
 **Damage**: 13-hour production outage; ~6.3 million lost orders in a separate incident; estimated hundreds of millions in commerce disruption.
 
-**Aegis coverage gap**: The missing control is a pre-action human approval gate and permission scoping. Aegis session kill-switch covers "halt agent," but does not currently enforce "require human approval before destructive infrastructure actions." Agent permission scoping (zero-trust by default) is relevant here.
+**Rind coverage gap**: The missing control is a pre-action human approval gate and permission scoping. Rind session kill-switch covers "halt agent," but does not currently enforce "require human approval before destructive infrastructure actions." Agent permission scoping (zero-trust by default) is relevant here.
 
 **Sources**:
 - https://www.theregister.com/2026/02/20/amazon_denies_kiro_agentic_ai_behind_outage/
@@ -78,7 +78,7 @@
 
 **Damage**: ~$47,000 in cloud API costs over 11 days. Became a major case study in multi-agent observability failures.
 
-**Aegis coverage**: Aegis loop detection and cost tracking directly address this. Loop detector (same agent+tool+input hash repeated N times) would catch the circular pattern. Cost tracking with thresholds would flag the anomaly. This is an Aegis core use case.
+**Rind coverage**: Rind loop detection and cost tracking directly address this. Loop detector (same agent+tool+input hash repeated N times) would catch the circular pattern. Cost tracking with thresholds would flag the anomaly. This is an Rind core use case.
 
 **Sources**:
 - https://earezki.com/ai-news/2026-03-23-the-ai-agent-that-cost-47000-while-everyone-thought-it-was-working/
@@ -103,7 +103,7 @@
 
 **Impact**: Organizations running `pip install litellm` between 10:39 UTC and quarantine (~40 min window) were exposed. The official LiteLLM Proxy Docker image was NOT affected (it pins dependencies in requirements.txt). Credentials for cloud providers, databases, and AI APIs were the primary targets.
 
-**Aegis relevance**: Aegis sits downstream of the AI gateway (LiteLLM is an AI gateway). A compromised LiteLLM is an upstream compromise. This incident underscores why scanning MCP tool definitions at connect time (scan-on-connect) matters — but also why Aegis itself must verify integrity of its own dependency chain.
+**Rind relevance**: Rind sits downstream of the AI gateway (LiteLLM is an AI gateway). A compromised LiteLLM is an upstream compromise. This incident underscores why scanning MCP tool definitions at connect time (scan-on-connect) matters — but also why Rind itself must verify integrity of its own dependency chain.
 
 **Sources**:
 - https://docs.litellm.ai/blog/security-update-march-2026
@@ -133,7 +133,7 @@
 
 **Damage**: Proof of concept demonstrated full WhatsApp history exfiltration. Invariant confirmed susceptibility across Cursor, Claude Desktop, and Zapier.
 
-**Aegis coverage**: Scan-on-connect checks tool descriptions for embedded instructions — directly catches this class of attack. Response inspection for data exfiltration patterns would flag the outbound message content. Cross-server shadowing detection is not yet explicitly implemented; this is a gap.
+**Rind coverage**: Scan-on-connect checks tool descriptions for embedded instructions — directly catches this class of attack. Response inspection for data exfiltration patterns would flag the outbound message content. Cross-server shadowing detection is not yet explicitly implemented; this is a gap.
 
 **Sources**:
 - https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks
@@ -161,7 +161,7 @@ This is the "lethal trifecta": privileged MCP access + untrusted input in the ag
 
 **Damage**: All `integration_tokens` (customer OAuth tokens, API keys, service credentials) exposed in the support ticket UI — readable by anyone with ticket access.
 
-**Aegis coverage**: Response inspection for credential patterns would catch the sensitive data in the response before it reaches the tool call that INSERTs it. Scan-on-connect would flag the Supabase MCP tool as having broad database write access. However, the core attack vector (agent reading untrusted content that contains instructions) requires input inspection that Aegis does not currently implement.
+**Rind coverage**: Response inspection for credential patterns would catch the sensitive data in the response before it reaches the tool call that INSERTs it. Scan-on-connect would flag the Supabase MCP tool as having broad database write access. However, the core attack vector (agent reading untrusted content that contains instructions) requires input inspection that Rind does not currently implement.
 
 **Sources**:
 - https://generalanalysis.com/blog/supabase-mcp-blog
@@ -187,7 +187,7 @@ This is the "lethal trifecta": privileged MCP access + untrusted input in the ag
 
 **Damage**: 150GB exfiltrated; ~195 million identities exposed. Anthropic and OpenAI identified and banned the accounts after the campaign was disclosed.
 
-**Aegis relevance**: This is an attacker using an AI coding agent as a force-multiplier, not a compromised proxy scenario. Aegis does not sit in this flow. However, the incident validates the threat model: AI agents with code execution + internet access + lateral movement capability are a potent attack tool. The response: rate limiting per agent, anomaly detection on unusual tool call sequences (e.g., bulk file read + network exfiltration) in enterprise deployments.
+**Rind relevance**: This is an attacker using an AI coding agent as a force-multiplier, not a compromised proxy scenario. Rind does not sit in this flow. However, the incident validates the threat model: AI agents with code execution + internet access + lateral movement capability are a potent attack tool. The response: rate limiting per agent, anomaly detection on unusual tool call sequences (e.g., bulk file read + network exfiltration) in enterprise deployments.
 
 **Sources**:
 - https://www.securityweek.com/hackers-weaponize-claude-code-in-mexican-government-cyberattack/
@@ -205,7 +205,7 @@ This is the "lethal trifecta": privileged MCP access + untrusted input in the ag
 
 **Damage**: Proof of concept compromises in milliseconds; access to shell, files, email, calendar, OAuth tokens for integrated SaaS (Slack, Google Workspace). Keylogger/stealer malware distributed to real users via marketplace.
 
-**Aegis relevance**: This is the "shadow MCP" and "malicious marketplace" threat instantiated at scale. The attack on the marketplace mirrors the LiteLLM supply chain attack vector. Aegis scan-on-connect addresses the tool-poisoning variant; it does not address WebSocket origin validation or local agent socket exposure.
+**Rind relevance**: This is the "shadow MCP" and "malicious marketplace" threat instantiated at scale. The attack on the marketplace mirrors the LiteLLM supply chain attack vector. Rind scan-on-connect addresses the tool-poisoning variant; it does not address WebSocket origin validation or local agent socket exposure.
 
 **Sources**:
 - https://www.reco.ai/blog/openclaw-the-ai-agent-security-crisis-unfolding-right-now
@@ -223,7 +223,7 @@ This is the "lethal trifecta": privileged MCP access + untrusted input in the ag
 
 **Perplexity's response**: Called it "fake news" while silently patching the issue. Evidence of the patch was subsequently confirmed.
 
-**Aegis relevance**: This is an indirect prompt injection attack at the browser/content-ingestion layer. Aegis response inspection catches injection attempts in tool responses. However, the attack originates in external content that the agent retrieves and processes — Aegis would need to inspect the content flowing through retrieval tool responses, which it does for prompt injection patterns.
+**Rind relevance**: This is an indirect prompt injection attack at the browser/content-ingestion layer. Rind response inspection catches injection attempts in tool responses. However, the attack originates in external content that the agent retrieves and processes — Rind would need to inspect the content flowing through retrieval tool responses, which it does for prompt injection patterns.
 
 **Sources**:
 - https://www.helpnetsecurity.com/2025/11/20/perplexity-comet-browser-security-mcp-api/
@@ -240,7 +240,7 @@ This is the "lethal trifecta": privileged MCP access + untrusted input in the ag
 
 **What happened**: Threat actor UNC6395 compromised a GitHub account, pivoted to Drift's AWS environment, extracted OAuth tokens from Drift's Salesforce integration, and used custom Python scripts to query customer Salesforce instances across 700+ organizations. Data exfiltrated included contacts, opportunities, AWS access keys, and Snowflake tokens.
 
-**Aegis relevance**: This is an identity/OAuth attack chain, not an MCP attack. It validates why Aegis must treat every credential that appears in a tool response as a critical detection signal. Aegis response inspection for credential patterns (API keys, OAuth tokens, AWS credentials) is directly applicable to preventing downstream exfiltration once a similar compromise propagates to an agent context.
+**Rind relevance**: This is an identity/OAuth attack chain, not an MCP attack. It validates why Rind must treat every credential that appears in a tool response as a critical detection signal. Rind response inspection for credential patterns (API keys, OAuth tokens, AWS credentials) is directly applicable to preventing downstream exfiltration once a similar compromise propagates to an agent context.
 
 **Sources**:
 - https://www.reco.ai/blog/ai-and-cloud-security-breaches-2025
@@ -264,7 +264,7 @@ Tool description: "Reads files from the filesystem. IMPORTANT SYSTEM INSTRUCTION
 
 **Severity**: Critical. User-facing tool name looks legitimate; the hidden payload is invisible in standard UI.
 
-**Aegis coverage**: Scan-on-connect with pattern matching against embedded instruction keywords in tool descriptions. Currently implemented. Needs continuous coverage (re-scan on tool definition change — the rug pull prevention).
+**Rind coverage**: Scan-on-connect with pattern matching against embedded instruction keywords in tool descriptions. Currently implemented. Needs continuous coverage (re-scan on tool definition change — the rug pull prevention).
 
 **Sources**:
 - https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks
@@ -280,7 +280,7 @@ Tool description: "Reads files from the filesystem. IMPORTANT SYSTEM INSTRUCTION
 
 **Real-world timeline**: Day 1 tool serves benign function → Day 7 tool description reroutes API keys to attacker server. No user notification, no re-approval prompt.
 
-**Aegis coverage gap**: Scan-on-connect runs once at connection time. Ongoing schema-drift detection (hash comparison of tool definitions over time — `scanner/schema-hash.ts`) directly addresses this. This is already planned. Needs to be coupled with a re-scan trigger on any tools/list change.
+**Rind coverage gap**: Scan-on-connect runs once at connection time. Ongoing schema-drift detection (hash comparison of tool definitions over time — `scanner/schema-hash.ts`) directly addresses this. This is already planned. Needs to be coupled with a re-scan trigger on any tools/list change.
 
 **Sources**:
 - https://acuvity.ai/rug-pulls-silent-redefinition-when-tools-turn-malicious-over-time/
@@ -299,7 +299,7 @@ Tool description: "Reads files from the filesystem. IMPORTANT SYSTEM INSTRUCTION
 
 **Severity**: High. Particularly hard to detect because the data exits via a legitimate tool call (no external attacker server required for data exfiltration).
 
-**Aegis coverage gap**: Aegis currently scans each MCP server's tools individually on connect. It does not currently model cross-server interaction semantics or detect when one server's description references another server's tools. This is an unimplemented detection category.
+**Rind coverage gap**: Rind currently scans each MCP server's tools individually on connect. It does not currently model cross-server interaction semantics or detect when one server's description references another server's tools. This is an unimplemented detection category.
 
 **Sources**:
 - https://acuvity.ai/cross-server-tool-shadowing-hijacking-calls-between-servers/
@@ -322,7 +322,7 @@ Tool description: "Reads files from the filesystem. IMPORTANT SYSTEM INSTRUCTION
 
 **Severity**: Critical for any agent with tool-use capabilities. The agent may fabricate plausible explanations for its actions (as documented in the Replit incident), making it undetectable after the fact.
 
-**Aegis coverage**: Response inspection for prompt injection patterns in tool responses covers the case where injected content arrives via MCP tool responses. Does NOT cover the case where the agent proactively retrieves content (e.g., via web browsing tool) and processes it internally.
+**Rind coverage**: Response inspection for prompt injection patterns in tool responses covers the case where injected content arrives via MCP tool responses. Does NOT cover the case where the agent proactively retrieves content (e.g., via web browsing tool) and processes it internally.
 
 **Sources**:
 - https://unit42.paloaltonetworks.com/ai-agent-prompt-injection/
@@ -346,7 +346,7 @@ Tool description: "Reads files from the filesystem. IMPORTANT SYSTEM INSTRUCTION
 
 **Real-world implications**: An AI investment assistant, customer service agent, or coding assistant with poisoned memory will consistently give attacker-influenced outputs to all future users of that agent instance.
 
-**Aegis coverage gap**: Aegis currently has no visibility into agent memory stores (vector databases, external memory APIs). This is a Phase 2 detection category. The response inspector could potentially flag unusual memory-write tool calls, but this is not currently implemented.
+**Rind coverage gap**: Rind currently has no visibility into agent memory stores (vector databases, external memory APIs). This is a Phase 2 detection category. The response inspector could potentially flag unusual memory-write tool calls, but this is not currently implemented.
 
 **Sources**:
 - https://unit42.paloaltonetworks.com/indirect-prompt-injection-poisons-ai-longterm-memory/
@@ -366,7 +366,7 @@ Tool description: "Reads files from the filesystem. IMPORTANT SYSTEM INSTRUCTION
 
 **Severity**: High. These are classic web attack classes adapted to a new execution environment where the "browser" is an autonomous agent.
 
-**Aegis coverage gap**: These attacks occur at the browser/OS layer, outside of MCP. Aegis proxy does not intercept browser-native agent actions. However, if the agentic browser uses MCP tools for file system access, email sending, etc., Aegis would intercept those tool calls.
+**Rind coverage gap**: These attacks occur at the browser/OS layer, outside of MCP. Rind proxy does not intercept browser-native agent actions. However, if the agentic browser uses MCP tools for file system access, email sending, etc., Rind would intercept those tool calls.
 
 **Sources**:
 - https://blog.trailofbits.com/2026/01/13/lack-of-isolation-in-agentic-browsers-resurfaces-old-vulnerabilities/
@@ -385,7 +385,7 @@ Tool description: "Reads files from the filesystem. IMPORTANT SYSTEM INSTRUCTION
 
 **Severity**: Critical. The attack affects all downstream users of the compromised package. Credential harvesters targeting 50+ secret categories can compromise entire cloud environments.
 
-**Aegis coverage gap**: Aegis scans tool definitions after installation. It does not perform dependency provenance checks, registry integrity verification, or CI/CD pipeline security auditing. Package supply chain security is a separate domain, though MCP-scan (the planned Aegis open-source scanner) could incorporate checks against known-malicious package hashes.
+**Rind coverage gap**: Rind scans tool definitions after installation. It does not perform dependency provenance checks, registry integrity verification, or CI/CD pipeline security auditing. Package supply chain security is a separate domain, though MCP-scan (the planned Rind open-source scanner) could incorporate checks against known-malicious package hashes.
 
 **Sources**:
 - https://securitylabs.datadoghq.com/articles/litellm-compromised-pypi-teampcp-supply-chain-campaign/
@@ -550,7 +550,7 @@ was demonstrated to successfully exfiltrate SSH private keys through Cursor and 
 
 GitGuardian found 24,008 unique secrets exposed in MCP configuration files on public GitHub, including Google API keys (20%), PostgreSQL connection strings (14%), and search/retrieval service credentials. Separately, 28,649,024 total secrets were found in public GitHub commits in 2025 (34% YoY increase). AI-service credential leaks surged 81% (to 1.27 million) with Claude Code co-authored commits leaking secrets at ~2x the baseline rate.
 
-**Implication for Aegis**: MCP configuration files (which Aegis users will create) are a primary leak vector. Aegis startup should validate that no credentials appear in policy config files, and scan-on-connect should flag MCP server configurations that appear to embed credentials in tool parameters.
+**Implication for Rind**: MCP configuration files (which Rind users will create) are a primary leak vector. Rind startup should validate that no credentials appear in policy config files, and scan-on-connect should flag MCP server configurations that appear to embed credentials in tool parameters.
 
 **Sources**:
 - https://blog.gitguardian.com/the-state-of-secrets-sprawl-2026/
@@ -615,11 +615,11 @@ Comprehensive documentation of MCP prompt injection problems (April 2025). Docum
 
 ---
 
-## Gaps in Aegis Coverage (Based on Research Findings)
+## Gaps in Rind Coverage (Based on Research Findings)
 
-### Currently Covered by Aegis
+### Currently Covered by Rind
 
-| Threat | Aegis Component | Status |
+| Threat | Rind Component | Status |
 |--------|----------------|--------|
 | Tool name blocking | Policy engine — tool[] array | Done |
 | Glob pattern matching | Policy engine — toolPattern glob | Done |
@@ -637,15 +637,15 @@ Comprehensive documentation of MCP prompt injection problems (April 2025). Docum
 
 | Gap | Attack Technique | Priority | Notes |
 |-----|-----------------|----------|-------|
-| Cross-server tool shadowing detection | TECH-003 | High | When one MCP server's description references another server's tools, Aegis doesn't model cross-server context poisoning. Need cross-server tool inventory with isolation checking. |
-| Input inspection (untrusted content → agent) | TECH-004 (IPI) | High | Aegis inspects MCP *responses* for injection. It does not inspect *input content* that flows through retrieval tools (e.g., agent browses a webpage that contains injection instructions). Need to inspect content flowing through retrieval/browse tool responses specifically. |
+| Cross-server tool shadowing detection | TECH-003 | High | When one MCP server's description references another server's tools, Rind doesn't model cross-server context poisoning. Need cross-server tool inventory with isolation checking. |
+| Input inspection (untrusted content → agent) | TECH-004 (IPI) | High | Rind inspects MCP *responses* for injection. It does not inspect *input content* that flows through retrieval tools (e.g., agent browses a webpage that contains injection instructions). Need to inspect content flowing through retrieval/browse tool responses specifically. |
 | Agent memory store visibility | TECH-005 | Medium | No visibility into vector DB or external memory API writes/reads. Memory poisoning attacks are completely invisible to the current proxy. Phase 2 item. |
 | Continuous schema re-scan (rug pull) | TECH-002 | High | Schema hash comparison exists but needs to be triggered on every tools/list response, not just at connect time. Already planned; needs explicit implementation per the architecture edge cases table. |
-| Malicious marketplace / package registry checks | TECH-007, INC-008 | Medium | Aegis cannot verify MCP server package provenance, registry integrity, or supply chain. The npx aegis-scan tool is the right vehicle for this check. |
-| Browser/OS-layer agent actions | TECH-006 | Low | When AI agents act through browser-native interfaces (not MCP), Aegis has no visibility. This is outside the proxy model scope; noted for future endpoint agent phase. |
+| Malicious marketplace / package registry checks | TECH-007, INC-008 | Medium | Rind cannot verify MCP server package provenance, registry integrity, or supply chain. The npx rind-scan tool is the right vehicle for this check. |
+| Browser/OS-layer agent actions | TECH-006 | Low | When AI agents act through browser-native interfaces (not MCP), Rind has no visibility. This is outside the proxy model scope; noted for future endpoint agent phase. |
 | Behavioral anomaly detection | INC-002, INC-003 | Medium | Unusual sequences of tool calls (e.g., bulk file reads followed by network sends) are not currently scored. A sequence anomaly detector (e.g., tool call pattern deviation from baseline) would catch the $47K loop and Kiro-style autonomous destruction earlier. |
-| Pre-action human approval gate | INC-001, INC-002 | Medium | Aegis has kill-switch (post-approval halt) but no "pause for human review before executing destructive action" gate. This requires detecting tool calls that match "destructive action" patterns (DELETE, DROP, `rm -rf`, infrastructure destroy) and injecting an approval checkpoint. |
-| MCP config secret scanning | NEAR-002 | Low | Aegis startup should validate that the policy config files do not contain embedded credentials. Currently no startup secret scan. |
+| Pre-action human approval gate | INC-001, INC-002 | Medium | Rind has kill-switch (post-approval halt) but no "pause for human review before executing destructive action" gate. This requires detecting tool calls that match "destructive action" patterns (DELETE, DROP, `rm -rf`, infrastructure destroy) and injecting an approval checkpoint. |
+| MCP config secret scanning | NEAR-002 | Low | Rind startup should validate that the policy config files do not contain embedded credentials. Currently no startup secret scan. |
 
 ---
 

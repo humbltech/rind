@@ -1,4 +1,4 @@
-// Sidebar — the △ AEGIS identity mark + navigation shell.
+// Sidebar — the Geometric A mark (D-034) + RIND wordmark + navigation shell.
 // Phase 1: single active route (overview). Phase 2 will add sessions, policies, audit log.
 // The sidebar is static — no client interactivity needed.
 
@@ -23,22 +23,48 @@ export function Sidebar() {
 
 function LogoMark() {
   return (
-    // Subtle teal radial glow behind the triangle — the brand is alive, not printed
-    <div className="px-5 py-5 border-b border-border-subtle">
+    <div className="px-4 py-4 border-b border-border-subtle">
       <div className="flex items-center gap-3">
+        {/*
+          Icon chip: dark canvas bg + subtle border + teal ambient glow.
+          The contained shape gives the mark visual anchoring — floating lines
+          on a flat bg read as a sketch; a chip reads as a product.
+        */}
         <div
-          className="relative flex items-center justify-center w-8 h-8"
+          className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-canvas border border-border-subtle shrink-0 overflow-hidden"
           style={{
-            background: 'radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--aegis-accent) 18%, transparent) 0%, transparent 70%)',
+            boxShadow: [
+              '0 0 0 1px color-mix(in srgb, var(--rind-accent) 15%, transparent)',
+              'inset 0 1px 0 rgba(255,255,255,0.06)',
+            ].join(', '),
           }}
         >
-          {/* The △ is the Aegis logo mark — reserved for identity, not decoration */}
-          <svg width="20" height="18" viewBox="0 0 20 18" fill="none" aria-label="Aegis">
-            <polygon points="10,1 19,17 1,17" fill="none" stroke="var(--aegis-accent)" strokeWidth="1.5" strokeLinejoin="round" />
+          {/* Teal wash rising from the base — gives the mark a light source */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background: 'radial-gradient(ellipse 80% 60% at 50% 100%, color-mix(in srgb, var(--rind-accent) 14%, transparent), transparent)',
+            }}
+          />
+          {/*
+            Geometric A mark — D-034 canonical spec.
+            Gradient stroke: lighter teal at apex → standard teal at base.
+            Crossbar sits at 55% height, mathematically aligned to the diagonals.
+          */}
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-label="Rind" className="relative">
+            <defs>
+              <linearGradient id="rind-mark-grad" x1="10" y1="2" x2="10" y2="18" gradientUnits="userSpaceOnUse">
+                <stop offset="0%"   stopColor="var(--rind-accent-light)" />
+                <stop offset="100%" stopColor="var(--rind-accent)" />
+              </linearGradient>
+            </defs>
+            <line x1="3"  y1="18" x2="10" y2="2"  stroke="url(#rind-mark-grad)" strokeWidth="1.8" strokeLinecap="round" />
+            <line x1="17" y1="18" x2="10" y2="2"  stroke="url(#rind-mark-grad)" strokeWidth="1.8" strokeLinecap="round" />
+            <line x1="5"  y1="12" x2="15" y2="12" stroke="url(#rind-mark-grad)" strokeWidth="1.8" strokeLinecap="round" />
           </svg>
         </div>
-        <div>
-          <span className="text-sm font-semibold tracking-[0.12em] text-foreground uppercase">Aegis</span>
+        <div className="min-w-0">
+          <span className="block text-sm font-semibold tracking-[0.12em] text-foreground uppercase">Rind</span>
           <span className="block text-[10px] text-muted tracking-wide">Control Plane · v0.1</span>
         </div>
       </div>

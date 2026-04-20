@@ -6,7 +6,7 @@ Empower enterprises to confidently deploy AI agents by providing complete visibi
 
 ## Vision Statement
 
-Aegis becomes the trust layer for enterprise AI agents - the single platform through which all agent activity flows, is governed, monitored, and secured. Just as Okta became the identity layer for SaaS applications and Zscaler became the security layer for internet traffic, Aegis becomes the control plane for AI agents.
+Rind becomes the trust layer for enterprise AI agents - the single platform through which all agent activity flows, is governed, monitored, and secured. Just as Okta became the identity layer for SaaS applications and Zscaler became the security layer for internet traffic, Rind becomes the control plane for AI agents.
 
 ## Core Goals
 
@@ -64,4 +64,4 @@ Aegis becomes the trust layer for enterprise AI agents - the single platform thr
 
 ## Differentiation
 
-Unlike prompt-based security tools that can be bypassed, Aegis enforces policies at the execution layer - where agents actually operate. We don't just ask agents to behave; we ensure they can't misbehave.
+Unlike prompt-based security tools that can be bypassed, Rind enforces policies at the execution layer - where agents actually operate. We don't just ask agents to behave; we ensure they can't misbehave.

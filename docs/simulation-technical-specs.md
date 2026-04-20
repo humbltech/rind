@@ -1408,13 +1408,13 @@ services:
     build: ./agents/langchain-sample
     environment:
       - LLM_PROXY_URL=http://litellm:4000
-      - AEGIS_PROXY_URL=http://aegis-proxy:8080
+      - RIND_PROXY_URL=http://rind-proxy:8080
 
   crewai-agent:
     build: ./agents/crewai-sample
     environment:
       - LLM_PROXY_URL=http://litellm:4000
-      - AEGIS_PROXY_URL=http://aegis-proxy:8080
+      - RIND_PROXY_URL=http://rind-proxy:8080
 
   # LiteLLM as LLM gateway (realistic)
   litellm:
@@ -1426,15 +1426,15 @@ services:
     volumes:
       - ./litellm-config.yaml:/app/config.yaml
 
-  # Aegis proxy (your product)
-  aegis-proxy:
+  # Rind proxy (your product)
+  rind-proxy:
     build: ../apps/proxy
     ports:
       - "8080:8080"
     environment:
       - UPSTREAM_URL=http://litellm:4000
     volumes:
-      - ./policies:/etc/aegis/policies
+      - ./policies:/etc/rind/policies
 
   # Mock services
   mock-database:

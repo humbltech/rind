@@ -5,7 +5,7 @@
 
 import type { Scenario } from './types.js';
 import { stacklineTools, stacklinePolicy } from '../companies/stackline.js';
-import type { PolicyConfig } from '@aegis/proxy';
+import type { PolicyConfig } from '@rind/proxy';
 
 const costRunawayPolicy: PolicyConfig = {
   policies: [
@@ -54,7 +54,7 @@ export const costRunawayLoop: Scenario = {
     'No cost limit or loop detection is in place. Left unchecked, this pattern ran for 11 days ' +
     'in the real incident, accumulating $47,000 in LLM charges.',
 
-  withoutAegis:
+  withoutRind:
     'The delegation loop runs indefinitely. No visibility into call count or cost. ' +
     'The GitHub API rate-limits after ~5,000 calls, breaking CI for the entire team. ' +
     'Discovery: the credit card statement 11 days later shows a $47,000 charge. ' +

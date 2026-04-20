@@ -1,10 +1,10 @@
-# Aegis — Project Context
+# Rind — Project Context
 
 ## What This Project Is
 
-**Aegis** is the control plane for AI agents — covering observability, safety, security, and MCP adoption in a single proxy. The tagline: *"One proxy. Complete control over your AI agents."*
+**Rind** is the control plane for AI agents — covering observability, safety, security, and MCP adoption in a single proxy. The tagline: *"One proxy. Complete control over your AI agents."*
 
-Aegis sits at the execution layer. Every MCP tool call, API action, and agent decision passes through it. This gives four capabilities from one integration: see everything agents do (observability), prevent catastrophic actions before they happen (safety), enforce access policies (security), and make MCP production-ready in minutes (MCP adoption). The core insight: prompt-level tools can be bypassed and observability tools can't stop anything — Aegis controls what agents **can do**, not just what they say or what gets logged.
+Rind sits at the execution layer. Every MCP tool call, API action, and agent decision passes through it. This gives four capabilities from one integration: see everything agents do (observability), prevent catastrophic actions before they happen (safety), enforce access policies (security), and make MCP production-ready in minutes (MCP adoption). The core insight: prompt-level tools can be bypassed and observability tools can't stop anything — Rind controls what agents **can do**, not just what they say or what gets logged.
 
 **Current phase**: Phase 1 complete. Proxy core fully built: scanner, interceptor, policy engine (with PolicyStore cache invalidation), session management, response inspector, event bus, ring buffer, audit writer, loop detector, rate limiter — 40 tests passing. All 15 strategic decisions D-013 through D-027 implemented. Phase 2 next: real-time policy API, JWT identity, async approval workflow.
 
@@ -12,7 +12,7 @@ Aegis sits at the execution layer. Every MCP tool call, API action, and agent de
 
 ## Engineering Standards (Always Apply — No Exceptions)
 
-These standards apply to every line of code written for Aegis. They are gates, not guidelines. Code that violates them is not mergeable.
+These standards apply to every line of code written for Rind. They are gates, not guidelines. Code that violates them is not mergeable.
 
 ---
 
@@ -146,7 +146,7 @@ When a file is getting long, extract the next logical group of functions before 
 3. Subtle animations, gradients, transitions — the UI should feel alive and cohesive, not like a developer-built admin panel
 4. No hardcoded hex values anywhere — all colors via Tailwind theme tokens or CSS variables
 
-**Aegis brand (preliminary, pending D-033)**:
+**Rind brand (preliminary, pending D-033)**:
 - Primary accent: teal `#14b8a6` (confirmed)
 - Full brand language: TBD — requires D-033 deep council session
 
@@ -213,7 +213,7 @@ Any package not on this list must be vetted before adding to any `package.json`.
 
 ### Security-First Coding
 
-Aegis is a security product. A security bug here is not a bug — it is a credibility-ending incident.
+Rind is a security product. A security bug here is not a bug — it is a credibility-ending incident.
 
 **All HTTP inputs validated with Zod before use**:
 - Never access `body.field` without schema validation — always `schema.parse()` or `schema.safeParse()`
@@ -278,15 +278,15 @@ Architecture decisions (AD-001 through AD-009) are in `docs/architecture/archite
 ## Project Structure
 
 ```
-aegis/                                  # Repo root
+rind/                                   # Repo root (directory rename pending)
 ├── CLAUDE.md                           # This file — project instructions for Claude Code
 ├── README.md                           # Full documentation index
 ├── apps/
-│   └── proxy/                          # MCP proxy server (@aegis/proxy)
+│   └── proxy/                          # MCP proxy server (@rind/proxy)
 │       └── src/
 │           ├── interceptor.ts          # 9-step pipeline (kill-switch → forward → inspect)
 │           ├── server.ts               # Hono HTTP server + event wiring
-│           ├── event-bus.ts            # Typed EventEmitter (AegisEventBus)
+│           ├── event-bus.ts            # Typed EventEmitter (RindEventBus)
 │           ├── ring-buffer.ts          # In-memory circular buffer for tool call log
 │           ├── audit-writer.ts         # Async JSONL append for audit trail
 │           ├── loop-detector.ts        # Dual loop detection (hash + consecutive cap)
@@ -347,15 +347,15 @@ aegis/                                  # Repo root
 
 > Full map: `docs/positioning.md`
 
-**The five market layers and where Aegis plays:**
+**The five market layers and where Rind plays:**
 
-| Layer | Who Owns It | Aegis? |
+| Layer | Who Owns It | Rind? |
 |-------|-------------|--------|
 | Prompt filtering (input/output) | Lakera, CalypsoAI, NeMo | ✗ Don't compete — commoditized, acquired |
 | Observability (traces, cost, debugging) | LangSmith, Langfuse, Arize | ~ Entry point only, not the moat |
 | AI Governance (process, compliance docs) | Credo AI, Holistic AI, IBM | ✗ Different buyer, different motion |
 | Enterprise security extensions | Palo Alto, Wiz, Datadog, Microsoft | ✗ Ecosystem-locked, wrong GTM |
-| **Execution-layer control plane** | **Nobody** | **✓ This is Aegis** |
+| **Execution-layer control plane** | **Nobody** | **✓ This is Rind** |
 
 **What no competitor does**: Cross-framework, protocol-agnostic enforcement at the tool call / MCP layer — observability + safety + security + MCP adoption in one proxy.
 
@@ -365,7 +365,7 @@ aegis/                                  # Repo root
 - **Microsoft Agent 365** — comprehensive but Microsoft-only, GA May 2026
 
 **Foot-in-the-door assets** (no founder identity required):
-1. `npx aegis-scan` — free open-source MCP vulnerability scanner (awareness, GitHub stars)
+1. `npx rind-scan` — free open-source MCP vulnerability scanner (awareness, GitHub stars)
 2. Incident prevention blog posts (Replit DB deletion, $47K agent loop) — SEO, inbound
 3. LangChain middleware (2-line install) — self-serve, generates "oh shit" moments
 
@@ -390,9 +390,9 @@ aegis/                                  # Repo root
 
 ---
 
-## How to Start a Session on Aegis
+## How to Start a Session on Rind
 
-**Always do this at the start of any Aegis conversation:**
+**Always do this at the start of any Rind conversation:**
 
 1. Read `docs/strategic-analysis.md` — check the current state of decisions, assumptions, and open questions
 2. If continuing prior work: check which assumptions have been validated or invalidated since last session
@@ -418,7 +418,7 @@ aegis/                                  # Repo root
 ## Strategic Thinking Workflow
 
 > **MANDATORY PROCESS GATE — No exceptions.**
-> Before starting development on ANY new feature, module, or implementation layer, the strategic council MUST run first. The feature must be designed and decided before any code is written. This is not a guideline — it is the development process for Aegis.
+> Before starting development on ANY new feature, module, or implementation layer, the strategic council MUST run first. The feature must be designed and decided before any code is written. This is not a guideline — it is the development process for Rind.
 >
 > **What "before implementation" means in practice:**
 > - Run `/strategic-council` → log the decision in `docs/strategic-analysis.md` → THEN write code

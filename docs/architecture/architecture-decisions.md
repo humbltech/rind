@@ -1,6 +1,6 @@
-# Aegis — Architecture Decisions
+# Rind — Architecture Decisions
 
-> Captures architectural direction for Aegis before coding begins. Each decision includes the tradeoffs, the chosen approach, and the reasoning. Update this doc when a decision changes.
+> Captures architectural direction for Rind before coding begins. Each decision includes the tradeoffs, the chosen approach, and the reasoning. Update this doc when a decision changes.
 
 **Last Updated**: April 18, 2026
 **Status**: Pre-code — all decisions provisional until validated with design partners
@@ -10,15 +10,15 @@
 ## AD-001: MCP Interception Model — Proxy-Through vs. Be-The-MCP
 
 ### The Decision
-How does Aegis intercept and control MCP traffic?
+How does Rind intercept and control MCP traffic?
 
 ### Two Options
 
 **Option A: Proxy-Through**
-Aegis sits between the agent and MCP servers, forwarding calls transparently. The agent still knows about and connects to real MCP servers; Aegis intercepts in the middle.
+Rind sits between the agent and MCP servers, forwarding calls transparently. The agent still knows about and connects to real MCP servers; Rind intercepts in the middle.
 
 ```
-Agent → Aegis Proxy → Real MCP Server
+Agent → Rind Proxy → Real MCP Server
 ```
 
 | Aspect | Assessment |
@@ -30,16 +30,16 @@ Agent → Aegis Proxy → Real MCP Server
 | Enterprise fit | Good — enterprises understand proxies |
 
 **Option B: Be-The-MCP (Recommended for Horizon 2+)**
-Agents connect to Aegis as if Aegis IS their MCP server. Aegis holds the real MCP server credentials, evaluates agent identity and authorization, then forwards selectively to real MCP servers on behalf of the agent.
+Agents connect to Rind as if Rind IS their MCP server. Rind holds the real MCP server credentials, evaluates agent identity and authorization, then forwards selectively to real MCP servers on behalf of the agent.
 
 ```
-Agent → Aegis (acting as MCP server) → [Authorized real MCP servers]
+Agent → Rind (acting as MCP server) → [Authorized real MCP servers]
 ```
 
 | Aspect | Assessment |
 |--------|-----------|
-| Setup friction | Higher — agents must re-configure to point at Aegis |
-| Control depth | Full — Aegis decides which tools are even visible to which agent |
+| Setup friction | Higher — agents must re-configure to point at Rind |
+| Control depth | Full — Rind decides which tools are even visible to which agent |
 | Identity model | Per-agent identity at the MCP protocol level |
 | Zero trust support | Full — continuous validation, least-privilege tool exposure |
 | Enterprise fit | Excellent — matches Zscaler / API gateway mental model |
@@ -87,18 +87,18 @@ Some features can be delivered via SDK alone (no infrastructure required). Other
 
 ```
 Path 1 — SDK Only (Horizon 1, indie/startup):
-  npm install @aegis/langchain
+  npm install @rind/langchain
   2-line init → observability + cost limits + safety rules
   No infrastructure, no proxy, no Docker
 
 Path 2 — SDK + Cloud Proxy (Horizon 1-2, startup/growth):
-  npm install @aegis/langchain
-  Set AEGIS_PROXY_URL=https://proxy.aegis.dev/<key>
+  npm install @rind/langchain
+  Set RIND_PROXY_URL=https://proxy.rind.dev/<key>
   All Path 1 features + MCP security + server allowlists
   Still no Docker; uses our hosted infrastructure
 
 Path 3 — Self-Hosted Proxy (Horizon 2-3, enterprise):
-  helm install aegis aegis/aegis-proxy
+  helm install rind rind/rind-proxy
   Full feature set + data stays on-premises
   Requires infrastructure team
 ```
@@ -171,7 +171,7 @@ Alerts and approval workflows must reach users where they work, not just in the 
 ## AD-004: Permission Model — Zero Trust for Agents
 
 ### The Decision
-Aegis implements Zero Trust authorization for AI agents, not traditional RBAC. The model: **never trust, always verify, least privilege by default.**
+Rind implements Zero Trust authorization for AI agents, not traditional RBAC. The model: **never trust, always verify, least privilege by default.**
 
 ### Core Concepts
 
@@ -200,8 +200,8 @@ Every tool call is evaluated against:
 For high-risk operations, capabilities are granted temporarily:
 ```
 Agent requests: database.schema.modify
-Aegis evaluates: requires elevated access
-Aegis grants: temporary token valid for 15 minutes
+Rind evaluates: requires elevated access
+Rind grants: temporary token valid for 15 minutes
 Agent executes within window
 Token auto-expires
 ```
@@ -332,7 +332,7 @@ Reasoning:
 - LangChain.js is maintained and growing; LangChain Python can be supported via a thin Python wrapper that calls the TypeScript proxy
 - The existing `mvp-roadmap.md` Python plan should be treated as superseded by this decision
 
-**Required**: Create a Python SDK package (`aegis-sdk` on PyPI) that wraps the cloud proxy API. Python users get the same features via HTTP; they don't need a Python proxy server.
+**Required**: Create a Python SDK package (`rind-sdk` on PyPI) that wraps the cloud proxy API. Python users get the same features via HTTP; they don't need a Python proxy server.
 
 **OQ-008 resolved**: TypeScript for proxy + dashboard. Python SDK via API wrapper.
 

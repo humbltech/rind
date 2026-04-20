@@ -1,4 +1,4 @@
-// CLI startup display — the first thing a developer sees when running `npx @aegis/proxy`.
+// CLI startup display — the first thing a developer sees when running `npx @rind/proxy`.
 // Renders only when stdout is a TTY (interactive terminal). Production log pipelines
 // (piped to Datadog, Grafana Loki, etc.) see clean JSON from pino — not this output.
 //
@@ -36,13 +36,13 @@ const VERSION = '0.1.0';
 export function buildConfigFromEnv(): ProxyConfig {
   return {
     port:            Number(process.env['PROXY_PORT'] ?? 7777),
-    agentId:         process.env['AEGIS_AGENT_ID'] ?? 'default-agent',
+    agentId:         process.env['RIND_AGENT_ID'] ?? 'default-agent',
     // Default to localhost:3100 — the proxy will 502 on tool calls if unreachable,
     // which is the correct behavior when no upstream is configured.
     upstreamMcpUrl:  process.env['MCP_UPSTREAM_URL'] ?? 'http://localhost:3100',
-    policyFile:      process.env['AEGIS_POLICY_FILE'],
+    policyFile:      process.env['RIND_POLICY_FILE'],
     logLevel:        (process.env['LOG_LEVEL'] ?? 'info') as ProxyConfig['logLevel'],
-    auditLogPath:    process.env['AEGIS_AUDIT_LOG'],
+    auditLogPath:    process.env['RIND_AUDIT_LOG'],
   };
 }
 
@@ -59,13 +59,13 @@ export function upstreamIsUnconfigured(): boolean {
 // ─── Banner ───────────────────────────────────────────────────────────────────
 
 /**
- * Print the Aegis startup banner.
+ * Print the Rind startup banner.
  * Always print this first — before the startup summary or next-steps prompt.
  */
 export function printBanner(): void {
   line();
   line(`  ${c.teal}${c.bold}╔══════════════════════════════════════════════════════╗${c.reset}`);
-  line(`  ${c.teal}${c.bold}║   △  AEGIS   Control Plane for AI Agents             ║${c.reset}`);
+  line(`  ${c.teal}${c.bold}║   △  RIND   Control Plane for AI Agents             ║${c.reset}`);
   line(`  ${c.teal}${c.bold}║              v${VERSION.padEnd(7)} · MCP Proxy · Phase 1       ║${c.reset}`);
   line(`  ${c.teal}${c.bold}╚══════════════════════════════════════════════════════╝${c.reset}`);
   line();
@@ -102,7 +102,7 @@ export function printNextSteps(config: ProxyConfig): void {
   line();
   line(`  ${c.dim}Set up${c.reset}`);
   line(`    1.  export MCP_UPSTREAM_URL=http://your-mcp-server:3100`);
-  line(`    2.  Restart:  npx @aegis/proxy`);
+  line(`    2.  Restart:  npx @rind/proxy`);
   line(`    3.  Scan:     POST http://localhost:${config.port}/scan`);
   line();
   printEndpointReference(config.port);

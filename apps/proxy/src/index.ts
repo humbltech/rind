@@ -1,8 +1,8 @@
-// Aegis proxy — CLI entry point
-// Usage: npx @aegis/proxy  ·  aegis-proxy  ·  node dist/index.js
+// Rind proxy — CLI entry point
+// Usage: npx @rind/proxy  ·  rind-proxy  ·  node dist/index.js
 //
 // Reads configuration from environment variables (see cli.ts → buildConfigFromEnv).
-// In interactive terminals: prints the Aegis banner and a human-readable startup summary.
+// In interactive terminals: prints the Rind banner and a human-readable startup summary.
 // In production pipelines (piped output): banner is suppressed; pino emits structured JSON.
 
 import { createProxyServer } from './server.js';

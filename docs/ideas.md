@@ -2,21 +2,21 @@
 
 ## Overview
 
-Aegis operates on a fundamental principle: **security through enforcement, not just detection**. While other tools rely on prompt-level controls that sophisticated attacks can bypass, Aegis enforces policies at the execution layer where agents actually operate.
+Rind operates on a fundamental principle: **security through enforcement, not just detection**. While other tools rely on prompt-level controls that sophisticated attacks can bypass, Rind enforces policies at the execution layer where agents actually operate.
 
 ---
 
 ## Architecture Option 1: LLM/MCP Proxy Gateway
 
 ### Concept
-Act as a transparent proxy between AI agents and their LLM backends and tool servers. All traffic flows through Aegis, enabling inspection, policy enforcement, and logging.
+Act as a transparent proxy between AI agents and their LLM backends and tool servers. All traffic flows through Rind, enabling inspection, policy enforcement, and logging.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         ENTERPRISE NETWORK                          │
 │                                                                     │
 │  ┌──────────┐    ┌──────────────────────────┐    ┌──────────────┐  │
-│  │  Agent   │───▶│      AEGIS PROXY         │───▶│  LLM APIs    │  │
+│  │  Agent   │───▶│      RIND PROXY         │───▶│  LLM APIs    │  │
 │  │  Client  │    │  • Policy Enforcement    │    │  (OpenAI,    │  │
 │  └──────────┘    │  • Prompt Inspection     │    │   Anthropic) │  │
 │                  │  • Response Validation   │    └──────────────┘  │
@@ -27,7 +27,7 @@ Act as a transparent proxy between AI agents and their LLM backends and tool ser
 │                             │                     └──────────────┘  │
 │                             ▼                                       │
 │                  ┌──────────────────────────┐                      │
-│                  │   AEGIS CONTROL PLANE    │                      │
+│                  │   RIND CONTROL PLANE    │                      │
 │                  │  • Dashboard             │                      │
 │                  │  • Policy Management     │                      │
 │                  │  • Agent Inventory       │                      │
@@ -65,7 +65,7 @@ Act as a transparent proxy between AI agents and their LLM backends and tool ser
 
 ### Comparison: Similar to ZScaler ZIA
 - ZIA proxies internet traffic for security
-- Aegis proxies AI traffic for security
+- Rind proxies AI traffic for security
 - Same model: transparent inspection and policy enforcement
 
 ### Pros
@@ -84,14 +84,14 @@ Act as a transparent proxy between AI agents and their LLM backends and tool ser
 ## Architecture Option 2: Endpoint Agent (Local Monitor)
 
 ### Concept
-Deploy an Aegis agent alongside AI agents on each endpoint/server. This agent monitors behavior, enforces policies at the OS level, and reports to the central control plane.
+Deploy an Rind agent alongside AI agents on each endpoint/server. This agent monitors behavior, enforces policies at the OS level, and reports to the central control plane.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         ENDPOINT / SERVER                           │
 │                                                                     │
 │  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                    AEGIS LOCAL AGENT                         │   │
+│  │                    RIND LOCAL AGENT                         │   │
 │  │  ┌─────────────────────────────────────────────────────┐    │   │
 │  │  │              ENFORCEMENT LAYER                       │    │   │
 │  │  │  • Process Sandboxing (seccomp, AppArmor, etc.)     │    │   │
@@ -116,7 +116,7 @@ Deploy an Aegis agent alongside AI agents on each endpoint/server. This agent mo
                              │
                              ▼
               ┌──────────────────────────┐
-              │   AEGIS CONTROL PLANE    │
+              │   RIND CONTROL PLANE    │
               │  (Cloud/On-Prem)         │
               └──────────────────────────┘
 ```
@@ -146,7 +146,7 @@ Deploy an Aegis agent alongside AI agents on each endpoint/server. This agent mo
 
 ### Comparison: Similar to EDR/Endpoint Security
 - CrowdStrike Falcon monitors endpoints for threats
-- Aegis monitors endpoints for AI agent behavior
+- Rind monitors endpoints for AI agent behavior
 - Same model: local agent with central management
 
 ### Pros
@@ -165,11 +165,11 @@ Deploy an Aegis agent alongside AI agents on each endpoint/server. This agent mo
 ## Architecture Option 3: Sandbox Cloud Environment
 
 ### Concept
-Provide a managed cloud environment where enterprises deploy their AI agents. Everything runs inside Aegis-controlled infrastructure with built-in security, monitoring, and policy enforcement.
+Provide a managed cloud environment where enterprises deploy their AI agents. Everything runs inside Rind-controlled infrastructure with built-in security, monitoring, and policy enforcement.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                      AEGIS SANDBOX CLOUD                            │
+│                      RIND SANDBOX CLOUD                            │
 │                                                                     │
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │                    COMPUTE CLUSTER                           │   │
@@ -181,7 +181,7 @@ Provide a managed cloud environment where enterprises deploy their AI agents. Ev
 │  │         │               │               │                    │   │
 │  │         ▼               ▼               ▼                    │   │
 │  │  ┌──────────────────────────────────────────────────────┐   │   │
-│  │  │           AEGIS ENFORCEMENT LAYER                     │   │   │
+│  │  │           RIND ENFORCEMENT LAYER                     │   │   │
 │  │  │  • Network Isolation between agents                   │   │   │
 │  │  │  • Per-agent filesystem isolation                     │   │   │
 │  │  │  • Egress filtering (what can agents access)         │   │   │
@@ -191,7 +191,7 @@ Provide a managed cloud environment where enterprises deploy their AI agents. Ev
 │  └─────────────────────────────────────────────────────────────┘   │
 │                                                                     │
 │  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                    AEGIS SERVICES                            │   │
+│  │                    RIND SERVICES                            │   │
 │  │  • LLM Gateway (pre-configured proxy)                       │   │
 │  │  • Secure Tool Execution Environment                         │   │
 │  │  • Secrets Management                                        │   │
@@ -221,7 +221,7 @@ Provide a managed cloud environment where enterprises deploy their AI agents. Ev
 - Ephemeral environments (can be destroyed and recreated)
 
 **Built-in Security**
-- All traffic goes through Aegis gateway by default
+- All traffic goes through Rind gateway by default
 - No configuration needed - security is the default
 - Automatic prompt injection detection
 - Built-in secrets management
@@ -303,7 +303,7 @@ Offer all three options to meet enterprises where they are:
 
 ## Product Components
 
-### 1. Aegis Console (Web Dashboard)
+### 1. Rind Console (Web Dashboard)
 - Agent inventory and management
 - Policy creation and management
 - Real-time monitoring dashboards
@@ -311,25 +311,25 @@ Offer all three options to meet enterprises where they are:
 - Analytics and reporting
 - User/team management
 
-### 2. Aegis Proxy
+### 2. Rind Proxy
 - Deployable as container, VM, or appliance
 - High-performance request processing
 - Policy enforcement engine
 - Logging and telemetry
 
-### 3. Aegis Agent
+### 3. Rind Agent
 - Lightweight endpoint agent
 - OS-level monitoring and enforcement
 - Secure communication with control plane
 - Auto-update capability
 
-### 4. Aegis Sandbox
+### 4. Rind Sandbox
 - Cloud compute environment
 - Container orchestration
 - Isolation and security controls
 - Integrated with console
 
-### 5. Aegis SDK
+### 5. Rind SDK
 - For agent developers
 - Easy registration and authentication
 - Policy-aware agent development

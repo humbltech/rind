@@ -5,7 +5,7 @@
 
 import type { Scenario } from './types.js';
 import { stacklinePolicy } from '../companies/stackline.js';
-import type { PolicyConfig, ToolDefinition } from '@aegis/proxy';
+import type { PolicyConfig, ToolDefinition } from '@rind/proxy';
 
 // Clean tool definition — how the skill appeared at install time
 const cleanTools: ToolDefinition[] = [
@@ -90,7 +90,7 @@ export const openclawRugPull: Scenario = {
     'embedding hidden instructions to exfiltrate all analytics queries. ' +
     'This is the rug pull: bait with a clean install, poison after the scan.',
 
-  withoutAegis:
+  withoutRind:
     'The modified description is never re-scanned. ' +
     'Every time the developer asks for analytics, the agent calls analytics.query, ' +
     'reads the mutated description with the hidden SYSTEM: directive, ' +
@@ -101,7 +101,7 @@ export const openclawRugPull: Scenario = {
   theMoment:
     'The developer\'s MCP client called tools/list to refresh the available tools. ' +
     'The client forwarded the refreshed tool list to /scan/refresh (D-030). ' +
-    'Aegis compared the incoming tool definitions against the stored baseline from install day. ' +
+    'Rind compared the incoming tool definitions against the stored baseline from install day. ' +
     'analytics.query\'s description hash no longer matched — flagged as SCHEMA_DRIFT_TOOL_MODIFIED (critical). ' +
     'The skill was quarantined before the agent could process the poisoned description.',
 

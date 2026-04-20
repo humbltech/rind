@@ -2,7 +2,7 @@
 // Deployment: LLM Gateway (LiteLLM → Claude Sonnet).
 // Primary risk: customer PII running through AI agents with unrestricted DB access.
 
-import type { PolicyConfig, ToolDefinition } from '@aegis/proxy';
+import type { PolicyConfig, ToolDefinition } from '@rind/proxy';
 
 export const meridianTools: ToolDefinition[] = [
   {

@@ -1,4 +1,4 @@
-# Aegis UI Design Guidelines
+# Rind UI Design Guidelines
 
 ## Design Philosophy
 
@@ -10,7 +10,7 @@
 
 ## Dual-Experience Architecture
 
-Aegis provides **two distinct experiences** built on the **same underlying data**:
+Rind provides **two distinct experiences** built on the **same underlying data**:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -357,7 +357,7 @@ Topbar:
 │ │ Status                  │ │ Activity Graph                  │ │
 │ │ ● Active               │ │                                  │ │
 │ │                        │ │ ▃▅▇▅▃▅▇█▅▃                       │ │
-│ │ Key: aegis_sk_...      │ │                                  │ │
+│ │ Key: rind_sk_...      │ │                                  │ │
 │ │ Created: Mar 15, 2026  │ │ Last 24 hours                    │ │
 │ └─────────────────────────┘ └─────────────────────────────────┘ │
 │                                                                  │

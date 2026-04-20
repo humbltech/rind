@@ -85,7 +85,7 @@ function TableRow({ entry, isNew }: { entry: ToolCallEntry; isNew: boolean }) {
         {entry.serverId}
       </td>
       <td className="px-4 py-3">
-        <span className="font-mono text-[12px] text-accent bg-[color-mix(in_srgb,var(--aegis-accent)_8%,transparent)] px-2 py-0.5 rounded">
+        <span className="font-mono text-[12px] text-accent bg-[color-mix(in_srgb,var(--rind-accent)_8%,transparent)] px-2 py-0.5 rounded">
           {entry.toolName}
         </span>
       </td>

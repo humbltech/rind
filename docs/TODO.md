@@ -1,4 +1,4 @@
-# Aegis TODO
+# Rind TODO
 
 ## Review & Implement
 
@@ -9,14 +9,14 @@
 **Reference**: Railway changelog (2026-04-17) — https://railway.com/changelog/2026-04-17-remote-mcp
 
 **Context**:
-Railway shipped native remote MCP support with interceptor middleware — meaning they sit in the path of every MCP connection and can log, inspect, and control access. This is exactly what Aegis's MCP proxy is designed to do, but we need to ensure our implementation matches (or exceeds) what infrastructure providers are now shipping natively.
+Railway shipped native remote MCP support with interceptor middleware — meaning they sit in the path of every MCP connection and can log, inspect, and control access. This is exactly what Rind's MCP proxy is designed to do, but we need to ensure our implementation matches (or exceeds) what infrastructure providers are now shipping natively.
 
 **What to implement / verify:**
 
 1. **Remote MCP transport interceptors** (HTTP/SSE)
    - Our existing `mcp-proxy.md` covers stdio/SSE/HTTP, but we need a concrete interceptor abstraction that wraps each transport
    - Each interceptor should fire hooks: `onConnect`, `onToolCall`, `onToolResult`, `onDisconnect`
-   - See: `aegis/proxy/interceptors/mcp.py` (planned in roadmap Week 9)
+   - See: `rind/proxy/interceptors/mcp.py` (planned in roadmap Week 9)
 
 2. **Per-connection access log**
    - Log: who connected (agent identity), to which MCP server, which tools were listed vs called, timestamps, duration
@@ -34,11 +34,11 @@ Railway shipped native remote MCP support with interceptor middleware — meanin
 
 5. **Competitor signal**
    - Railway shipping this natively means infra providers will start including basic MCP logging for free
-   - Aegis needs to differentiate on: policy enforcement (not just logging), cross-provider visibility, compliance exports, and anomaly detection
-   - Consider whether to position against this: "Railway logs it, Aegis governs it"
+   - Rind needs to differentiate on: policy enforcement (not just logging), cross-provider visibility, compliance exports, and anomaly detection
+   - Consider whether to position against this: "Railway logs it, Rind governs it"
 
 **Priority**: High — this is core MVP scope (Week 9 in roadmap)
 
-**Next step**: Review Railway's implementation details from the changelog, then finalize the interceptor interface in `aegis/proxy/interceptors/mcp.py` before starting Week 9 work.
+**Next step**: Review Railway's implementation details from the changelog, then finalize the interceptor interface in `rind/proxy/interceptors/mcp.py` before starting Week 9 work.
 
 ---

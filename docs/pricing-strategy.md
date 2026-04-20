@@ -1,4 +1,4 @@
-# Aegis Pricing Strategy
+# Rind Pricing Strategy
 
 ## Market Research: How Competitors Price
 
@@ -52,9 +52,9 @@
 
 ### Our Value Proposition
 
-**What's the cost of NOT having Aegis?**
+**What's the cost of NOT having Rind?**
 
-| Incident Type | Potential Cost | Aegis Prevention |
+| Incident Type | Potential Cost | Rind Prevention |
 |---------------|---------------|------------------|
 | Runaway agent costs | $47K+ per incident | Cost policies |
 | Data exposure (Meta-style) | $1M+ in remediation | Tool call policies |
@@ -62,7 +62,7 @@
 | Compliance failure | $1M+ fines | Audit trail, policies |
 | Prompt injection breach | $500K+ | Integrated detection |
 
-**If Aegis prevents ONE major incident per year, it pays for itself 10x.**
+**If Rind prevents ONE major incident per year, it pays for itself 10x.**
 
 ---
 
@@ -230,14 +230,14 @@ $0.30 per 1K additional evals
                   $0    $100   $500   $1000  $5000
                   |      |      |      |      |
 Cloudflare        ████ (free core)
-Aegis Free        ████
+Rind Free        ████
 LangSmith (1 seat)      ███
-Aegis Starter           ████
+Rind Starter           ████
 Langfuse Pro            █████
 Portkey Team                  ████████
-Aegis Team                    ██████
+Rind Team                    ██████
 Helicone Pro                  ███████
-Aegis Business                       █████████
+Rind Business                       █████████
 Datadog LLM                          ████████████████████
 Kong                                              ██████████████
 ```

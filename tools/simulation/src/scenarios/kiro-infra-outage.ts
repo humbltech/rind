@@ -5,7 +5,7 @@
 
 import type { Scenario } from './types.js';
 import { fortressTools, fortressPolicy } from '../companies/fortress.js';
-import type { PolicyConfig, ToolDefinition } from '@aegis/proxy';
+import type { PolicyConfig, ToolDefinition } from '@rind/proxy';
 
 const infraTools: ToolDefinition[] = [
   ...fortressTools,
@@ -105,7 +105,7 @@ export const kiroInfraOutage: Scenario = {
     'as unused due to a stale tag. ' +
     'In the real incident, this pattern caused a 13-hour production outage.',
 
-  withoutAegis:
+  withoutRind:
     'The agent calls infra.delete_resource on prod-db-cluster-primary without any confirmation. ' +
     'The production database is gone. Services begin failing within seconds. ' +
     'On-call engineers scramble for 13 hours to restore from backup. ' +
@@ -113,7 +113,7 @@ export const kiroInfraOutage: Scenario = {
     'an LLM misclassified a production resource as "unused" based on a stale tag.',
 
   theMoment:
-    'Aegis intercepted the infra.delete_resource call and returned REQUIRE_APPROVAL. ' +
+    'Rind intercepted the infra.delete_resource call and returned REQUIRE_APPROVAL. ' +
     'The agent received a 403 with approvalRequired: true. ' +
     'The on-call engineer received an alert: "AI agent wants to delete prod-db-cluster-primary." ' +
     'The engineer denied the request. The database survived. The 13-hour outage never happened.',

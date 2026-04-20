@@ -1,6 +1,6 @@
-# Aegis Technical Architecture
+# Rind Technical Architecture
 
-This directory contains the technical architecture documentation for the Aegis platform.
+This directory contains the technical architecture documentation for the Rind platform.
 
 ## Documents
 
@@ -15,7 +15,7 @@ This directory contains the technical architecture documentation for the Aegis p
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           AEGIS PLATFORM                                     │
+│                           RIND PLATFORM                                     │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │

@@ -1,17 +1,17 @@
-# Aegis Project Setup Guide
+# Rind Project Setup Guide
 
 ## Monorepo Structure
 
 ```
-aegis/
+rind/
 ├── apps/
 │   ├── dashboard/           # Next.js 15 dashboard
 │   ├── api/                 # Hono API server
 │   └── proxy/               # MCP Proxy server
 │
 ├── packages/
-│   ├── sdk-langchain/       # @aegis/langchain SDK
-│   ├── sdk-core/            # @aegis/core shared types
+│   ├── sdk-langchain/       # @rind/langchain SDK
+│   ├── sdk-core/            # @rind/core shared types
 │   ├── policy-engine/       # Policy evaluation engine
 │   ├── db/                  # Database schema & migrations
 │   └── ui/                  # Shared UI components
@@ -66,7 +66,7 @@ aegis/
 
 ```bash
 # Create root directory
-mkdir aegis && cd aegis
+mkdir rind && cd rind
 
 # Initialize pnpm workspace
 pnpm init
@@ -82,7 +82,7 @@ EOF
 # Create root package.json
 cat > package.json << 'EOF'
 {
-  "name": "aegis",
+  "name": "rind",
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "scripts": {
@@ -194,7 +194,7 @@ EOF
 
 ---
 
-## Package: @aegis/core
+## Package: @rind/core
 
 Shared types and utilities.
 
@@ -207,7 +207,7 @@ pnpm init
 ```json
 // packages/sdk-core/package.json
 {
-  "name": "@aegis/core",
+  "name": "@rind/core",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -241,7 +241,7 @@ export * from './types/policy';
 export type SpanType = 'llm' | 'tool' | 'chain' | 'retriever' | 'agent' | 'graph';
 export type SpanStatus = 'running' | 'success' | 'error';
 
-export interface AegisSpan {
+export interface RindSpan {
   traceId: string;
   spanId: string;
   parentSpanId?: string;
@@ -290,7 +290,7 @@ export interface SpanEvent {
 
 ```typescript
 // packages/sdk-core/src/types/config.ts
-export interface AegisConfig {
+export interface RindConfig {
   apiKey: string;
   endpoint?: string;
   projectId?: string;
@@ -310,8 +310,8 @@ export interface AegisConfig {
   otlpHeaders?: Record<string, string>;
 }
 
-export const DEFAULT_CONFIG: Partial<AegisConfig> = {
-  endpoint: 'https://api.aegis.security',
+export const DEFAULT_CONFIG: Partial<RindConfig> = {
+  endpoint: 'https://api.rind.dev',
   environment: 'production',
   captureInput: true,
   captureOutput: true,
@@ -326,7 +326,7 @@ export const DEFAULT_CONFIG: Partial<AegisConfig> = {
 
 ---
 
-## Package: @aegis/langchain
+## Package: @rind/langchain
 
 LangChain SDK implementation.
 
@@ -339,7 +339,7 @@ pnpm init
 ```json
 // packages/sdk-langchain/package.json
 {
-  "name": "@aegis/langchain",
+  "name": "@rind/langchain",
   "version": "0.0.1",
   "type": "module",
   "exports": {
@@ -358,7 +358,7 @@ pnpm init
     "@langchain/core": ">=0.2.0"
   },
   "dependencies": {
-    "@aegis/core": "workspace:*"
+    "@rind/core": "workspace:*"
   },
   "devDependencies": {
     "@langchain/core": "^0.3.0",
@@ -383,7 +383,7 @@ cd dashboard
 // apps/dashboard/package.json additions
 {
   "dependencies": {
-    "@aegis/core": "workspace:*",
+    "@rind/core": "workspace:*",
     "@supabase/ssr": "^0.5.0",
     "@supabase/supabase-js": "^2.45.0"
   }
@@ -403,7 +403,7 @@ pnpm init
 ```json
 // apps/api/package.json
 {
-  "name": "@aegis/api",
+  "name": "@rind/api",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -414,7 +414,7 @@ pnpm init
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aegis/core": "workspace:*",
+    "@rind/core": "workspace:*",
     "@hono/node-server": "^1.13.0",
     "hono": "^4.6.0",
     "pino": "^9.5.0",
@@ -599,7 +599,7 @@ UPSTASH_REDIS_REST_TOKEN=xxx
 
 # API
 API_URL=http://localhost:3001
-AEGIS_SECRET_KEY=your-secret-key
+RIND_SECRET_KEY=your-secret-key
 
 # Optional: OpenTelemetry
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
@@ -677,7 +677,7 @@ jobs:
 After setup, the development sequence is:
 
 ### Week 1-2: LangChain SDK
-1. Implement `AegisCallbackHandler`
+1. Implement `RindCallbackHandler`
 2. Add span builder with parent-child tracking
 3. Create async exporter with batching
 4. Write tests

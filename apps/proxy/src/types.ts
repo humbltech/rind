@@ -1,4 +1,4 @@
-// Shared types for the Aegis MCP proxy
+// Shared types for the Rind MCP proxy
 // All events are structurally compatible with OpenTelemetry spans for future export
 
 export type PolicyAction = 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL' | 'RATE_LIMIT';
@@ -182,13 +182,13 @@ export interface ProxyConfig {
   port: number;
   agentId: string;
   upstreamMcpUrl: string; // the MCP server to proxy to
-  policyFile?: string; // path to aegis.policy.yaml
+  policyFile?: string; // path to rind.policy.yaml
   policy?: PolicyConfig; // in-memory policy — takes precedence over policyFile; used in tests and simulation
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
   // Optional DI override for the forward function — used in tests and simulation
   forwardFn?: ForwardFn;
   // D-018: observability pipeline
-  auditLogPath?: string; // path to JSONL audit log (default: ./aegis-audit.jsonl)
+  auditLogPath?: string; // path to JSONL audit log (default: ./rind-audit.jsonl)
   ringBufferSize?: number; // max events in in-memory ring buffer (default: 10_000)
   // D-020: audit configuration
   auditIncludeOutput?: boolean; // include tool output in audit entries (default: false — privacy)

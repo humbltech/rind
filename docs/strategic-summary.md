@@ -1,8 +1,8 @@
-# Aegis Strategic Summary
+# Rind Strategic Summary
 
 ## Executive Overview
 
-Based on comprehensive research across competitors, emerging players, user pain points, and go-to-market strategies, here is the synthesized strategic plan for Aegis.
+Based on comprehensive research across competitors, emerging players, user pain points, and go-to-market strategies, here is the synthesized strategic plan for Rind.
 
 ---
 
@@ -39,7 +39,7 @@ Based on comprehensive research across competitors, emerging players, user pain 
 
 ### Top Competitors: What They Do Well vs. Gaps
 
-| Competitor | Strength to Learn From | Gap Aegis Exploits |
+| Competitor | Strength to Learn From | Gap Rind Exploits |
 |------------|----------------------|-------------------|
 | **Lakera** | Developer UX, viral Gandalf game | Detection-only, no OS enforcement |
 | **Prompt Security** | Shadow AI discovery, MCP monitoring | No runtime containment |
@@ -62,7 +62,7 @@ Based on comprehensive research across competitors, emerging players, user pain 
 
 ### Top 6 Frustrations Enterprises Have
 
-| Pain Theme | Key Quote | Aegis Solution |
+| Pain Theme | Key Quote | Rind Solution |
 |------------|-----------|----------------|
 | **Can't Stop Agents** | "Can monitor but can't stop them when something goes wrong" | OS-level kill switch |
 | **Detection Bypass** | "Prompt injection tools achieve 100% evasion by researchers" | Execution-layer enforcement |
@@ -81,19 +81,19 @@ Based on comprehensive research across competitors, emerging players, user pain 
 
 ---
 
-## Aegis Differentiation
+## Rind Differentiation
 
 ### The One Thing We Do That No One Else Does
 > **Enforcement at the execution layer - policies agents literally cannot bypass**
 
-While competitors detect and alert at the prompt layer (which can be bypassed), Aegis enforces at the OS level:
+While competitors detect and alert at the prompt layer (which can be bypassed), Rind enforces at the OS level:
 - What files agents can read/write
 - What network endpoints agents can reach
 - What commands agents can execute
 - Resource limits (CPU, memory, disk)
 
 ### Positioning Statement
-> "Aegis is the first AI agent security platform that actually enforces policies at the execution layer. While other tools rely on prompt-level detection that sophisticated attacks can bypass, Aegis controls what agents can do at the OS level. We don't just ask agents to behave; we ensure they can't misbehave."
+> "Rind is the first AI agent security platform that actually enforces policies at the execution layer. While other tools rely on prompt-level detection that sophisticated attacks can bypass, Rind controls what agents can do at the OS level. We don't just ask agents to behave; we ensure they can't misbehave."
 
 ### Messaging Options
 | Angle | Tagline | Use When |
@@ -101,7 +101,7 @@ While competitors detect and alert at the prompt layer (which can be bypassed), 
 | Enforcement | "Don't Just Detect. Enforce." | Competing with Lakera/Prompt Security |
 | Control | "The Kill Switch for AI Agents" | Enterprise CISO conversations |
 | Trust | "The Trust Layer for AI Agents" | Platform positioning |
-| Identity | "What Okta Did for Humans, Aegis Does for Agents" | Identity-focused buyers |
+| Identity | "What Okta Did for Humans, Rind Does for Agents" | Identity-focused buyers |
 
 ---
 
@@ -114,7 +114,7 @@ While competitors detect and alert at the prompt layer (which can be bypassed), 
 |--------|---------|
 | **Product** | Launch proxy gateway MVP with basic policy engine |
 | **Pricing** | Free tier (5 agents), Paid tiers: Starter $99/mo, Team $399/mo, Business $999/mo |
-| **Marketing** | Launch "Aegis Arena" viral challenge, begin content engine |
+| **Marketing** | Launch "Rind Arena" viral challenge, begin content engine |
 | **Sales** | Founder-led sales to 50 target accounts |
 | **Partnerships** | LangChain, CrewAI SDK integrations |
 
@@ -139,12 +139,12 @@ While competitors detect and alert at the prompt layer (which can be bypassed), 
 
 ### What Works in AI Security (Proven)
 
-| Channel | Why It Works | Aegis Tactic |
+| Channel | Why It Works | Rind Tactic |
 |---------|--------------|--------------|
-| **Viral Game** | Lakera's Gandalf got 1M+ users | "Aegis Arena" - escape the sandbox |
+| **Viral Game** | Lakera's Gandalf got 1M+ users | "Rind Arena" - escape the sandbox |
 | **Programmatic SEO** | Wiz got 50K+ monthly visitors | Academy pages, vulnerability database |
 | **Conference Presence** | RSA Innovation Sandbox = $17B raised by alumni | Target RSA 2027, Black Hat |
-| **Open Source** | Builds trust, drives adoption | Release "Aegis Scanner" for MCP |
+| **Open Source** | Builds trust, drives adoption | Release "Rind Scanner" for MCP |
 
 ### Content Priority
 1. **"State of AI Agent Security" Report** - Annual thought leadership
@@ -192,12 +192,12 @@ While competitors detect and alert at the prompt layer (which can be bypassed), 
 ### Month 2: Build & Validate
 - [ ] Ship proxy MVP to 3 design partners
 - [ ] Start content production (2 posts/week)
-- [ ] Design "Aegis Arena" gamified challenge
+- [ ] Design "Rind Arena" gamified challenge
 - [ ] Begin Gartner analyst briefings
 
 ### Month 3: Launch
 - [ ] Public launch of Community tier
-- [ ] Launch "Aegis Arena" viral challenge
+- [ ] Launch "Rind Arena" viral challenge
 - [ ] First 10 paying customers (Team tier)
 - [ ] Document 3 case studies
 

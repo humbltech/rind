@@ -1,8 +1,8 @@
-# Aegis Policy DSL Specification
+# Rind Policy DSL Specification
 
 ## Overview
 
-The Aegis Policy DSL is a YAML-based language for defining runtime policies for AI agents. It covers:
+The Rind Policy DSL is a YAML-based language for defining runtime policies for AI agents. It covers:
 
 - **Tool Call Policies** - Control what tools agents can use and how
 - **Prompt Policies** - Filter, transform, or block prompts
@@ -769,7 +769,7 @@ policies:
 ```yaml
 integrations:
   nemo:
-    config_path: "/etc/aegis/nemo/"
+    config_path: "/etc/rind/nemo/"
 
 policies:
   - name: "nemo-content-check"

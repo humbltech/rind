@@ -1,4 +1,4 @@
-# Aegis Technical Strategy: Grounded Analysis
+# Rind Technical Strategy: Grounded Analysis
 
 Based on comprehensive research into enterprise deployment patterns, MCP security landscape, OS vs prompt-level feasibility, and feature prioritization.
 
@@ -97,7 +97,7 @@ Based on comprehensive research into enterprise deployment patterns, MCP securit
 
 ```
 ┌─────────────────────────────────────────────┐
-│              AEGIS MCP PROXY                │
+│              RIND MCP PROXY                │
 ├─────────────────────────────────────────────┤
 │ • Authentication (OAuth 2.1 with PKCE)      │
 │ • Tool-level authorization (RBAC)           │
@@ -243,7 +243,7 @@ Why this wins:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        AEGIS PLATFORM                            │
+│                        RIND PLATFORM                            │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  ┌───────────────────┐  ┌───────────────────┐                  │

@@ -1,6 +1,6 @@
-# Aegis — Agent Deployment Patterns & Installation Experience
+# Rind — Agent Deployment Patterns & Installation Experience
 
-> Research-based document mapping how AI agents are built, deployed, and permissioned across three persona segments. Used to design the Aegis installation and monitoring experience to be "wow" for each persona.
+> Research-based document mapping how AI agents are built, deployed, and permissioned across three persona segments. Used to design the Rind installation and monitoring experience to be "wow" for each persona.
 
 **Last Updated**: April 18, 2026
 **Status**: Pre-code — informs onboarding flow and SDK/proxy design
@@ -9,7 +9,7 @@
 
 ## Summary: What We Learned
 
-Three personas deploy agents in fundamentally different ways — different infrastructure, different permission models, different pain points. The Aegis installation experience must branch at step one and feel native to each persona's existing workflow.
+Three personas deploy agents in fundamentally different ways — different infrastructure, different permission models, different pain points. The Rind installation experience must branch at step one and feel native to each persona's existing workflow.
 
 | Aspect | Indie Developer | Startup Team | Enterprise |
 |--------|----------------|--------------|------------|
@@ -97,40 +97,40 @@ DATABASE_URL=postgres://...
 
 **Installation flow**:
 ```bash
-npm install @aegis/langchain
-# Python users: pip install aegis-sdk (HTTP wrapper of cloud API, not a proxy)
+npm install @rind/langchain
+# Python users: pip install rind-sdk (HTTP wrapper of cloud API, not a proxy)
 ```
 
 ```typescript
 // 2-line change to existing agent code (TypeScript)
-import { AegisCallbackHandler } from '@aegis/langchain';
+import { RindCallbackHandler } from '@rind/langchain';
 
-const aegis = new AegisCallbackHandler({
-  apiKey: process.env.AEGIS_API_KEY,  // or omit for local-only free tier
+const rind = new RindCallbackHandler({
+  apiKey: process.env.RIND_API_KEY,  // or omit for local-only free tier
   costLimitUsd: 10.0,
   loopDetection: true,
 });
 
 const agent = createReactAgent({
-  llm: new ChatOpenAI({ callbacks: [aegis] }),
+  llm: new ChatOpenAI({ callbacks: [rind] }),
   tools,
 });
 ```
 
 ```python
 # Python (LangChain) — uses cloud API wrapper
-from aegis import AegisCallbackHandler
+from rind import RindCallbackHandler
 
-aegis = AegisCallbackHandler(
-    api_key=os.getenv("AEGIS_API_KEY"),
+rind = RindCallbackHandler(
+    api_key=os.getenv("RIND_API_KEY"),
     cost_limit_usd=10.0,
     loop_detection=True,
 )
-agent = create_react_agent(llm, tools, callbacks=[aegis])
+agent = create_react_agent(llm, tools, callbacks=[rind])
 ```
 
 **What happens immediately**:
-- First tool call appears in the Aegis dashboard within seconds
+- First tool call appears in the Rind dashboard within seconds
 - Cost counter increments in real time
 - If agent loops (same tool, same input >3 times), blocked automatically
 
@@ -144,7 +144,7 @@ Dashboard notification:
 ```
 
 **Free tier onboarding sequence**:
-1. `npm install @aegis/langchain` (or `pip install aegis-sdk` for Python) — 30 seconds
+1. `npm install @rind/langchain` (or `pip install rind-sdk` for Python) — 30 seconds
 2. Add 2 lines to agent code — 2 minutes
 3. Run agent once — triggers dashboard population
 4. Email: "Your agent just did something interesting. View it →" — 5 minutes
@@ -154,7 +154,7 @@ Dashboard notification:
 **Permission creation for indie devs**: Code-first. No dashboard configuration needed.
 ```python
 # Optional: set rules in code
-aegis = AegisSDK(
+rind = RindSDK(
     cost_limit_usd=10.0,          # block if over $10
     block_destructive=True,        # require approval for DELETE operations
     loop_detection=True            # block after 3 identical calls
@@ -247,22 +247,22 @@ agent_service IAM role: {
 
 **Installation flow**:
 ```bash
-npm install @aegis/langchain
-# Python: pip install aegis-sdk
+npm install @rind/langchain
+# Python: pip install rind-sdk
 ```
 
 Add to existing agent code (1 line per agent):
 ```python
-from aegis import AegisSDK
+from rind import RindSDK
 
-aegis = AegisSDK(team_id="my-startup", agent_id="crm-agent-prod")
-tools = aegis.wrap(tools, policy="crm-agent-policy")
+rind = RindSDK(team_id="my-startup", agent_id="crm-agent-prod")
+tools = rind.wrap(tools, policy="crm-agent-policy")
 ```
 
 Or for proxy approach, just set an env var (no code change):
 ```bash
-AEGIS_PROXY_URL=https://proxy.aegis.dev/sk-your-key
-MCP_PROXY_URL=https://proxy.aegis.dev/sk-your-key/mcp
+RIND_PROXY_URL=https://proxy.rind.dev/sk-your-key
+MCP_PROXY_URL=https://proxy.rind.dev/sk-your-key/mcp
 ```
 
 **Team dashboard activates**:
@@ -288,7 +288,7 @@ Team alert (Slack):
 Code-first default:
 ```python
 # In agent definition
-aegis.policy("crm-agent-policy", {
+rind.policy("crm-agent-policy", {
     "allow": ["crm.read", "crm.write", "email.send"],
     "require_approval": ["customer.delete", "bulk.*"],
     "deny": ["payments.*", "admin.*"],
@@ -399,7 +399,7 @@ The problem: this level of control exists for **cloud infrastructure** permissio
 
 **Installation flow** (Self-hosted):
 ```bash
-helm install aegis aegis/aegis-proxy \
+helm install rind rind/rind-proxy \
   --set auth.provider=okta \
   --set audit.siem=splunk \
   --set vault.address=https://vault.internal.corp
@@ -410,8 +410,8 @@ helm install aegis aegis/aegis-proxy \
 # In existing K8s deployment
 env:
   - name: MCP_PROXY_URL
-    value: "https://proxy.aegis.dev/sk-ent-key"
-  - name: AEGIS_ORG_ID
+    value: "https://proxy.rind.dev/sk-ent-key"
+  - name: RIND_ORG_ID
     value: "acme-corp"
 ```
 
@@ -446,8 +446,8 @@ Security dashboard (first login):
 4. Agent is now governed without any code change
 
 ```yaml
-# Aegis policy (checked into Git)
-apiVersion: aegis.dev/v1
+# Rind policy (checked into Git)
+apiVersion: rind.dev/v1
 kind: AgentPolicy
 metadata:
   name: crm-agent-policy
@@ -477,7 +477,7 @@ spec:
 
 ---
 
-## Cross-Persona: Where Aegis Fits in Each Flow
+## Cross-Persona: Where Rind Fits in Each Flow
 
 ### Code-First vs. Dashboard-First
 
@@ -491,7 +491,7 @@ spec:
 
 ```
 INDIE:
-  Agent code → aegis.wrap(tools, block_destructive=True)
+  Agent code → rind.wrap(tools, block_destructive=True)
   → No dashboard setup needed
   → Can graduate to YAML policies later
 
@@ -513,19 +513,19 @@ ENTERPRISE:
 
 ```
 INDIE — Path 1: SDK Only
-  npm install @aegis/langchain  (or pip install aegis-sdk for Python)
+  npm install @rind/langchain  (or pip install rind-sdk for Python)
   Add 2 lines → run agent → "oh shit" moment in 5 min
   No proxy, no Docker, no signup required for local testing
   Free tier forever for single-agent hobbyists
 
 STARTUP — Path 2: SDK + Cloud Proxy
-  npm install @aegis/langchain + AEGIS_PROXY_URL env var
+  npm install @rind/langchain + RIND_PROXY_URL env var
   All Path 1 features + MCP auth + server allowlists
-  No Docker; uses Aegis hosted proxy
+  No Docker; uses Rind hosted proxy
   Team dashboard activated immediately
 
 ENTERPRISE — Path 3: Self-Hosted Proxy
-  helm install aegis-proxy
+  helm install rind-proxy
   SSO + SIEM + Vault integration
   GitOps policy management
   Data never leaves their infrastructure
@@ -540,7 +540,7 @@ ENTERPRISE — Path 3: Self-Hosted Proxy
 
 Agents must be first-class security principals — not just "a process running with the developer's API key."
 
-| Without Agent Identity | With Agent Identity (Aegis) |
+| Without Agent Identity | With Agent Identity (Rind) |
 |------------------------|----------------------------|
 | Agent = developer's credentials | Agent has unique identity: `agent-prod-crm-001` |
 | Can't audit what agent did vs. developer | Full audit trail per agent |
@@ -548,7 +548,7 @@ Agents must be first-class security principals — not just "a process running w
 | Agent inherits all developer's permissions | Agent has minimal necessary permissions |
 | Cost billed to organization | Cost attributed to specific agent |
 
-### Identity Components in Aegis
+### Identity Components in Rind
 
 ```yaml
 agent:
@@ -564,19 +564,19 @@ agent:
 
 ### How Identity Is Created Per Persona
 
-**Indie**: Auto-generated from `AegisSDK()` initialization. One token per agent file.
+**Indie**: Auto-generated from `RindSDK()` initialization. One token per agent file.
 
 **Startup**: Created in dashboard with role assignment. Engineers reference by name in code:
 ```python
-aegis = AegisSDK(agent_id="crm-agent-prod")  # pulls policy from cloud
+rind = RindSDK(agent_id="crm-agent-prod")  # pulls policy from cloud
 ```
 
-**Enterprise**: Created via GitOps declaration. Aegis issues short-lived tokens at pod startup via Vault integration:
+**Enterprise**: Created via GitOps declaration. Rind issues short-lived tokens at pod startup via Vault integration:
 ```yaml
 annotations:
-  aegis.dev/agent-id: "agent-prod-crm-001"
-  aegis.dev/policy: "crm-agent-policy"
-  vault.hashicorp.com/agent-inject: "true"  # Vault injects Aegis token at startup
+  rind.dev/agent-id: "agent-prod-crm-001"
+  rind.dev/policy: "crm-agent-policy"
+  vault.hashicorp.com/agent-inject: "true"  # Vault injects Rind token at startup
 ```
 
 ---
@@ -587,12 +587,12 @@ annotations:
 
 ```python
 from langchain.agents import create_react_agent
-from aegis.integrations.langchain import AegisCallbackHandler, aegis_tools
+from rind.integrations.langchain import RindCallbackHandler, rind_tools
 
 agent = create_react_agent(
     llm=llm,
-    tools=aegis_tools(tools, agent_id="crm-agent"),  # wrap tools
-    callbacks=[AegisCallbackHandler()]                # capture traces
+    tools=rind_tools(tools, agent_id="crm-agent"),  # wrap tools
+    callbacks=[RindCallbackHandler()]                # capture traces
 )
 ```
 
@@ -600,12 +600,12 @@ agent = create_react_agent(
 
 ```python
 from crewai import Agent, Crew
-from aegis.integrations.crewai import AegisCrewMonitor
+from rind.integrations.crewai import RindCrewMonitor
 
 crew = Crew(
     agents=[agent1, agent2],
     tasks=[task1, task2],
-    callbacks=[AegisCrewMonitor(team_id="my-startup")]
+    callbacks=[RindCrewMonitor(team_id="my-startup")]
 )
 ```
 
@@ -613,11 +613,11 @@ crew = Crew(
 
 ```python
 from openai import OpenAI
-from aegis.integrations.openai import aegis_functions
+from rind.integrations.openai import rind_functions
 
 client = OpenAI()
 assistant = client.beta.assistants.create(
-    tools=aegis_functions(my_tools, agent_id="support-assistant"),
+    tools=rind_functions(my_tools, agent_id="support-assistant"),
     model="gpt-4o"
 )
 ```
@@ -625,10 +625,10 @@ assistant = client.beta.assistants.create(
 ### Bedrock Agents (AWS)
 
 ```python
-# Aegis MCP proxy intercepts at network layer
+# Rind MCP proxy intercepts at network layer
 # No SDK changes needed for Bedrock
 # Set proxy in Bedrock agent config:
-# mcp_endpoint: "https://proxy.aegis.dev/sk-key/mcp"
+# mcp_endpoint: "https://proxy.rind.dev/sk-key/mcp"
 ```
 
 ---
@@ -639,7 +639,7 @@ These require design partner conversations to validate:
 
 | Question | Why It Matters | Priority |
 |---------|---------------|---------|
-| Do indie devs discover Aegis via CLI scanner (`npx aegis-scan`) or SDK? | Shapes GTM sequence | High |
+| Do indie devs discover Rind via CLI scanner (`npx rind-scan`) or SDK? | Shapes GTM sequence | High |
 | Do startups want code-first policy or dashboard-first? | Shapes onboarding flow | High |
 | Will enterprises accept cloud-hosted proxy or require self-hosted from day one? | Shapes infrastructure build order | High |
 | What's the first MCP server most startups connect? | Shapes which integrations to prioritize | Medium |

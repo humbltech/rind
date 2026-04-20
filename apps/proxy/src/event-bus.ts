@@ -10,7 +10,7 @@ import type { ToolCallEvent, ToolResponseEvent, ScanResult, Session, AuditEntry 
 
 // ─── Event map ───────────────────────────────────────────────────────────────
 
-export interface AegisEventMap {
+export interface RindEventMap {
   'tool:call': ToolCallEvent;
   'tool:response': ToolResponseEvent;
   'tool:blocked': { event: ToolCallEvent; action: string; reason?: string };
@@ -21,11 +21,11 @@ export interface AegisEventMap {
   'audit': AuditEntry;
 }
 
-type EventHandler<K extends keyof AegisEventMap> = (payload: AegisEventMap[K]) => void;
+type EventHandler<K extends keyof RindEventMap> = (payload: RindEventMap[K]) => void;
 
 // ─── Bus ─────────────────────────────────────────────────────────────────────
 
-export class AegisEventBus {
+export class RindEventBus {
   private emitter = new EventEmitter();
   private onError: (event: string, err: unknown) => void;
 
@@ -34,17 +34,17 @@ export class AegisEventBus {
     this.emitter.setMaxListeners(50);
   }
 
-  emit<K extends keyof AegisEventMap>(event: K, payload: AegisEventMap[K]): void {
+  emit<K extends keyof RindEventMap>(event: K, payload: RindEventMap[K]): void {
     this.emitter.emit(event, payload);
   }
 
   /** Subscribe to an event. Returns an unsubscribe function. */
-  on<K extends keyof AegisEventMap>(event: K, handler: EventHandler<K>): () => void {
+  on<K extends keyof RindEventMap>(event: K, handler: EventHandler<K>): () => void {
     const onErr = this.onError;
     const eventStr = event;
 
     // Wrap to catch subscriber errors — a crashing subscriber never blocks the pipeline
-    const wrapper = (payload: AegisEventMap[K]): void => {
+    const wrapper = (payload: RindEventMap[K]): void => {
       try {
         handler(payload);
       } catch (err) {

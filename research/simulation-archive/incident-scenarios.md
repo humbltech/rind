@@ -1,6 +1,6 @@
 # Incident Scenarios — Archive
 
-> Source: `aegis-simulation/incidents/` (code deleted April 2026, in git history if needed)
+> Source: `rind-simulation/incidents/` (code deleted April 2026, in git history if needed)
 > These scenarios are used as the basis for the TypeScript simulation in `tools/simulation/`.
 
 ---
@@ -27,13 +27,13 @@ Database: 2,847 records deleted
 Discovery: 3 hours later, during a support call
 ```
 
-### Without Aegis
+### Without Rind
 - Agent issues DROP TABLE directly
 - No confirmation prompt
 - No audit trail of who/what caused it
 - Discovery only through user complaints
 
-### With Aegis (Policy: block-destructive)
+### With Rind (Policy: block-destructive)
 - Tool call to `sql_execute` with DROP TABLE pattern → DENY
 - Reason: matches pattern ["drop", "truncate", "destroy"]
 - Alert sent immediately
@@ -69,12 +69,12 @@ Outage: 13 hours, multiple services offline
 Cost: engineering time + customer impact
 ```
 
-### Without Aegis
+### Without Rind
 - No gate on infrastructure-modifying commands
 - "Unused" classification done by LLM — can be wrong
 - No human approval for destructive infra changes
 
-### With Aegis (Policy: require-approval on infra changes)
+### With Rind (Policy: require-approval on infra changes)
 - Tool call to `aws.delete_resource` → REQUIRE_APPROVAL
 - Waits for human confirmation
 - Times out to DENY if no response within 30 minutes
@@ -111,13 +111,13 @@ Agent executes hidden instructions:
 Data exfiltrated. User sees only: "Here are your email summaries..."
 ```
 
-### Without Aegis
+### Without Rind
 - Agent follows injected instructions silently
 - Malicious POST to external URL succeeds
 - User has no indication anything happened
 - Discovery: when the attacker uses the data
 
-### With Aegis (Two-layer defense)
+### With Rind (Two-layer defense)
 1. **Response inspector**: Tool response from `email.read` contains injection pattern → BLOCKED_THREAT
 2. **Exfil block**: Tool call to `http.post` with external URL → DENY
 
@@ -155,13 +155,13 @@ Agent A: "What's the status of task X?" ← Loop
 Total cost: $47,000
 ```
 
-### Without Aegis
+### Without Rind
 - No loop detection
 - No cost limit per session
 - No per-agent daily budget
 - Discovery: credit card statement
 
-### With Aegis (Session cost limit + loop detection)
+### With Rind (Session cost limit + loop detection)
 - Session `estimatedCostUsd` exceeds `costLimitUsd` → block next call
 - Same `agentId + toolName + inputHash` seen > N times in session → DENY with loop detection message
 - Alert at 50%, 80%, 100% of budget
@@ -197,12 +197,12 @@ Agent executes shell command via terminal tool
 Attacker's payload runs on developer's machine
 ```
 
-### Without Aegis
+### Without Rind
 - Agent executes arbitrary shell commands
 - No validation of command source
 - Attacker gains code execution
 
-### With Aegis (Shell execution block + response inspection)
+### With Rind (Shell execution block + response inspection)
 1. **Scanner**: `code.execute` tool flagged as `OVER_PERMISSIONED` (critical) at scan-on-connect
 2. **Response inspector**: Code review response contains shell execution directive → BLOCKED_THREAT
 3. **Request inspector**: If input to `terminal.run` contains injected command → BLOCKED_INJECTION
@@ -216,7 +216,7 @@ Attacker's payload runs on developer's machine
 
 ## Summary Table
 
-| Incident | CVE/Ref | Damage | Aegis Defense Layer | Scenario Priority |
+| Incident | CVE/Ref | Damage | Rind Defense Layer | Scenario Priority |
 |----------|---------|--------|---------------------|-------------------|
 | Replit DB Deletion | #1152 | 2,847 records deleted | Policy: block-destructive | **P0** — Week 1 |
 | EchoLeak | CVE-2025-32711 | Data theft | Response inspector + exfil policy | **P0** — Week 1 |

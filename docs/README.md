@@ -1,4 +1,4 @@
-# Aegis Documentation Index
+# Rind Documentation Index
 
 **Last Updated:** April 2026
 
@@ -17,7 +17,7 @@
 ## Documentation Structure
 
 ```
-aegis/docs/
+rind/docs/
 ├── README.md                          ← You are here
 ├── product-spec.md                    ← Core product specification
 ├── technical-strategy.md              ← Technical decisions & roadmap
@@ -39,7 +39,7 @@ aegis/docs/
     ├── simulation-scenarios.md        ← Test scenarios
     └── simulation-technical-specs.md  ← Simulation tech details
 
-aegis/research/
+rind/research/
 ├── competitive-analysis-lakera-2026.md    ← Lakera deep dive (new)
 ├── market-targeting-rsac-2026.md          ← Market analysis (new)
 ├── case-studies-incident-prevention.md    ← Real incidents & prevention (new)
@@ -57,7 +57,7 @@ aegis/research/
 |----------|-------------|
 | [Market Targeting](../research/market-targeting-rsac-2026.md) | Why mid-market, not SMB. ICP definitions. |
 | [Competitive Analysis](../research/competitive-analysis-lakera-2026.md) | Lakera features, Check Point acquisition impact |
-| [Case Studies](../research/case-studies-incident-prevention.md) | Real incidents, how Aegis prevents them |
+| [Case Studies](../research/case-studies-incident-prevention.md) | Real incidents, how Rind prevents them |
 | [GTM Strategy](./gtm-strategy.md) | Go-to-market approach |
 
 ### Product & Architecture
@@ -86,7 +86,7 @@ aegis/research/
 1. **[competitive-analysis-lakera-2026.md](../research/competitive-analysis-lakera-2026.md)**
    - Lakera technical specs (98% detection, <50ms latency)
    - Check Point acquisition analysis ($300M)
-   - Feature gap analysis (where Aegis differentiates)
+   - Feature gap analysis (where Rind differentiates)
    - Pricing comparison
 
 2. **[market-targeting-rsac-2026.md](../research/market-targeting-rsac-2026.md)**
@@ -173,9 +173,9 @@ Agent Connects → Discover Tools → Classify (Catalog or AI)
 
 ## Key Differentiators
 
-### Aegis vs. Lakera
+### Rind vs. Lakera
 
-| Capability | Lakera | Aegis |
+| Capability | Lakera | Rind |
 |------------|--------|-------|
 | Prompt injection | ✅ Yes | ✅ Integrate |
 | Tool call control | ❌ No | ✅ **Yes** |

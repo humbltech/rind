@@ -1,6 +1,6 @@
 # Policy Examples — Archive
 
-> Source: `aegis-simulation/incidents/aegis-policies/` (code deleted April 2026)
+> Source: `rind-simulation/incidents/rind-policies/` (code deleted April 2026)
 > These policy examples are referenced when building the TypeScript simulation's `fixtures/policies.ts`.
 > Note: The policy YAML format used here is aspirational (Phase 2+ spec). Phase 1 policy format is simpler
 > (see `apps/proxy/src/policy/loader.ts` for the current Zod schema).
@@ -29,7 +29,7 @@ policies:
 
 ```yaml
 # Phase 2+ aspirational format (parameter matching, alerts, templates)
-apiVersion: aegis/v1
+apiVersion: rind/v1
 kind: SecurityPolicy
 metadata:
   name: sql-protection
@@ -101,7 +101,7 @@ policies:
 
 ```yaml
 # Phase 2+ aspirational format
-apiVersion: aegis/v1
+apiVersion: rind/v1
 kind: SecurityPolicy
 metadata:
   name: exfil-protection
@@ -171,7 +171,7 @@ policies:
 
 ```yaml
 # Phase 2+ aspirational format
-apiVersion: aegis/v1
+apiVersion: rind/v1
 kind: SecurityPolicy
 metadata:
   name: cost-protection

@@ -20,7 +20,7 @@ importers:
 
   apps/api:
     dependencies:
-      '@aegis/core':
+      '@rind/core':
         specifier: workspace:*
         version: link:../../packages/sdk-core
       '@hono/node-server':
@@ -51,10 +51,10 @@ importers:
 
   apps/dashboard:
     dependencies:
-      '@aegis/core':
+      '@rind/core':
         specifier: workspace:*
         version: link:../../packages/sdk-core
-      '@aegis/ui':
+      '@rind/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       '@tailwindcss/postcss':
@@ -100,7 +100,7 @@ importers:
 
   apps/proxy:
     dependencies:
-      '@aegis/core':
+      '@rind/core':
         specifier: workspace:*
         version: link:../../packages/sdk-core
       '@hono/node-server':
@@ -146,7 +146,7 @@ importers:
 
   packages/policy-engine:
     dependencies:
-      '@aegis/core':
+      '@rind/core':
         specifier: workspace:*
         version: link:../sdk-core
       zod:
@@ -177,7 +177,7 @@ importers:
 
   packages/sdk-langchain:
     dependencies:
-      '@aegis/core':
+      '@rind/core':
         specifier: workspace:*
         version: link:../sdk-core
     devDependencies:
@@ -212,7 +212,7 @@ importers:
 
   tools/simulation:
     dependencies:
-      '@aegis/proxy':
+      '@rind/proxy':
         specifier: workspace:*
         version: link:../../apps/proxy
       hono:

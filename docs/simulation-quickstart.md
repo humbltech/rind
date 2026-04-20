@@ -29,8 +29,8 @@ echo $OPENAI_API_KEY
 
 ```bash
 # Clone and start everything
-git clone https://github.com/your-org/aegis.git
-cd aegis
+git clone https://github.com/your-org/rind.git
+cd rind
 
 # Start with Ollama (FREE - no API key needed)
 make sim-local
@@ -51,20 +51,20 @@ OPENAI_API_KEY=sk-xxx make sim-local-openai
 │  ├── meridian-agent    :8002  (LangGraph, enterprise)           │
 │  └── crewai-agent      :8003  (CrewAI, multi-agent)             │
 │                                                                  │
-│  Aegis (http://localhost:8080)                                  │
-│  └── aegis-proxy       :8080  (Policy enforcement)              │
+│  Rind (http://localhost:8080)                                  │
+│  └── rind-proxy       :8080  (Policy enforcement)              │
 │                                                                  │
 │  LLM Gateway                                                     │
 │  ├── litellm           :4000  (Multi-provider proxy)            │
 │  └── ollama            :11434 (Local LLM - if using)            │
 │                                                                  │
 │  Dashboard                                                       │
-│  └── aegis-dashboard   :3000  (Web UI)                          │
+│  └── rind-dashboard   :3000  (Web UI)                          │
 │                                                                  │
 │  Supporting Services                                             │
 │  ├── mongodb           :27017 (Agent data)                      │
 │  ├── redis             :6379  (Cache/sessions)                  │
-│  └── postgres          :5432  (Aegis data)                      │
+│  └── postgres          :5432  (Rind data)                      │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -74,7 +74,7 @@ OPENAI_API_KEY=sk-xxx make sim-local-openai
 ## Directory Structure
 
 ```
-aegis/
+rind/
 ├── simulation/
 │   ├── docker-compose.yml           # Main compose file
 │   ├── docker-compose.ollama.yml    # Ollama override (free LLM)
@@ -150,7 +150,7 @@ sim-local:
 	@echo "Services starting..."
 	@sleep 5
 	@echo "Dashboard: http://localhost:3000"
-	@echo "Aegis Proxy: http://localhost:8080"
+	@echo "Rind Proxy: http://localhost:8080"
 	@echo "Nimbus Agent: http://localhost:8001"
 
 # Start with OpenAI
@@ -184,7 +184,7 @@ sim-logs-%:
 # DEMO SCENARIOS
 # ============================================
 
-# Run attack demos (shows Aegis blocking attacks)
+# Run attack demos (shows Rind blocking attacks)
 sim-demo-attacks:
 	cd simulation && ./scripts/run-attacks.sh
 
@@ -202,7 +202,7 @@ sim-seed:
 
 # Start local K8s cluster
 sim-k8s:
-	k3d cluster create aegis-sim \
+	k3d cluster create rind-sim \
 		--servers 1 \
 		--agents 2 \
 		--port "8080:80@loadbalancer" \
@@ -211,7 +211,7 @@ sim-k8s:
 
 # Delete K8s cluster
 sim-k8s-delete:
-	k3d cluster delete aegis-sim
+	k3d cluster delete rind-sim
 
 # ============================================
 # CLOUD DEPLOYMENT
@@ -246,9 +246,9 @@ version: '3.8'
 
 services:
   # ============================================
-  # AEGIS (Your Product)
+  # RIND (Your Product)
   # ============================================
-  aegis-proxy:
+  rind-proxy:
     build:
       context: ../apps/proxy
       dockerfile: Dockerfile
@@ -256,11 +256,11 @@ services:
       - "8080:8080"
     environment:
       - UPSTREAM_URL=http://litellm:4000
-      - DATABASE_URL=postgres://aegis:aegis@postgres:5432/aegis
+      - DATABASE_URL=postgres://rind:rind@postgres:5432/rind
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=debug
     volumes:
-      - ./policies:/etc/aegis/policies:ro
+      - ./policies:/etc/rind/policies:ro
     depends_on:
       - postgres
       - redis
@@ -271,17 +271,17 @@ services:
       timeout: 5s
       retries: 3
 
-  aegis-dashboard:
+  rind-dashboard:
     build:
       context: ../apps/dashboard
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
-      - AEGIS_API_URL=http://aegis-proxy:8080
-      - DATABASE_URL=postgres://aegis:aegis@postgres:5432/aegis
+      - RIND_API_URL=http://rind-proxy:8080
+      - DATABASE_URL=postgres://rind:rind@postgres:5432/rind
     depends_on:
-      - aegis-proxy
+      - rind-proxy
 
   # ============================================
   # SAMPLE AGENTS
@@ -291,12 +291,12 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - AEGIS_PROXY_URL=http://aegis-proxy:8080
+      - RIND_PROXY_URL=http://rind-proxy:8080
       - MONGODB_URI=mongodb://mongodb:27017/nimbus
       - REDIS_URL=redis://redis:6379
       - WORKSPACE_ID=ws_demo_001
     depends_on:
-      - aegis-proxy
+      - rind-proxy
       - mongodb
       - redis
 
@@ -305,10 +305,10 @@ services:
     ports:
       - "8002:8000"
     environment:
-      - AEGIS_PROXY_URL=http://aegis-proxy:8080
+      - RIND_PROXY_URL=http://rind-proxy:8080
       - REDIS_URL=redis://redis:6379
     depends_on:
-      - aegis-proxy
+      - rind-proxy
       - redis
 
   crewai-agent:
@@ -316,9 +316,9 @@ services:
     ports:
       - "8003:8000"
     environment:
-      - AEGIS_PROXY_URL=http://aegis-proxy:8080
+      - RIND_PROXY_URL=http://rind-proxy:8080
     depends_on:
-      - aegis-proxy
+      - rind-proxy
 
   # ============================================
   # LLM GATEWAY
@@ -337,9 +337,9 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_USER=aegis
-      - POSTGRES_PASSWORD=aegis
-      - POSTGRES_DB=aegis
+      - POSTGRES_USER=rind
+      - POSTGRES_PASSWORD=rind
+      - POSTGRES_DB=rind
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -502,11 +502,11 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool
 import os
 
-# Connect through Aegis proxy
+# Connect through Rind proxy
 llm = ChatOpenAI(
     model="gpt-4o",
-    base_url=os.environ.get("AEGIS_PROXY_URL", "http://localhost:8080") + "/v1",
-    api_key="virtual-key-nimbus-001",  # Aegis virtual key
+    base_url=os.environ.get("RIND_PROXY_URL", "http://localhost:8080") + "/v1",
+    api_key="virtual-key-nimbus-001",  # Rind virtual key
 )
 
 @tool
@@ -627,7 +627,7 @@ redis==5.0.1
 set -e
 
 echo "==================================="
-echo "Aegis Simulation Environment Setup"
+echo "Rind Simulation Environment Setup"
 echo "==================================="
 
 # Check prerequisites
@@ -678,10 +678,10 @@ echo ""
 set -e
 
 BASE_URL="${NIMBUS_AGENT_URL:-http://localhost:8001}"
-AEGIS_URL="${AEGIS_PROXY_URL:-http://localhost:8080}"
+RIND_URL="${RIND_PROXY_URL:-http://localhost:8080}"
 
 echo "==================================="
-echo "Aegis Attack Demo"
+echo "Rind Attack Demo"
 echo "==================================="
 echo ""
 
@@ -714,9 +714,9 @@ demo_request() {
     echo ""
 
     if echo "$response" | grep -q "blocked\|denied\|violation"; then
-        echo -e "${GREEN}✓ Attack BLOCKED by Aegis${NC}"
+        echo -e "${GREEN}✓ Attack BLOCKED by Rind${NC}"
     else
-        echo -e "${RED}✗ Attack succeeded (Aegis disabled?)${NC}"
+        echo -e "${RED}✗ Attack succeeded (Rind disabled?)${NC}"
     fi
     echo ""
     sleep 2
@@ -868,7 +868,7 @@ if __name__ == "__main__":
 # ============================================
 
 # 1. Clone repo
-git clone https://github.com/your-org/aegis.git && cd aegis
+git clone https://github.com/your-org/rind.git && cd rind
 
 # 2. Start everything (uses Ollama - free, no API key)
 make sim-local
@@ -896,7 +896,7 @@ make sim-local-openai
 make sim-k8s
 
 # Access via kubectl
-kubectl get pods -n aegis
+kubectl get pods -n rind
 
 
 # ============================================

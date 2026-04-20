@@ -1,5 +1,5 @@
 {
-  "name": "@aegis/simulation",
+  "name": "@rind/simulation",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aegis/proxy": "workspace:*",
+    "@rind/proxy": "workspace:*",
     "hono": "^4.6.0",
     "zod": "^3.24.0"
   },

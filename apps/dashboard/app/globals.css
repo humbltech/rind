@@ -3,61 +3,141 @@
 /* ─── Design token definitions ─────────────────────────────────────────────────
  *
  * All values are CSS custom properties so white-label tenants can override
- * any token with [data-tenant="x"] { --aegis-accent: <brand-color>; }.
+ * any token with [data-tenant="x"] { --rind-accent: <brand-color>; }.
  * Tailwind v4 @theme maps these to utility classes (bg-canvas, text-accent, etc.).
  *
  * Rule: never use raw hex values in component files — always use token names.
  */
 
+/* ─── Dark mode (default) ───────────────────────────────────────────────────── */
 :root {
   /* Backgrounds — three-layer dark depth system */
-  --aegis-canvas:  #09090b;   /* Page background — deepest layer */
-  --aegis-surface: #18181b;   /* Card and panel surfaces */
-  --aegis-overlay: #27272a;   /* Hover states, dropdowns, selected rows */
+  --rind-canvas:  #09090b;   /* Page background — deepest layer */
+  --rind-surface: #18181b;   /* Card and panel surfaces */
+  --rind-overlay: #27272a;   /* Hover states, dropdowns, selected rows */
 
   /* Borders */
-  --aegis-border:        #3f3f46;
-  --aegis-border-subtle: #27272a;
+  --rind-border:        #3f3f46;
+  --rind-border-subtle: #27272a;
 
   /* Text hierarchy — three levels of emphasis */
-  --aegis-foreground:      #fafafa;   /* Primary text — headings, values */
-  --aegis-foreground-muted: #a1a1aa;  /* Secondary text — labels, metadata */
-  --aegis-foreground-dim:   #71717a;  /* Tertiary text — timestamps, placeholders */
+  --rind-foreground:       #fafafa;  /* Primary text — headings, values */
+  --rind-foreground-muted: #a1a1aa;  /* Secondary text — labels, metadata */
+  --rind-foreground-dim:   #71717a;  /* Tertiary text — timestamps, placeholders */
 
-  /* Aegis brand accent — always teal, non-negotiable */
-  --aegis-accent:       #14b8a6;
-  --aegis-accent-light: #2dd4bf;
+  /* Rind brand accent — teal. Restricted to identity: △ logo, active nav, tool badges */
+  --rind-accent:       #14b8a6;  /* teal-500 */
+  --rind-accent-light: #2dd4bf;  /* teal-400 — hover state */
 
-  /* Severity palette — maps to CVSS levels, engineers already know these colors */
-  --aegis-critical: #ef4444;
-  --aegis-high:     #f97316;
-  --aegis-medium:   #eab308;
-  --aegis-low:      #22c55e;
-  --aegis-info:     #6366f1;
+  /* Severity palette — 400-level on dark bg gives even luminance across all five levels.
+     500-level (Tailwind defaults) are calibrated for light backgrounds: yellow-500
+     outshines red-500 on dark, inverting the severity hierarchy. 400-level fixes this. */
+  --rind-critical: #f87171;  /* red-400    */
+  --rind-high:     #fb923c;  /* orange-400 */
+  --rind-medium:   #fbbf24;  /* amber-400 — amber reads better than yellow on dark */
+  --rind-low:      #4ade80;  /* green-400 — distinct from teal to avoid brand confusion */
+  --rind-info:     #818cf8;  /* indigo-400 */
+}
+
+/* ─── Light mode — token values flip, components stay identical ─────────────── */
+/*
+ * Two entry points for light mode:
+ *   1. System preference (prefers-color-scheme: light) — automatic
+ *   2. Manual toggle via <html data-theme="light"> — for user override control
+ *
+ * Components never change. Only the CSS custom property values change here.
+ *
+ * Severity palette shifts from 400-level (dark) to 600-level (light) because:
+ *   red-400 (#f87171) on white is only 3.2:1 — fails WCAG AA for text.
+ *   red-600 (#dc2626) on white is 5.9:1 — passes AA and AAA for large text.
+ *
+ * Accent shifts from teal-500 to teal-600 because:
+ *   #14b8a6 on white is 4.5:1 — marginal AA.
+ *   #0d9488 on white is 5.5:1 — clear AA.
+ */
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --rind-canvas:  #ffffff;
+    --rind-surface: #f4f4f5;
+    --rind-overlay: #e4e4e7;
+    --rind-border:        #d4d4d8;
+    --rind-border-subtle: #e4e4e7;
+    --rind-foreground:       #09090b;
+    --rind-foreground-muted: #52525b;
+    --rind-foreground-dim:   #71717a;
+    --rind-accent:       #0d9488;
+    --rind-accent-light: #14b8a6;
+    --rind-critical: #dc2626;
+    --rind-high:     #ea580c;
+    --rind-medium:   #ca8a04;
+    --rind-low:      #16a34a;
+    --rind-info:     #4f46e5;
+  }
+}
+
+/* Manual override — <html data-theme="light"> takes precedence over media query */
+:root[data-theme="light"] {
+  --rind-canvas:  #ffffff;
+  --rind-surface: #f4f4f5;
+  --rind-overlay: #e4e4e7;
+  --rind-border:        #d4d4d8;
+  --rind-border-subtle: #e4e4e7;
+  --rind-foreground:       #09090b;
+  --rind-foreground-muted: #52525b;
+  --rind-foreground-dim:   #71717a;
+  --rind-accent:       #0d9488;
+  --rind-accent-light: #14b8a6;
+  --rind-critical: #dc2626;
+  --rind-high:     #ea580c;
+  --rind-medium:   #ca8a04;
+  --rind-low:      #16a34a;
+  --rind-info:     #4f46e5;
+}
+
+/* Dark mode manual override — force dark even when system is light */
+:root[data-theme="dark"] {
+  --rind-canvas:  #09090b;
+  --rind-surface: #18181b;
+  --rind-overlay: #27272a;
+  --rind-border:        #3f3f46;
+  --rind-border-subtle: #27272a;
+  --rind-foreground:       #fafafa;
+  --rind-foreground-muted: #a1a1aa;
+  --rind-foreground-dim:   #71717a;
+  --rind-accent:       #14b8a6;
+  --rind-accent-light: #2dd4bf;
+  --rind-critical: #f87171;
+  --rind-high:     #fb923c;
+  --rind-medium:   #fbbf24;
+  --rind-low:      #4ade80;
+  --rind-info:     #818cf8;
 }
 
 /* ─── Tailwind v4 theme — maps CSS vars to utility class names ─────────────── */
 
 @theme {
-  --color-canvas:           var(--aegis-canvas);
-  --color-surface:          var(--aegis-surface);
-  --color-overlay:          var(--aegis-overlay);
-  --color-border:           var(--aegis-border);
-  --color-border-subtle:    var(--aegis-border-subtle);
-  --color-foreground:       var(--aegis-foreground);
-  --color-muted:            var(--aegis-foreground-muted);
-  --color-dim:              var(--aegis-foreground-dim);
-  --color-accent:           var(--aegis-accent);
-  --color-accent-light:     var(--aegis-accent-light);
-  --color-critical:         var(--aegis-critical);
-  --color-high:             var(--aegis-high);
-  --color-medium:           var(--aegis-medium);
-  --color-low:              var(--aegis-low);
-  --color-info:             var(--aegis-info);
+  --color-canvas:           var(--rind-canvas);
+  --color-surface:          var(--rind-surface);
+  --color-overlay:          var(--rind-overlay);
+  --color-border:           var(--rind-border);
+  --color-border-subtle:    var(--rind-border-subtle);
+  --color-foreground:       var(--rind-foreground);
+  --color-muted:            var(--rind-foreground-muted);
+  --color-dim:              var(--rind-foreground-dim);
+  --color-accent:           var(--rind-accent);
+  --color-accent-light:     var(--rind-accent-light);
+  --color-critical:         var(--rind-critical);
+  --color-high:             var(--rind-high);
+  --color-medium:           var(--rind-medium);
+  --color-low:              var(--rind-low);
+  --color-info:             var(--rind-info);
 
-  /* Typography */
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Menlo', 'Monaco', monospace;
+  /* Typography — reference next/font CSS variables (set by layout.tsx on <html>).
+     Using var() here means Tailwind's font-sans/font-mono utilities resolve to
+     the actual loaded font face, not a static string. */
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), 'Menlo', 'Monaco', monospace;
 
   /* Animations — data-change-only motion (D-033 motion discipline) */
   --animate-slide-in: slide-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -79,16 +159,16 @@
 
 /* Used once on critical threat badge detection */
 @keyframes pulse-once {
-  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--aegis-critical) 40%, transparent); }
-  50%  { box-shadow: 0 0 0 6px color-mix(in srgb, var(--aegis-critical) 0%, transparent); }
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--rind-critical) 40%, transparent); }
+  50%  { box-shadow: 0 0 0 6px color-mix(in srgb, var(--rind-critical) 0%, transparent); }
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 
 /* ─── Global base styles ─────────────────────────────────────────────────────── */
 
 html, body {
-  background-color: var(--aegis-canvas);
-  color: var(--aegis-foreground);
+  background-color: var(--rind-canvas);
+  color: var(--rind-foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -105,5 +185,5 @@ html, body {
 /* Scrollbar styling — subtle, matches the dark theme */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--aegis-border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--aegis-foreground-dim); }
+::-webkit-scrollbar-thumb { background: var(--rind-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--rind-foreground-dim); }

@@ -1,4 +1,4 @@
-# Aegis MVP Roadmap
+# Rind MVP Roadmap
 
 > **Note**: This roadmap was rewritten in April 2026 to reflect the confirmed TypeScript/Node.js stack (AD-006). The previous Python/FastAPI version is superseded. See `architecture/architecture-decisions.md` AD-006 for the decision rationale.
 >
@@ -25,7 +25,7 @@ By end of Week 8:
 - [ ] Scan-on-connect: when a new MCP server is configured, proxy automatically checks for auth gaps, tool poisoning patterns, rug pull risk
 - [ ] Runtime schema drift detection: proxy hashes MCP tool schemas on first connect; alerts if tools are added/changed in subsequent connections
 - [ ] Session kill-switch: any active proxy session can be terminated immediately via CLI or dashboard
-- [ ] `@aegis/langchain` SDK wraps LangChain tools with cost tracking + loop detection
+- [ ] `@rind/langchain` SDK wraps LangChain tools with cost tracking + loop detection
 - [ ] Policy data model supports agent identity from day 1 (even if v1 UI only exposes tool-name matching)
 - [ ] First tool call appears in basic dashboard within 5 minutes of install
 - [ ] 3 design partners using the proxy and providing feedback
@@ -42,7 +42,7 @@ By end of Week 8:
 #### Monorepo (follow `architecture/project-setup.md` exactly)
 
 ```bash
-# Inside existing aegis/ repo (docs stay, code is added)
+# Inside existing rind/ repo (docs stay, code is added)
 pnpm init
 # Create pnpm-workspace.yaml, turbo.json, tsconfig.json, biome.json
 # per project-setup.md
@@ -60,10 +60,10 @@ mkdir -p tools/mcp-scanner
 - `biome.json` — linting + formatting
 
 #### Brand setup (manual tasks, ~5-6 hours)
-- Register domain under parent incorporation (check: `useaegis.dev`, `aegis-security.dev`, `getaegis.dev`)
+- Register domain under parent incorporation (check: `userind.dev`, `rind-security.dev`, `getrind.dev`)
 - Create `hello@[domain]` email via Google Workspace
 - Create GitHub org (no personal info in org profile)
-- Reserve npm scope (`@aegis` or `@aegis-security`)
+- Reserve npm scope (`@rind` or `@rind-security`)
 - Create Twitter/X brand account
 - Set up Tally/Typeform waitlist (4 questions: framework, agents in prod, pain point, email)
 
@@ -73,11 +73,11 @@ mkdir -p tools/mcp-scanner
 
 ## Phase 1: MCP Proxy MVP (Weeks 2-4)
 
-### `apps/proxy` → core product, published as `@aegis/proxy`
+### `apps/proxy` → core product, published as `@rind/proxy`
 
 **Goal**: A working MCP proxy that sits between an AI agent and its MCP servers, intercepts every tool call, scans on connect, and enforces basic policies — installable in under 5 minutes.
 
-**Why this first**: The proxy is the moat. Every existing competitor (8+ MCP scanners) finds problems and stops there. Aegis fixes them at runtime. Scan-on-connect means scanning is a side effect of using the proxy — not a separate CLI step.
+**Why this first**: The proxy is the moat. Every existing competitor (8+ MCP scanners) finds problems and stops there. Rind fixes them at runtime. Scan-on-connect means scanning is a side effect of using the proxy — not a separate CLI step.
 
 **Precedent**: Helicone shipped proxy-first (single env var change), had week-1 revenue, and built observability + guardrails on top. MCP proxy is simpler than Helicone's LLM proxy because MCP is a structured JSON-RPC protocol with a TypeScript SDK.
 
@@ -168,14 +168,14 @@ Proxy features for Week 2:
 3. **Runtime schema drift detection** — on subsequent connections, compare current tool schema hash against stored; alert if new tools added or existing tools changed
 4. **Response-side inspection** — scan tool outputs for prompt injection patterns (`SYSTEM:`, `IGNORE PREVIOUS`, base64-encoded instructions) and credential patterns (connection strings, API key formats, private keys)
 5. **Session tracking** — every proxy session has a session ID, agent ID, start time, and active flag
-6. **Session kill-switch** — `aegis session kill <session-id>` immediately sets `active: false`; proxy blocks all subsequent calls in that session
+6. **Session kill-switch** — `rind session kill <session-id>` immediately sets `active: false`; proxy blocks all subsequent calls in that session
 
 #### Week 3: Policy engine + logging
 
 Policy engine (YAML-driven):
 
 ```yaml
-# aegis.policy.yaml — example
+# rind.policy.yaml — example
 policies:
   - name: "block-destructive"
     agent: "*"                    # applies to all agents
@@ -211,18 +211,18 @@ Logging:
 - Token estimation per LLM call (tiktoken-compatible, model pricing table)
 - Running cost total per session, per agent
 - `costLimitUsd` session config: block next LLM call if cumulative cost exceeds limit
-- `aegis proxy start` CLI command — starts proxy, prints connection string
-- `aegis logs` — tail session logs
-- `aegis session list` — show active sessions
-- `aegis session kill <id>` — kill a session
-- `aegis servers list` — show all connected MCP servers with schema hash + scan status
+- `rind proxy start` CLI command — starts proxy, prints connection string
+- `rind logs` — tail session logs
+- `rind session list` — show active sessions
+- `rind session kill <id>` — kill a session
+- `rind servers list` — show all connected MCP servers with schema hash + scan status
 - README with 5-minute setup walkthrough
 
 **Deliverable — what a developer sees after install:**
 
 ```bash
-$ aegis proxy start
-  Aegis Proxy v0.1.0
+$ rind proxy start
+  Rind Proxy v0.1.0
   Listening on localhost:7777
 
   Configure your agent to use MCP via: http://localhost:7777/mcp
@@ -238,12 +238,12 @@ $ # Run an agent — tool calls intercepted in real time
   [CALL] filesystem → fs.write /etc/hosts         DENY   policy:block-destructive
   [RESP] filesystem → fs.read                     CLEAN  0 threats
 
-$ aegis session list
+$ rind session list
   SESSION             AGENT           CALLS   COST      STATUS
   sess_abc123         my-agent        47      $0.082    active
   sess_def456         test-agent      3       $0.004    killed
 
-$ aegis logs --session sess_abc123
+$ rind logs --session sess_abc123
   [12:04:01] CALL  fs.read /tmp/data.csv → ALLOW
   [12:04:02] RESP  fs.read → CLEAN (no threats)
   [12:04:03] CALL  fs.write /etc/hosts → DENY (policy: block-destructive)
@@ -260,7 +260,7 @@ $ aegis logs --session sess_abc123
 Content (minimum):
 - Hero: "Stop your agent before it breaks production"
 - 4 bullets: observability, safety, security, MCP adoption
-- Proxy CTA: `aegis proxy start` terminal screenshot showing scan-on-connect + blocked call
+- Proxy CTA: `rind proxy start` terminal screenshot showing scan-on-connect + blocked call
 - Waitlist form embed (Tally/Typeform)
 - Brand email link
 
@@ -287,8 +287,8 @@ Content (minimum):
 #### Week 5: `packages/sdk-core`
 
 Shared types per `architecture/project-setup.md`:
-- `AegisSpan` type — traces, tool calls, LLM calls
-- `AegisConfig` — SDK configuration
+- `RindSpan` type — traces, tool calls, LLM calls
+- `RindConfig` — SDK configuration
 - `PolicyAction` — ALLOW, DENY, REQUIRE_APPROVAL, RATE_LIMIT
 
 ```typescript
@@ -303,12 +303,12 @@ export * from './types/policy';
 ```typescript
 // packages/sdk-langchain/src/handler.ts
 import { BaseCallbackHandler } from '@langchain/core/callbacks/base';
-import type { AegisConfig } from '@aegis/core';
+import type { RindConfig } from '@rind/core';
 
-export class AegisCallbackHandler extends BaseCallbackHandler {
-  name = 'AegisCallbackHandler';
+export class RindCallbackHandler extends BaseCallbackHandler {
+  name = 'RindCallbackHandler';
 
-  constructor(private config: AegisConfig) {
+  constructor(private config: RindConfig) {
     super();
   }
 
@@ -378,17 +378,17 @@ Full schema in `architecture/project-setup.md`.
 ```typescript
 import { ChatOpenAI } from '@langchain/openai';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
-import { AegisCallbackHandler } from '@aegis/langchain';
+import { RindCallbackHandler } from '@rind/langchain';
 
-const aegis = new AegisCallbackHandler({
-  apiKey: process.env.AEGIS_API_KEY,
+const rind = new RindCallbackHandler({
+  apiKey: process.env.RIND_API_KEY,
   costLimitUsd: 10.0,
   loopDetection: true,
   blockDestructive: true,
 });
 
 const agent = createReactAgent({
-  llm: new ChatOpenAI({ callbacks: [aegis] }),
+  llm: new ChatOpenAI({ callbacks: [rind] }),
   tools,
 });
 ```
@@ -430,15 +430,15 @@ Dashboard shows on first login:
 Per `architecture/project-setup.md`:
 
 ```
-aegis/                          # This repo
+rind/                          # This repo
 ├── apps/
 │   ├── dashboard/              # Next.js 15 (Week 7-8)
 │   ├── api/                    # Hono API (Week 6)
-│   └── proxy/                  # MCP Proxy — @aegis/proxy (Weeks 2-4) ← Phase 1
+│   └── proxy/                  # MCP Proxy — @rind/proxy (Weeks 2-4) ← Phase 1
 │
 ├── packages/
-│   ├── sdk-core/               # @aegis/core shared types (Week 5)
-│   ├── sdk-langchain/          # @aegis/langchain (Week 6)
+│   ├── sdk-core/               # @rind/core shared types (Week 5)
+│   ├── sdk-langchain/          # @rind/langchain (Week 6)
 │   ├── policy-engine/          # Shared policy evaluator (extracted from proxy, Week 3)
 │   ├── db/                     # Supabase schema + migrations (Week 7)
 │   └── ui/                     # Shared components (Week 8)
@@ -477,7 +477,7 @@ aegis/                          # This repo
 | Build | tsup | 8.x |
 | Deployment | Vercel (dashboard), Railway/Fly.io (API) | — |
 
-**Python SDK** (`aegis-sdk` on PyPI): Not in scope for MVP. Post-MVP: a thin Python package that wraps the cloud API over HTTP. Python users get the same features; there is no Python proxy server.
+**Python SDK** (`rind-sdk` on PyPI): Not in scope for MVP. Post-MVP: a thin Python package that wraps the cloud API over HTTP. Python users get the same features; there is no Python proxy server.
 
 ---
 
@@ -486,8 +486,8 @@ aegis/                          # This repo
 | Week | Milestone | Demo |
 |------|-----------|------|
 | 1 | Monorepo scaffold + brand infrastructure | `pnpm build` succeeds |
-| 2 | Proxy core: intercept, scan-on-connect, schema drift, response inspection | `aegis proxy start` + tool call blocked in terminal |
-| 3 | Policy engine: allow/deny, identity-aware rules, session kill-switch | `aegis session kill` stops a running agent |
+| 2 | Proxy core: intercept, scan-on-connect, schema drift, response inspection | `rind proxy start` + tool call blocked in terminal |
+| 3 | Policy engine: allow/deny, identity-aware rules, session kill-switch | `rind session kill` stops a running agent |
 | 4 | Cost tracking, loop detection, CLI polish, logging | Full terminal demo — call log, cost, blocked action |
 | 5 | `sdk-core` types + private design partner access (CISO network) | Types compile; proxy shared with 1-2 internal testers |
 | 6 | `sdk-langchain` callback handler | Agent traces captured locally |
@@ -504,7 +504,7 @@ aegis/                          # This repo
 | Multi-tenancy | P0 | Required for SaaS — orgs, projects, RLS |
 | Slack/PagerDuty alerts | P0 | Kill-switch + anomaly alerts to existing on-call stack |
 | SSO (OIDC) | P1 | Enterprise requirement — Okta, Azure AD |
-| Python SDK wrapper | P1 | PyPI `aegis-sdk` — HTTP wrapper of cloud API |
+| Python SDK wrapper | P1 | PyPI `rind-sdk` — HTTP wrapper of cloud API |
 | JIT permissions | P2 | AD-004 — requires proxy layer (already in place) |
 | Agent RBAC | P2 | AD-004 — identity-aware policy already in data model |
 | Compliance export | P2 | SOC2, EU AI Act audit trail — sessions already logged |

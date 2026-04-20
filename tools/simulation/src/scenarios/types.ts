@@ -1,7 +1,7 @@
 // Simulation scenario types.
 // A scenario is the unit of human-testable value — it tells a story and verifies it technically.
 
-import type { PolicyConfig, ToolDefinition } from '@aegis/proxy';
+import type { PolicyConfig, ToolDefinition } from '@rind/proxy';
 
 export type CompanyId = 'meridian' | 'stackline' | 'fortress';
 export type DeploymentId = 'direct-mcp' | 'llm-gateway' | 'framework-sdk' | 'enterprise';
@@ -46,13 +46,13 @@ export interface Scenario {
 
   // Human-readable story — printed in terminal output
   situation: string; // What triggered this scenario
-  withoutAegis: string; // What happens without protection (2-3 sentences)
-  theMoment: string; // The insight — what Aegis caught or blocked
+  withoutRind: string; // What happens without protection (2-3 sentences)
+  theMoment: string; // The insight — what Rind caught or blocked
 
   // Technical test definition
   tools: ToolDefinition[]; // MCP tool definitions for the mock server (and scan)
   toolHandlers: Record<string, MockToolHandler>; // tool name → response generator
-  policy: PolicyConfig; // Aegis policy to enforce during this scenario
+  policy: PolicyConfig; // Rind policy to enforce during this scenario
   agentId: string; // The agent identity used in tool calls
 
   // Ordered steps — run in sequence against the proxy

@@ -1,6 +1,6 @@
 # Fictional Company Profiles — Archive
 
-> Source: `aegis-simulation/README.md` + agent configs (code deleted April 2026)
+> Source: `rind-simulation/README.md` + agent configs (code deleted April 2026)
 > These profiles are ported into the TypeScript simulation's `companies/` directory.
 > Updated to match new three-customer strategy (Meridian, Stackline, Fortress).
 
@@ -13,7 +13,7 @@
 **HQ**: Toronto, ON
 **Agent framework**: LangGraph (stateful multi-step workflows)
 **Deployment architecture**: LLM Gateway (LiteLLM fronting Anthropic Claude)
-**Aegis integration point**: Proxy in front of all MCP tool servers
+**Rind integration point**: Proxy in front of all MCP tool servers
 
 ### Technical Setup
 ```
@@ -21,7 +21,7 @@ User → Web App → LangGraph Agent
                      ↓
              LiteLLM Gateway (Claude Haiku for classification, Sonnet for analysis)
                      ↓
-             Aegis Proxy ←── This is where Aegis intercepts
+             Rind Proxy ←── This is where Rind intercepts
                      ↓
              MCP Tool Servers:
                - db.execute (PostgreSQL — customer accounts, transactions)
@@ -39,7 +39,7 @@ User → Web App → LangGraph Agent
 | `report.generate` | Create financial reports | LOW |
 | `document.read` | Read S3 documents by path | HIGH (unrestricted path access) |
 
-### Policy Config (aegis.policy.yaml)
+### Policy Config (rind.policy.yaml)
 ```yaml
 policies:
   - name: block-destructive-sql
@@ -69,7 +69,7 @@ policies:
 3. **Credential leak in error** — `db.execute` error message contains connection string
 
 ### Original Simulation Reference
-Previously named "Meridian" in `aegis-simulation/` — runs on port 8002, uses LangGraph for risk analysis workflows.
+Previously named "Meridian" in `rind-simulation/` — runs on port 8002, uses LangGraph for risk analysis workflows.
 
 ---
 
@@ -80,13 +80,13 @@ Previously named "Meridian" in `aegis-simulation/` — runs on port 8002, uses L
 **HQ**: Vancouver, BC
 **Agent framework**: Direct MCP connections (Cursor IDE, Claude Desktop)
 **Deployment architecture**: Direct MCP — developers use Claude Desktop with MCP servers configured
-**Aegis integration point**: Proxy as the MCP server endpoint (transparent to Claude Desktop)
+**Rind integration point**: Proxy as the MCP server endpoint (transparent to Claude Desktop)
 
 ### Technical Setup
 ```
 Claude Desktop / Cursor
     ↓ MCP protocol
-Aegis Proxy (transparent to Claude — configured as MCP server URL)
+Rind Proxy (transparent to Claude — configured as MCP server URL)
     ↓ forwarded tool calls
 Actual MCP Servers:
   - github.* (PR review, file access)
@@ -105,7 +105,7 @@ Actual MCP Servers:
 | `database.execute` | Write/modify database | HIGH |
 | `jira.create_ticket` | Create Jira issues | LOW |
 
-### Policy Config (aegis.policy.yaml)
+### Policy Config (rind.policy.yaml)
 ```yaml
 policies:
   - name: block-shell-execution
@@ -136,7 +136,7 @@ policies:
 4. **Schema drift** — a third-party MCP server adds new `export_all_data` tool silently
 
 ### Original Simulation Reference
-Previously "Nimbus" in `aegis-simulation/` — B2B SaaS with LangChain, task management, port 8001.
+Previously "Nimbus" in `rind-simulation/` — B2B SaaS with LangChain, task management, port 8001.
 
 ---
 
@@ -146,14 +146,14 @@ Previously "Nimbus" in `aegis-simulation/` — B2B SaaS with LangChain, task man
 **Industry**: Managed security services
 **HQ**: Montreal, QC
 **Agent framework**: LangChain (with custom tool registry)
-**Deployment architecture**: Framework SDK — agents built with `@aegis/langchain` middleware
-**Aegis integration point**: SDK middleware in the LangChain tool call layer
+**Deployment architecture**: Framework SDK — agents built with `@rind/langchain` middleware
+**Rind integration point**: SDK middleware in the LangChain tool call layer
 
 ### Technical Setup
 ```
 LangChain Agent
-    ↓ tool call intercepted by @aegis/langchain middleware
-Aegis SDK (in-process)
+    ↓ tool call intercepted by @rind/langchain middleware
+Rind SDK (in-process)
     ↓ allowed calls forwarded to
 MCP Tool Servers (third-party, from vendors):
   - vendor-a.* (security scanning tools)
@@ -177,7 +177,7 @@ Fortress's specific risk is supply chain — they install MCP servers from secur
 | `internal.db.query` | Internal | Medium |
 | `reporting.generate` | Internal | Low |
 
-### Policy Config (aegis.policy.yaml)
+### Policy Config (rind.policy.yaml)
 ```yaml
 policies:
   - name: deny-unknown-tools
@@ -201,16 +201,16 @@ policies:
 3. **Supply chain response injection** — vendor tool response contains embedded SYSTEM directive
 
 ### Original Simulation Reference
-Previously "Healix" in `aegis-simulation/` — healthcare/HIPAA, LangChain, patient scheduling, port 8003. Repurposed as enterprise security services company.
+Previously "Healix" in `rind-simulation/` — healthcare/HIPAA, LangChain, patient scheduling, port 8003. Repurposed as enterprise security services company.
 
 ---
 
 ## Summary
 
-| Company | Size | Deployment | Main Risk | Aegis Entry |
+| Company | Size | Deployment | Main Risk | Rind Entry |
 |---------|------|-----------|-----------|-------------|
 | Meridian Financial | 120 | LLM Gateway | Data leak, destructive SQL | Proxy in front of MCP servers |
 | Stackline | 40 | Direct MCP (Claude Desktop) | Cost loops, RCE, schema drift | Transparent proxy as MCP endpoint |
-| Fortress Systems | 3,000 | Framework SDK (LangChain) | Supply chain, tool poisoning | `@aegis/langchain` middleware |
+| Fortress Systems | 3,000 | Framework SDK (LangChain) | Supply chain, tool poisoning | `@rind/langchain` middleware |
 
-These three companies cover the three primary Aegis installation patterns and the three buyer personas: platform engineer (Stackline), security team (Fortress), compliance/fintech (Meridian).
+These three companies cover the three primary Rind installation patterns and the three buyer personas: platform engineer (Stackline), security team (Fortress), compliance/fintech (Meridian).

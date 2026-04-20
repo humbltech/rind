@@ -1,5 +1,5 @@
 {
-  "name": "@aegis/dashboard",
+  "name": "@rind/dashboard",
   "version": "0.0.1",
   "private": true,
   "scripts": {
@@ -9,8 +9,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aegis/core": "workspace:*",
-    "@aegis/ui": "workspace:*",
+    "@rind/core": "workspace:*",
+    "@rind/ui": "workspace:*",
     "@tailwindcss/postcss": "^4.2.2",
     "clsx": "^2.1.1",
     "lucide-react": "^1.8.0",

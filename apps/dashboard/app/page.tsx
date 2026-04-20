@@ -1,4 +1,4 @@
-// Aegis Dashboard — real-time view of agent activity, policy decisions, and scan findings.
+// Rind Dashboard — real-time view of agent activity, policy decisions, and scan findings.
 //
 // Architecture: Client Component that polls the proxy API every 2s and passes
 // live data to pure child components. No auth in Phase 1 — the dashboard runs
@@ -57,7 +57,12 @@ function PageHeader({ isConnected }: { isConnected: boolean }) {
 }
 
 function StatsGrid({ status }: { status: ProxyStatus | null }) {
-  const s = status ?? { sessions: { total: 0, active: 0 }, toolCalls: { total: 0 }, threats: { total: 0 }, servers: { total: 0 } };
+  // Destructure each field with its own fallback so a partial response
+  // (e.g. an older proxy build missing `servers`) doesn't throw.
+  const sessions  = status?.sessions  ?? { total: 0, active: 0 };
+  const toolCalls = status?.toolCalls ?? { total: 0 };
+  const threats   = status?.threats   ?? { total: 0 };
+  const servers   = status?.servers   ?? { total: 0 };
 
   return (
     <section>
@@ -65,24 +70,24 @@ function StatsGrid({ status }: { status: ProxyStatus | null }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
         <StatCard
           label="Sessions"
-          value={s.sessions.total}
+          value={sessions.total}
           icon={Activity}
-          subLabel={s.sessions.active > 0 ? `${s.sessions.active} active` : undefined}
+          subLabel={sessions.active > 0 ? `${sessions.active} active` : undefined}
         />
         <StatCard
           label="Tool Calls"
-          value={s.toolCalls.total}
+          value={toolCalls.total}
           icon={Activity}
         />
         <StatCard
           label="Threats"
-          value={s.threats.total}
+          value={threats.total}
           icon={AlertTriangle}
           isAlert
         />
         <StatCard
           label="MCP Servers"
-          value={s.servers.total}
+          value={servers.total}
           icon={Server}
         />
       </div>
@@ -136,7 +141,7 @@ function ConnectionBadge({ connected }: { connected: boolean }) {
           'w-1.5 h-1.5 rounded-full',
           connected ? 'bg-low' : 'bg-dim',
         ].join(' ')}
-        style={connected ? { boxShadow: '0 0 4px var(--aegis-low)' } : undefined}
+        style={connected ? { boxShadow: '0 0 4px var(--rind-low)' } : undefined}
       />
       <span>{connected ? 'Connected to proxy' : 'Proxy unreachable'}</span>
       <span className="text-dim">· polls every 2s</span>

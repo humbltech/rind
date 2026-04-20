@@ -1,10 +1,10 @@
-// Scenario runner — orchestrates a full scenario run against the Aegis proxy.
+// Scenario runner — orchestrates a full scenario run against the Rind proxy.
 //
 // Creates the proxy in-process (no port binding), injects a cassette-backed
 // ForwardFn, runs each step as an HTTP call to the proxy, and asserts
 // expected outcomes.
 
-import { createProxyServer, resetSessions, clearSchemaStore } from '@aegis/proxy';
+import { createProxyServer, resetSessions, clearSchemaStore } from '@rind/proxy';
 import type { Scenario, ScenarioResult, ScenarioStep, StepResult, SimMode } from './scenarios/types.js';
 import { createForwardFn } from './cassette.js';
 

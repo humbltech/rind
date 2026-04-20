@@ -1,4 +1,4 @@
-# Aegis
+# Rind
 
 **Enterprise AI Agent Security, Governance & Observability Platform**
 
@@ -6,7 +6,7 @@
 
 ## Vision
 
-As AI agents become integral to enterprise operations, organizations need robust controls to ensure these agents operate safely, securely, and within policy boundaries. Aegis provides the enterprise-grade infrastructure to deploy, monitor, govern, and secure AI agents at scale.
+As AI agents become integral to enterprise operations, organizations need robust controls to ensure these agents operate safely, securely, and within policy boundaries. Rind provides the enterprise-grade infrastructure to deploy, monitor, govern, and secure AI agents at scale.
 
 ## Core Problem
 
@@ -19,7 +19,7 @@ Enterprises adopting AI agents face critical challenges:
 
 ## Solution Pillars
 
-1. **Proxy/Gateway Layer** - All agent traffic flows through Aegis for inspection, policy enforcement, and logging
+1. **Proxy/Gateway Layer** - All agent traffic flows through Rind for inspection, policy enforcement, and logging
 2. **Policy Engine** - Define and enforce what agents can do, access, read, write, and execute
 3. **Observability** - Complete visibility into agent actions, decisions, and outcomes
 4. **Sandbox Runtime** - Secure execution environments where policies are enforced at OS level
@@ -31,7 +31,7 @@ Enterprises adopting AI agents face critical challenges:
 
 ---
 
-## What is Aegis?
+## What is Rind?
 
 **The Policy Engine for AI Agents** - Runtime governance for tool calls, prompts, MCP, and LLM interactions.
 
@@ -82,4 +82,4 @@ Enterprises adopting AI agents face critical challenges:
 
 ---
 
-*Aegis - Named after the divine shield of Zeus, representing protection and trust.*
+*Rind - Named after the divine shield of Zeus, representing protection and trust.*

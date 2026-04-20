@@ -1,6 +1,6 @@
-# Aegis Simulation - Standalone Project
+# Rind Simulation - Standalone Project
 
-The simulation is a **completely separate project** that runs against Aegis.
+The simulation is a **completely separate project** that runs against Rind.
 
 ---
 
@@ -8,7 +8,7 @@ The simulation is a **completely separate project** that runs against Aegis.
 
 ```
 ~/projects/
-├── aegis/                      ← Main Aegis product (your product)
+├── rind/                      ← Main Rind product (your product)
 │   ├── apps/
 │   │   ├── proxy/
 │   │   ├── dashboard/
@@ -16,7 +16,7 @@ The simulation is a **completely separate project** that runs against Aegis.
 │   ├── packages/
 │   └── ...
 │
-└── aegis-simulation/           ← Separate simulation project
+└── rind-simulation/           ← Separate simulation project
     ├── README.md
     ├── Makefile
     ├── docker-compose.yml
@@ -36,7 +36,7 @@ The simulation is a **completely separate project** that runs against Aegis.
     │   ├── runner.py
     │   └── generator.py
     │
-    ├── policies/               ← Sample Aegis policies
+    ├── policies/               ← Sample Rind policies
     │   ├── nimbus.yaml
     │   ├── meridian.yaml
     │   └── healix.yaml
@@ -54,16 +54,16 @@ The simulation is a **completely separate project** that runs against Aegis.
 ```bash
 # 1. Clone the simulation project (separate repo)
 cd ~/projects
-git clone https://github.com/your-org/aegis-simulation.git
-cd aegis-simulation
+git clone https://github.com/your-org/rind-simulation.git
+cd rind-simulation
 
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Configure Aegis endpoint
+# 3. Configure Rind endpoint
 cp .env.example .env
 # Edit .env:
-#   AEGIS_URL=http://localhost:8080  (or your Aegis deployment)
+#   RIND_URL=http://localhost:8080  (or your Rind deployment)
 ```
 
 ---
@@ -73,7 +73,7 @@ cp .env.example .env
 ### Step 1: Start the Simulation Environment
 
 ```bash
-cd ~/projects/aegis-simulation
+cd ~/projects/rind-simulation
 
 # Start sample agents + supporting services
 docker-compose up -d
@@ -82,20 +82,20 @@ docker-compose up -d
 # - 3 sample agents (Nimbus, Meridian, Healix)
 # - LiteLLM (LLM gateway)
 # - MongoDB, Redis (for agents)
-# - Does NOT start Aegis (that's separate)
+# - Does NOT start Rind (that's separate)
 ```
 
-### Step 2: Point to Your Aegis
+### Step 2: Point to Your Rind
 
 ```bash
-# Option A: Use local Aegis (if running aegis locally)
-export AEGIS_URL=http://localhost:8080
+# Option A: Use local Rind (if running rind locally)
+export RIND_URL=http://localhost:8080
 
-# Option B: Use cloud Aegis
-export AEGIS_URL=https://your-aegis.example.com
+# Option B: Use cloud Rind
+export RIND_URL=https://your-rind.example.com
 
-# Option C: Run without Aegis (baseline comparison)
-export AEGIS_URL=  # Empty = direct to LLM, no protection
+# Option C: Run without Rind (baseline comparison)
+export RIND_URL=  # Empty = direct to LLM, no protection
 ```
 
 ### Step 3: Run Simulations
@@ -184,8 +184,8 @@ ATTACKS = {
 class SimulationEngine:
     """Runs realistic simulations against AI agents."""
 
-    def __init__(self, aegis_url: str = None):
-        self.aegis_url = aegis_url  # If set, routes through Aegis
+    def __init__(self, rind_url: str = None):
+        self.rind_url = rind_url  # If set, routes through Rind
 
     async def run(self, company: str, duration: int, speed: float):
         """Run company simulation."""
@@ -200,7 +200,7 @@ class SimulationEngine:
         ...
 ```
 
-### `/policies/` - Sample Aegis Policies
+### `/policies/` - Sample Rind Policies
 
 These are example policies that work with the sample agents.
 
@@ -230,7 +230,7 @@ policies:
 ## docker-compose.yml
 
 ```yaml
-# aegis-simulation/docker-compose.yml
+# rind-simulation/docker-compose.yml
 version: '3.8'
 
 services:
@@ -243,7 +243,7 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - LLM_URL=${AEGIS_URL:-http://litellm:4000}/v1
+      - LLM_URL=${RIND_URL:-http://litellm:4000}/v1
       - MONGODB_URI=mongodb://mongodb:27017/nimbus
     depends_on:
       - litellm
@@ -254,7 +254,7 @@ services:
     ports:
       - "8002:8000"
     environment:
-      - LLM_URL=${AEGIS_URL:-http://litellm:4000}/v1
+      - LLM_URL=${RIND_URL:-http://litellm:4000}/v1
       - REDIS_URL=redis://redis:6379
     depends_on:
       - litellm
@@ -265,7 +265,7 @@ services:
     ports:
       - "8003:8000"
     environment:
-      - LLM_URL=${AEGIS_URL:-http://litellm:4000}/v1
+      - LLM_URL=${RIND_URL:-http://litellm:4000}/v1
     depends_on:
       - litellm
 
@@ -317,7 +317,7 @@ volumes:
 ## Makefile
 
 ```makefile
-# aegis-simulation/Makefile
+# rind-simulation/Makefile
 
 # Configuration
 COMPANY ?= nimbus
@@ -371,11 +371,11 @@ run:
 		--company $(COMPANY) \
 		--duration $(DURATION) \
 		--speed $(SPEED) \
-		--aegis-url $(AEGIS_URL)
+		--rind-url $(RIND_URL)
 
-# Run without Aegis (baseline comparison)
-run-no-aegis:
-	AEGIS_URL= python cli.py run \
+# Run without Rind (baseline comparison)
+run-no-rind:
+	RIND_URL= python cli.py run \
 		--company $(COMPANY) \
 		--duration $(DURATION) \
 		--speed $(SPEED)
@@ -427,12 +427,12 @@ demo-attacks:
 demo-day:
 	make run COMPANY=nimbus DURATION=24 SPEED=100
 
-# Compare with/without Aegis
+# Compare with/without Rind
 demo-compare:
-	@echo "=== WITHOUT AEGIS ==="
-	make run-no-aegis COMPANY=nimbus DURATION=1 SPEED=10
+	@echo "=== WITHOUT RIND ==="
+	make run-no-rind COMPANY=nimbus DURATION=1 SPEED=10
 	@echo ""
-	@echo "=== WITH AEGIS ==="
+	@echo "=== WITH RIND ==="
 	make run COMPANY=nimbus DURATION=1 SPEED=10
 ```
 
@@ -446,13 +446,13 @@ demo-compare:
 # ============================================
 
 # 1. Go to simulation project
-cd ~/projects/aegis-simulation
+cd ~/projects/rind-simulation
 
 # 2. Start environment
 make up
 
-# 3. Configure Aegis endpoint
-export AEGIS_URL=http://localhost:8080
+# 3. Configure Rind endpoint
+export RIND_URL=http://localhost:8080
 
 # 4. Run simulation
 make run COMPANY=nimbus
@@ -482,7 +482,7 @@ make attack ATTACK=all                     # All attacks
 # Demos
 make demo-attacks       # Quick attack demo
 make demo-day           # Full day simulation
-make demo-compare       # Compare with/without Aegis
+make demo-compare       # Compare with/without Rind
 
 # Environment
 make up                 # Start services
@@ -494,11 +494,11 @@ make logs               # View logs
 
 ---
 
-## How It Connects to Aegis
+## How It Connects to Rind
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                        aegis-simulation/                                 │
+│                        rind-simulation/                                 │
 │                   (separate project/repo)                                │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
@@ -512,7 +512,7 @@ make logs               # View logs
 │                          ▼                                               │
 │         ┌────────────────────────────────────┐                          │
 │         │   LLM_URL environment variable      │                          │
-│         │   Points to Aegis or direct LLM    │                          │
+│         │   Points to Rind or direct LLM    │                          │
 │         └────────────────┬───────────────────┘                          │
 │                          │                                               │
 └──────────────────────────┼───────────────────────────────────────────────┘
@@ -521,7 +521,7 @@ make logs               # View logs
            │                               │
            ▼                               ▼
 ┌─────────────────────┐         ┌─────────────────────┐
-│       AEGIS         │         │    Direct LLM       │
+│       RIND         │         │    Direct LLM       │
 │  (your product)     │         │  (no protection)    │
 │                     │         │                     │
 │  localhost:8080     │         │  litellm:4000       │
@@ -529,17 +529,17 @@ make logs               # View logs
 └─────────────────────┘         └─────────────────────┘
 ```
 
-**With Aegis:**
+**With Rind:**
 ```bash
-export AEGIS_URL=http://localhost:8080
+export RIND_URL=http://localhost:8080
 make run COMPANY=nimbus
-# Agents route through Aegis → policies enforced → attacks blocked
+# Agents route through Rind → policies enforced → attacks blocked
 ```
 
-**Without Aegis (baseline):**
+**Without Rind (baseline):**
 ```bash
-export AEGIS_URL=
-make run-no-aegis COMPANY=nimbus
+export RIND_URL=
+make run-no-rind COMPANY=nimbus
 # Agents go direct to LLM → no protection → attacks succeed
 ```
 
@@ -547,17 +547,17 @@ make run-no-aegis COMPANY=nimbus
 
 ## Summary
 
-| Aspect | Main Aegis Project | Simulation Project |
+| Aspect | Main Rind Project | Simulation Project |
 |--------|-------------------|-------------------|
-| **Location** | `~/projects/aegis/` | `~/projects/aegis-simulation/` |
+| **Location** | `~/projects/rind/` | `~/projects/rind-simulation/` |
 | **Purpose** | Your product | Test your product |
 | **Contains** | Proxy, Dashboard, SDK | Sample agents, scenarios, attacks |
 | **Runs** | Your actual product | Fake companies using AI |
-| **Dependency** | None | Points to Aegis URL |
+| **Dependency** | None | Points to Rind URL |
 
 The simulation is **completely independent** - you can:
-- Run it against local Aegis
-- Run it against cloud Aegis
-- Run it with no Aegis (baseline comparison)
+- Run it against local Rind
+- Run it against cloud Rind
+- Run it with no Rind (baseline comparison)
 - Share it with design partners
 - Use it for demos

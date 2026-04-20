@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Human-in-the-loop approval is Aegis's key differentiator. While Lakera can only BLOCK or ALLOW, Aegis adds a third option: **REQUIRE_APPROVAL**.
+Human-in-the-loop approval is Rind's key differentiator. While Lakera can only BLOCK or ALLOW, Rind adds a third option: **REQUIRE_APPROVAL**.
 
 This enables enterprises to:
 - Allow agents to operate autonomously for low-risk actions
@@ -22,11 +22,11 @@ This enables enterprises to:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              AEGIS HITL ARCHITECTURE                             │
+│                              RIND HITL ARCHITECTURE                             │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
 │   ┌─────────────┐     ┌─────────────────┐     ┌─────────────────────────────┐   │
-│   │   Agent     │────►│  Aegis Proxy    │────►│  Policy Engine              │   │
+│   │   Agent     │────►│  Rind Proxy    │────►│  Policy Engine              │   │
 │   │             │     │                 │     │                             │   │
 │   └─────────────┘     └────────┬────────┘     │  Decision:                  │   │
 │                                │              │  ├── ALLOW → forward        │   │
@@ -89,7 +89,7 @@ T+0ms        T+5ms           T+10ms              T+30s              T+35s
   │            │                │                   │                  │
   ▼            ▼                ▼                   ▼                  ▼
 
-Agent      Aegis Proxy      Policy Engine      Human Approver      Agent
+Agent      Rind Proxy      Policy Engine      Human Approver      Agent
 sends      intercepts       evaluates          clicks "Approve"    receives
 DELETE     request          → REQUIRE_APPROVAL in Slack            response
 query                       → creates approval                     from DB
@@ -105,7 +105,7 @@ query                       → creates approval                     from DB
 
 ```
 ┌───────┐     ┌───────────┐     ┌──────────────┐     ┌─────────────┐     ┌─────────┐
-│ Agent │     │Aegis Proxy│     │Policy Engine │     │Approval Svc │     │ Slack   │
+│ Agent │     │Rind Proxy│     │Policy Engine │     │Approval Svc │     │ Slack   │
 └───┬───┘     └─────┬─────┘     └──────┬───────┘     └──────┬──────┘     └────┬────┘
     │               │                  │                    │                 │
     │ tool_call     │                  │                    │                 │
@@ -163,7 +163,7 @@ query                       → creates approval                     from DB
 ### Basic REQUIRE_APPROVAL Policy
 
 ```yaml
-# aegis-policies.yaml
+# rind-policies.yaml
 
 policies:
   - name: "require-approval-destructive-db"
@@ -436,7 +436,7 @@ Response:
   "timeout_at": "2026-04-01T12:15:00Z",
   "notification_channels": ["slack", "email"],
   "wait_url": "/internal/approvals/apr_xxx/wait",
-  "webhook_url": "https://aegis.io/webhooks/approval/apr_xxx"
+  "webhook_url": "https://rind.io/webhooks/approval/apr_xxx"
 }
 ```
 
@@ -580,7 +580,7 @@ Response:
             "text": "🔍 View Details"
           },
           "action_id": "view_details",
-          "url": "https://app.aegis.io/approvals/apr_xxx"
+          "url": "https://app.rind.io/approvals/apr_xxx"
         }
       ]
     }
@@ -594,7 +594,7 @@ Response:
 # slack_handler.py
 
 from fastapi import FastAPI, Request
-from aegis.approvals import ApprovalService
+from rind.approvals import ApprovalService
 
 app = FastAPI()
 approval_service = ApprovalService()
@@ -695,7 +695,7 @@ async def handle_slack_interaction(request: Request):
 ### Option A: Long Polling (Simpler)
 
 ```
-Agent ──► Aegis Proxy ──► Approval Service
+Agent ──► Rind Proxy ──► Approval Service
               │
               │ HTTP connection held open
               │ (with timeout)
@@ -712,7 +712,7 @@ Agent ──► Aegis Proxy ──► Approval Service
 ### Option B: Webhook Callback (Recommended)
 
 ```
-Agent ──► Aegis Proxy ──► Approval Service
+Agent ──► Rind Proxy ──► Approval Service
               │
               │ Return 202 Accepted immediately
               │ + approval_id + status_url
@@ -734,9 +734,9 @@ Agent ──► Aegis Proxy ──► Approval Service
 ### Option C: Hybrid (SDK)
 
 ```python
-# aegis_sdk.py
+# rind_sdk.py
 
-class AegisClient:
+class RindClient:
     async def execute_with_approval(self, tool_call):
         """
         Execute a tool call, handling approval flow transparently.
@@ -757,7 +757,7 @@ class AegisClient:
                 # Retry with approval token
                 return await self.proxy.forward(
                     tool_call,
-                    headers={"X-Aegis-Approval": approval_id}
+                    headers={"X-Rind-Approval": approval_id}
                 )
             else:
                 raise ApprovalDeniedError(result)
@@ -852,7 +852,7 @@ async def validate_approval_token(request: Request) -> Optional[ApprovalRequest]
     """
     Validate that a request includes a valid approval token.
     """
-    approval_id = request.headers.get("X-Aegis-Approval")
+    approval_id = request.headers.get("X-Rind-Approval")
     if not approval_id:
         return None
 
@@ -904,7 +904,7 @@ async def log_approval_event(
 
     # Also emit to SIEM if configured
     await siem_exporter.emit({
-        "event": f"aegis.approval.{event_type}",
+        "event": f"rind.approval.{event_type}",
         "approval_id": approval_id,
         "actor": actor,
         "timestamp": datetime.utcnow().isoformat(),

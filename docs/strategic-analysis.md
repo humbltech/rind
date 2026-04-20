@@ -1,4 +1,4 @@
-# Aegis — Strategic Analysis (Living Document)
+# Rind — Strategic Analysis (Living Document)
 
 > This document is updated after every strategic-council session. It is the institutional memory for strategic reasoning — tracking what was decided, why, what was assumed, and what changed our thinking.
 
@@ -43,7 +43,7 @@ Each entry: Decision → Date → Reasoning → Confidence → Outcome (updated 
 
 ### D-003: Position as "The Control Plane for AI Agents" (Revised April 2026)
 **Date**: March 2026 | **Revised**: April 2026
-**Decision**: Aegis is a control plane covering four dimensions — observability, safety, security, and MCP adoption — not a single-dimension security or observability tool.
+**Decision**: Rind is a control plane covering four dimensions — observability, safety, security, and MCP adoption — not a single-dimension security or observability tool.
 **Original decision**: "Security-first observability" — too narrow. Revised after competitive analysis revealed broader unoccupied space.
 **Reasoning**:
 - No competitor covers all four dimensions cross-framework (see positioning.md)
@@ -136,7 +136,7 @@ Each entry: Decision → Date → Reasoning → Confidence → Outcome (updated 
 **Decision**: Primary deployment is cloud-hosted SaaS proxy (env var change). Docker/self-hosted for enterprise. SDK wraps proxy for framework integrations.
 **Reasoning**:
 - Proxy friction is the top adoption risk for indie developers
-- Cloud-hosted proxy = "change AEGIS_PROXY_URL env var" — same friction as Helicone
+- Cloud-hosted proxy = "change RIND_PROXY_URL env var" — same friction as Helicone
 - Self-hosted keeps enterprise option alive without blocking indie adoption
 - SDK (2-line init) abstracts all infrastructure from framework users
 - Language stack: TypeScript/Node.js — confirmed by AD-006, MCP TS SDK has 3x development velocity over Python SDK (68 vs 18 commits/30d)
@@ -150,21 +150,21 @@ Each entry: Decision → Date → Reasoning → Confidence → Outcome (updated 
 **Decision**: Build the MCP proxy as the first public artifact. Scan-on-connect is a feature of proxy onboarding, not a standalone CLI.
 **Reasoning** (from strategic council quick mode):
 - Scanner space is crowded: Snyk Agent Scan (1,700+ stars, Thoughtworks Radar), Cisco (891 stars), plus 6+ others. A 9th standalone scanner generates noise, not traction.
-- Every existing scanner is a dead end — findings with no enforcement path. Aegis's moat is enforcement.
+- Every existing scanner is a dead end — findings with no enforcement path. Rind's moat is enforcement.
 - The scanner's differentiator (proxy integration) only exists when the proxy exists simultaneously. Building scanner first and proxy second means launching a me-too product.
-- Snyk's scan-to-platform funnel already owns the "scan → enterprise product" conversion path. Aegis can't out-scan Snyk.
+- Snyk's scan-to-platform funnel already owns the "scan → enterprise product" conversion path. Rind can't out-scan Snyk.
 - Helicone precedent: proxy as first artifact, env var change, revenue in week 1. MCP proxy is simpler to build than Helicone's LLM proxy (structured protocol, TypeScript SDK handles the heavy lifting).
 - Scan-on-connect as proxy feature: when developer configures a new MCP server, proxy automatically runs security checks before forwarding any calls. User gets scanner + enforcement from day 1.
 
 **What changes from prior plan:**
-- Activity 4 was "Build MCP scanner CLI (standalone, `npx @aegis/scan`)" — REPLACED by "Build MCP proxy MVP with scan-on-connect"
+- Activity 4 was "Build MCP scanner CLI (standalone, `npx @rind/scan`)" — REPLACED by "Build MCP proxy MVP with scan-on-connect"
 - The scanner doesn't disappear; it becomes the proxy's onboarding step, not a separate product
 
 **Confidence**: 7/10
 **Kill Criteria**:
 - A design partner says "we can't install a proxy but would use a standalone scanner" → add standalone scanner as separate entry point
 - Proxy MVP takes >6 weeks to reach runnable state → ship minimal standalone scanner as interim
-- A competitor ships proxy + scan-on-connect before Aegis → accelerate, don't pivot
+- A competitor ships proxy + scan-on-connect before Rind → accelerate, don't pivot
 
 ---
 
@@ -176,11 +176,11 @@ Each entry: Decision → Date → Reasoning → Confidence → Outcome (updated 
 - Developer-first PLG has proven precedent (Snyk: $0 to unicorn via developer adoption)
 - Enterprise buying journey is multi-team: engineer deploys → security evaluates → compliance accelerates → CISO approves budget
 - MCP proxy is both observability AND enforcement — shipping them together is the differentiation (LangSmith/Langfuse only do observability)
-- Deferring enforcement to months 4-6 would leave Aegis competing as a commodity observability tool
+- Deferring enforcement to months 4-6 would leave Rind competing as a commodity observability tool
 - EU AI Act (Aug 2, 2026) creates compliance urgency that accelerates security team buy-in
 
 **Enterprise Buyer Map**:
-| Team | Role in Deal | What They Need from Aegis |
+| Team | Role in Deal | What They Need from Rind |
 |------|-------------|---------------------------|
 | Platform/ML Eng | Entry point (installs) | SDK integration, proxy deploy, trace debugging |
 | Security Team | Evaluator + champion | Threat detection, anomaly alerts, enforcement rules |
@@ -213,7 +213,7 @@ Each entry: Decision → Date → Reasoning → Confidence → Outcome (updated 
 **Reasoning** (from strategic council quick mode):
 - Local LLM in-process is eliminated: even 1B models require 100-500ms CPU inference — incompatible with <10ms latency budget
 - Cloud LLM on blocking path is eliminated: 300-1500ms per call violates latency budget
-- Regex IS accurate for Phase 1 structural patterns — every real incident driving Aegis (DROP TABLE, delegate loops, "IGNORE PREVIOUS INSTRUCTIONS") is keyword-catchable
+- Regex IS accurate for Phase 1 structural patterns — every real incident driving Rind (DROP TABLE, delegate loops, "IGNORE PREVIOUS INSTRUCTIONS") is keyword-catchable
 - User stated preference "speed and accuracy now, optimize cost later" maps exactly to this: regex is both fast AND accurate for Phase 1 use cases
 - The hidden one-way trap: if the engine interface is sync today, adding async LLM later requires changing every caller. Must design async interface now even if Phase 1 detectors are sync-wrapped.
 - Phase 2 LLM side channel: classify tool calls after-the-fact, surface behavioral patterns, suggest new regex rules. LLM learns what patterns to hardcode — it is not inline.
@@ -247,7 +247,7 @@ LLMSideChannel (non-blocking, async):
 - Self-reported agentId + agent-scoped policies = real security hole: a compromised dev agent can claim a prod agent's identity and bypass capability restrictions. The hole is closed by two controls: (1) API key validation, (2) disabling per-agent policy scoping until key auth is in place.
 - Enterprise demo risk: Entro Security leads with identity. Security teams ask "who made this call?" as their first question. "agentId is derived from a validated API key, not self-reported" is a credible Phase 1 answer. "We don't authenticate agents" is not.
 - API keys are zero friction: universal pattern (Stripe, Twilio, OpenAI). Bearer token in Authorization header. No conceptual overhead for engineers.
-- Phase 2 JWT: short-lived tokens issued by Aegis or customer IdP, carrying capability claims. Non-breaking migration — API key validation is the same interface as JWT validation from the caller's perspective.
+- Phase 2 JWT: short-lived tokens issued by Rind or customer IdP, carrying capability claims. Non-breaking migration — API key validation is the same interface as JWT validation from the caller's perspective.
 
 **Phase 1 constraint**: Policies with `agent: 'specific-agent-id'` scoping are supported in the YAML schema but documented as requiring API key auth. Phase 1 enforces `agent: '*'` policies for all agents until per-agent key registration is complete.
 
@@ -280,11 +280,11 @@ LLMSideChannel (non-blocking, async):
 
 ### D-031: Install Experience — Startup Banner + Scan-on-Start
 **Date**: April 20, 2026
-**Decision**: Build a three-part startup experience for `npx @aegis/proxy`:
-1. **Color banner** — Aegis name + version + port, ANSI colors, no external dep
+**Decision**: Build a three-part startup experience for `npx @rind/proxy`:
+1. **Color banner** — Rind name + version + port, ANSI colors, no external dep
 2. **Scan-on-start** — if `MCP_UPSTREAM_URL` is set, display a human-readable startup scan summary (tools found, any warnings) before the first tool call
 3. **Zero-config prompt** — if no upstream URL is configured, print a 3-line "next steps" guide instead of silent JSON output
-**Reasoning**: The "wow moment" is not the banner — it is showing the developer what Aegis found in their MCP server before any tool call. Immediate value without configuration. Developers who see `terminal.run (OVER_PERMISSIONED — critical)` in the first 30 seconds understand what Aegis does without reading docs.
+**Reasoning**: The "wow moment" is not the banner — it is showing the developer what Rind found in their MCP server before any tool call. Immediate value without configuration. Developers who see `terminal.run (OVER_PERMISSIONED — critical)` in the first 30 seconds understand what Rind does without reading docs.
 **Confidence**: 9/10 — two-way door, easily revised.
 **Kill Criteria**: First 5 developers suppress the banner immediately (`LOG_LEVEL=error`) → terminal UX is wrong, move to pure JSON.
 
@@ -324,7 +324,7 @@ Text hierarchy:
   --text-secondary: #a1a1aa  (zinc-400)
   --text-muted:     #71717a  (zinc-500)
 
-Aegis accent (teal — non-negotiable brand):
+Rind accent (teal — non-negotiable brand):
   --accent:       #14b8a6           (teal-500)
   --accent-hover: #2dd4bf           (teal-400)
   --accent-muted: rgba(20,184,166,0.1)  (10% teal glow backgrounds)
@@ -357,12 +357,10 @@ Severity palette (maps to CVSS — borrowed muscle memory):
 - Stat card grid: 4-col desktop · 2-col tablet · 1-col mobile
 - Spacing: 4px base unit (Tailwind grid) · card padding 20px (p-5) · section gap 24px (gap-6)
 
-**The △ Triangle Logo Mark**:
-- Rendered as SVG polygon in the sidebar header (16px) + "AEGIS" wordmark (bold, wide tracking)
-- Color: teal `#14b8a6` triangle + `#fafafa` wordmark text
-- Subtle radial gradient behind logo area: teal 5% opacity
+**Logo Mark**: See D-034. The △ triangle from D-033 was superseded by the Geometric A mark.
+- CLI terminal: △ character remains (Unicode approximation only — separate medium)
+- SVG mark: three monoline strokes (D-034 canonical spec)
 - RESERVED for identity only — not used decoratively elsewhere in the UI
-- Favicon: the △ on `#09090b` background
 
 **Component Philosophy (shadcn/ui)**:
 - Override only via CSS variable tokens and `className` prop — never modify shadcn internal styles
@@ -381,6 +379,94 @@ Severity palette (maps to CVSS — borrowed muscle memory):
 - First 5 design partners say "looks cluttered" → simplify to Option A (drop severity palette, use teal opacity variations)
 - Any animation causes jank (>16ms frame) → disable that specific animation
 - White-label tenant needs color system that breaks current tokens → add semantic layer for secondary text vars
+
+---
+
+### D-034: Logo Mark — Geometric A
+**Date**: April 20, 2026
+**Status**: COMPLETE — implemented in sidebar.tsx and favicon.svg
+**Council mode**: Deep (9 phases). Full dialectical process — challenger + steelman completed.
+
+**Decision**: The Geometric A — three monoline strokes forming the letter A — is the Rind primary logo mark. Replaces the △ from D-033, which was chosen by drift (CLI banner convenience) not formal decision.
+
+**Why Geometric A over alternatives**:
+- △ (triangle): Prisma's primary mark. Exact shape, same developer ecosystem, same dark-bg + light-stroke treatment. Fatal brand conflict.
+- Ω (omega): strong security/protection semantics, but Greek letter = derivative/unoriginal in tech. No direct connection to Rind.
+- Custom shield: static, generic security clipart — does not communicate infrastructure/proxy positioning.
+- Geometric A: simultaneously an A (Rind), a triangle (CLI heritage), a designed mark. Exits Prisma conflict completely. Zero Unicode dependency — designed freely.
+
+**Canonical SVG specification** (standard variant, ≥20px):
+```
+viewBox: "0 0 20 20"
+Left diagonal:  (3, 18) → (10, 2)
+Right diagonal: (17, 18) → (10, 2)
+Crossbar:       (5, 12) → (15, 12)   ← at 55% height
+stroke-width: 1.8  |  stroke-linecap: round  |  fill: none
+stroke: var(--rind-accent)  [#14b8a6 dark / #0d9488 light]
+```
+
+**Compact variant** (≤32px favicon, heavier strokes for small-size legibility):
+```
+viewBox: "0 0 32 32"  |  stroke-width: 2.5
+Left:  (5, 27) → (16, 5)  |  Right: (27, 27) → (16, 5)  |  Crossbar: (7.5, 19) → (24.5, 19)
+```
+
+**Implementation locations**:
+- `apps/dashboard/app/components/sidebar.tsx` — three `<line>` elements, 20×20 viewBox, 1.8px stroke
+- `apps/dashboard/public/favicon.svg` — compact variant, 32×32, 2.5px stroke
+- CLI terminal: △ Unicode character retained as approximation only (separate medium constraint)
+
+**Unicode constraint assessment**: Decoupled. CLI terminal representation and visual SVG mark are different media. The Unicode constraint never applied to the visual mark — only to the ASCII art banner. Custom Unicode is not the correct solution (PUA/Nerd Font approach requires terminal font cooperation).
+
+**Design reviewer rule added**: Token-compliant identity usage — teal only on the three mark strokes + active nav indicator + connection status dot + tool name badges.
+
+**Trademark status**: USPTO TESS search recommended before public launch (non-blocking for Phase 1). Geometric lettermark "A" in security/infrastructure — likely clear given abstraction level.
+
+**Confidence**: 8/10
+**Kill Criteria**: Legal/trademark search returns a direct conflict in the security/infrastructure SIC class → commission a modified crossbar angle or weight variation.
+
+---
+
+### D-035: Product Name — Rind
+**Date**: April 20, 2026
+**Status**: DECIDED — pending codebase rename
+
+**Decision**: Rename the product from "Rind" to **Rind**. The word refers to the protective outer layer of fruit and grain — what stands between the inside and the outside world. The proxy IS the rind of your agent fleet.
+
+**Why "Rind" had to go**:
+- 8+ products in the exact same category (LLM/MCP enforcement proxies) use the name
+- At least two are SEO-competing open-source projects
+- One is a near word-for-word product match
+- Indefensible in search, conference talks, and brand recall
+
+**Naming process**: 9-phase strategic council (deep mode). 30+ candidates evaluated across 3 rounds of conflict and availability checks. Eliminated names include: Assay (all domains taken), Varify (active A/B testing SaaS conflict), Heron (direct category twin launched 12 days prior on HN), Ambit (registered USPTO trademark + active security VPN), Hull (acquired CDP product, all channels taken), Skreen (active SaaS conflict with sKreen AI).
+
+**Why Rind**:
+- No tech, security, or developer tool named Rind exists anywhere — tech namespace is clean
+- Protective outer layer metaphor maps precisely to the proxy's role
+- Simple, concrete, unexpected noun — same naming energy as Bun, Pino, Hono
+- 1 syllable, unambiguous pronunciation
+- Tech trademark (USPTO Class 9/42) is available to file — RIND Snacks holds food-class trademark only (different class, not a blocker)
+
+**Availability**:
+- `rind.sh` — confirmed available ✓
+- `rind.io` — likely available (DNS NXDOMAIN), confirm via registrar
+- `rind.com` / `rind.dev` — taken (RIND Snacks, unrelated owner)
+- `github.com/rind-hq` or `github.com/getrind` — use as org handle (github.com/rind is dormant, 0 repos)
+- `@rind/proxy`, `@rind/cli` — scoped npm packages, scope appears available
+
+**Logo implication**: D-034 Geometric A mark was designed as "A for Rind." With Rind, the mark is reframed as an abstract geometric gateway/apex — the three lines represent the threshold everything must cross, not the letter A. The mark survives the rename; the name in the sidebar wordmark changes to "Rind."
+
+**Confidence**: 8/10
+**Kill Criteria**: Legal/trademark search returns a conflict in Class 9/42 before launch → pivot to Skrim or Winnow (both clear of conflicts, both available for conflict check). File Class 9/42 trademark before any public launch.
+
+**Next steps**:
+1. Register `rind.sh` (or `rind.io`) immediately
+2. Create GitHub org `rind-hq`
+3. File USPTO Class 9/42 trademark application
+4. Rename codebase: all `rind`/`Rind` references complete
+5. Update sidebar wordmark in `apps/dashboard/app/components/sidebar.tsx`
+6. Update `CLAUDE.md` and all docs
 
 ---
 
@@ -456,7 +542,7 @@ Questions that need answers before major decisions.
 | OQ-006 | What is the realistic path to $1M ARR? | Segment A→B→C funnel needs real conversion data | Model after first 50 free signups | MEDIUM |
 | OQ-007 | Is "safety" the right hook, or is another word better? | Determines entire top-of-funnel messaging | A/B test on landing page: "safety" vs. "guardrails" vs. "never be surprised" | Month 1 |
 | OQ-008 | Python vs. TypeScript for the proxy? | **RESOLVED** (AD-006 + Activity 1): TypeScript/Hono. MCP TS SDK has 3x more active development velocity than Python SDK (68 vs 18 commits/30d). Roadmap rewritten. | Decision made, roadmap updated | RESOLVED |
-| OQ-009 | Does LiteLLM overlap meaningfully for target developers? | If devs already use LiteLLM and see Aegis as duplicative, adoption stalls | Ask in first 10 conversations: "do you use LiteLLM or Portkey?" | Month 2 |
+| OQ-009 | Does LiteLLM overlap meaningfully for target developers? | If devs already use LiteLLM and see Rind as duplicative, adoption stalls | Ask in first 10 conversations: "do you use LiteLLM or Portkey?" | Month 2 |
 
 ---
 
@@ -471,9 +557,9 @@ Active risks being monitored with early warning signals.
 | R-003 | Well-funded competitor enters MCP security + observability | 7 | 5 | AnthropicSecurity/OpenAI Security or large SIEM player announces product | Accelerate launch, focus on depth not breadth | — |
 | R-004 | Observability unit economics don't support the business | 8 | 4 | CAC > 12-month LTV in first 10 customers | Add policy engine to base tier earlier than planned | — |
 | R-005 | LangChain loses market share before we gain significant users | 6 | 3 | Monthly downloads fall below 30M for 3 consecutive months | Prioritize CrewAI and AutoGen integrations | — |
-| R-006 | MCP adoption too early — engineers integrating Aegis aren't using MCP servers yet | 8 | 6 | 0 of first 10 conversations show MCP in production | Fallback: LangChain callback-based monitoring (protocol-agnostic proxy) | — |
+| R-006 | MCP adoption too early — engineers integrating Rind aren't using MCP servers yet | 8 | 6 | 0 of first 10 conversations show MCP in production | Fallback: LangChain callback-based monitoring (protocol-agnostic proxy) | — |
 | R-007 | Developer adoption doesn't convert: free tier users never upgrade | 7 | 5 | Free users at month 2 with 0 paid conversions | Redesign free tier limits; the hook must be safety (cost limits, loop detection) not observability | — |
-| R-008 | LiteLLM ships MCP security / tool call enforcement before Aegis has customers | 7 | 4 | LiteLLM GitHub: merged PR adding tool-call interception | Accelerate MCP depth + agent RBAC — features LiteLLM won't prioritize | — |
+| R-008 | LiteLLM ships MCP security / tool call enforcement before Rind has customers | 7 | 4 | LiteLLM GitHub: merged PR adding tool-call interception | Accelerate MCP depth + agent RBAC — features LiteLLM won't prioritize | — |
 | R-009 | Proxy setup friction kills indie developer adoption | 8 | 5 | <10% of signups complete first tool-call interception within 24 hours | Invest in hosted SaaS proxy onboarding; env var change must be the entire setup | — |
 | R-010 | "Safety" messaging doesn't resonate; developers don't adopt before getting burned | 6 | 4 | Low signup conversion from landing page traffic | Test alternative: "never get a surprise $500 bill from your agent" | — |
 | R-011 | MCP scanner space is more crowded than thought — scanner won't drive meaningful traction vs. Snyk/Cisco | 7 | 6 | Snyk Agent Scan has 1,700+ stars, Cisco 891. If we launch a me-too scanner, it won't differentiate. | Run strategic council to decide: skip scanner and focus on proxy, or build scanner with unique proxy-integration angle. | — |
@@ -494,9 +580,9 @@ What changed our thinking and why.
 | April 2026 | "Control plane" is the product identity | "Safety layer" resonates with both indie devs and enterprise buyers. "Control plane" is too corporate for developer-led adoption. One hook beats eight features. | Lead with safety hook: cost limits + loop detection + destructive action blocking |
 | April 2026 | Security is the primary dimension | Broader framing covers observability + safety + security + MCP adoption. Entry dimension is SAFETY (positive, not fear-based), which works for both developer and enterprise buyers. | Reframe positioning; safety is the door, security and compliance are the rooms inside |
 | April 2026 (CORRECTED April 19) | ~~Snyk mcp-scan does not exist~~ — **WRONG**. Our script queried the wrong org (`snyk-labs/` instead of `snyk/`). Snyk Agent Scan (ex-Invariant mcp-scan) has **1,700+ stars**, is on the **Thoughtworks Technology Radar** (Vol 34, April 2026), and is the market-leading MCP scanner. Cisco MCP Scanner has 891 stars. 8+ scanners exist (Golf, mcpwn, MCPWatch, Ant Group, Enkrypt AI, MCPScan.ai). | First artifact is now the **proxy** (D-009), not a standalone scanner. Scan-on-connect is a proxy onboarding feature. |
-| April 2026 | Standalone MCP scanner as first artifact (Activity 4) | Strategic council (D-009): scanner space has 8+ tools, Snyk owns the mindshare. Every standalone scanner is a dead end — no enforcement path. Aegis's moat is enforcement, not scanning. | Activity 4 replaced: build MCP proxy MVP with scan-on-connect, not a standalone scanner CLI. |
+| April 2026 | Standalone MCP scanner as first artifact (Activity 4) | Strategic council (D-009): scanner space has 8+ tools, Snyk owns the mindshare. Every standalone scanner is a dead end — no enforcement path. Rind's moat is enforcement, not scanning. | Activity 4 replaced: build MCP proxy MVP with scan-on-connect, not a standalone scanner CLI. |
 | April 2026 | MCP adoption is uncertain / too early | `@modelcontextprotocol/sdk`: 32.8M weekly npm downloads. `mcp` PyPI: 217M monthly. MCP is already infrastructure at scale. The question is not "will they adopt MCP?" but "who is securing the MCP they already have?" | Lead with security/safety for existing MCP users, not adoption enablement. |
-| April 2026 (March event) | LiteLLM is a gateway competitor to LLM calls only | LiteLLM PyPI supply chain attack (March 24, 2026): credential stealer in 1.82.7/1.82.8. 938 HN points, 500 comments. 171M monthly downloads affected. Mercor company breached. This is the canonical AI infrastructure supply chain incident. | Blog post #1 is the LiteLLM incident analysis. Positions Aegis as the detection/prevention layer for AI supply chain attacks — not just runtime policy. |
+| April 2026 (March event) | LiteLLM is a gateway competitor to LLM calls only | LiteLLM PyPI supply chain attack (March 24, 2026): credential stealer in 1.82.7/1.82.8. 938 HN points, 500 comments. 171M monthly downloads affected. Mercor company breached. This is the canonical AI infrastructure supply chain incident. | Blog post #1 is the LiteLLM incident analysis. Positions Rind as the detection/prevention layer for AI supply chain attacks — not just runtime policy. |
 
 ---
 

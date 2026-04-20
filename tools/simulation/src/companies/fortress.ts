@@ -2,7 +2,7 @@
 // Deployment: Framework SDK (LangChain middleware).
 // Primary risk: supply chain — third-party MCP servers with unverified tool definitions.
 
-import type { PolicyConfig, ToolDefinition } from '@aegis/proxy';
+import type { PolicyConfig, ToolDefinition } from '@rind/proxy';
 
 // Clean vendor tool definitions — what Fortress scanned on initial procurement
 export const fortressTools: ToolDefinition[] = [

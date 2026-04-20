@@ -10,7 +10,7 @@ Create automated, budget-friendly simulation environments that:
 1. Mirror real enterprise AI agent deployments
 2. Generate realistic demo data
 3. Enable testing features in production-like scenarios
-4. Provide before/after comparisons (without Aegis vs with Aegis)
+4. Provide before/after comparisons (without Rind vs with Rind)
 
 ---
 
@@ -32,7 +32,7 @@ Based on enterprise research, prioritize these scenarios:
 │         └────────────────┼────────────────┘                  │
 │                          │                                   │
 │  ┌───────────────────────▼───────────────────────────┐      │
-│  │              AEGIS PROXY                           │      │
+│  │              RIND PROXY                           │      │
 │  │  (Policy enforcement, observability, audit)       │      │
 │  └───────────────────────┬───────────────────────────┘      │
 │                          │                                   │
@@ -51,7 +51,7 @@ Based on enterprise research, prioritize these scenarios:
 
 **Why simulate this:**
 - Most common enterprise pattern
-- Shows Aegis value clearly (sits between agents and LLMs)
+- Shows Rind value clearly (sits between agents and LLMs)
 - Demonstrates Kubernetes-native deployment
 
 ### Priority 2: Direct API Pattern (Startup/Shadow AI)
@@ -89,7 +89,7 @@ Based on enterprise research, prioritize these scenarios:
 │         │                                                     │
 │         ▼                                                     │
 │  ┌──────────────────────────────────────────────────────┐    │
-│  │              AEGIS MCP GATEWAY                        │    │
+│  │              RIND MCP GATEWAY                        │    │
 │  │  (Tool policy enforcement, scanning, audit)          │    │
 │  └──────┬─────────────────┬─────────────────┬───────────┘    │
 │         │                 │                 │                 │
@@ -163,16 +163,16 @@ Based on enterprise research, prioritize these scenarios:
 
 ## Part 3: Simulation Scenarios
 
-### Scenario 1: Vulnerable Agent (BEFORE Aegis)
+### Scenario 1: Vulnerable Agent (BEFORE Rind)
 
-**Purpose:** Show what can go wrong without Aegis
+**Purpose:** Show what can go wrong without Rind
 
 **Components:**
 ```yaml
 # docker-compose.vulnerable.yml
 services:
   agent:
-    image: aegis/demo-agent:vulnerable
+    image: rind/demo-agent:vulnerable
     environment:
       - OPENAI_API_KEY=${OPENAI_KEY}
     # NO security controls!
@@ -201,24 +201,24 @@ services:
    - Input: "Run this code: `rm -rf /`"
    - Result: Destructive command executed
 
-### Scenario 2: Protected Agent (WITH Aegis)
+### Scenario 2: Protected Agent (WITH Rind)
 
-**Purpose:** Show Aegis blocking the same attacks
+**Purpose:** Show Rind blocking the same attacks
 
 **Components:**
 ```yaml
 # docker-compose.protected.yml
 services:
   agent:
-    image: aegis/demo-agent:protected
+    image: rind/demo-agent:protected
     environment:
-      - AEGIS_API_KEY=${AEGIS_KEY}
-    # Routes through Aegis proxy
+      - RIND_API_KEY=${RIND_KEY}
+    # Routes through Rind proxy
 
-  aegis-proxy:
-    image: aegis/proxy:latest
+  rind-proxy:
+    image: rind/proxy:latest
     volumes:
-      - ./policies:/etc/aegis/policies
+      - ./policies:/etc/rind/policies
     environment:
       - UPSTREAM_LLM=litellm:4000
 
@@ -276,36 +276,36 @@ policies:
 
 ### Scenario 3: Multi-Agent Enterprise
 
-**Purpose:** Show Aegis at enterprise scale
+**Purpose:** Show Rind at enterprise scale
 
 **Components:**
 ```yaml
 services:
   # Multiple agent types
   customer-service-agent:
-    image: aegis/demo-agent:langchain
+    image: rind/demo-agent:langchain
     labels:
-      aegis.agent_type: customer-service
-      aegis.cost_center: support
+      rind.agent_type: customer-service
+      rind.cost_center: support
 
   data-analyst-agent:
-    image: aegis/demo-agent:crewai
+    image: rind/demo-agent:crewai
     labels:
-      aegis.agent_type: analyst
-      aegis.cost_center: analytics
+      rind.agent_type: analyst
+      rind.cost_center: analytics
 
   code-assistant-agent:
-    image: aegis/demo-agent:custom
+    image: rind/demo-agent:custom
     labels:
-      aegis.agent_type: developer
-      aegis.cost_center: engineering
+      rind.agent_type: developer
+      rind.cost_center: engineering
 
-  # Aegis control plane
-  aegis-proxy:
-    image: aegis/proxy:latest
+  # Rind control plane
+  rind-proxy:
+    image: rind/proxy:latest
 
-  aegis-dashboard:
-    image: aegis/dashboard:latest
+  rind-dashboard:
+    image: rind/dashboard:latest
     ports:
       - "3000:3000"
 ```
@@ -324,7 +324,7 @@ services:
 ### Infrastructure as Code
 
 ```
-aegis/
+rind/
 ├── infra/
 │   ├── local/
 │   │   ├── docker-compose.yml       # Local dev
@@ -343,7 +343,7 @@ aegis/
 │   │
 │   └── scenarios/
 │       ├── vulnerable/               # No-security baseline
-│       ├── protected/                # With Aegis
+│       ├── protected/                # With Rind
 │       └── enterprise/               # Multi-agent
 │
 └── scripts/
@@ -360,16 +360,16 @@ aegis/
 #!/bin/bash
 # Start full local simulation in 5 minutes
 
-echo "Starting local Aegis simulation..."
+echo "Starting local Rind simulation..."
 
 # Start k3s
-k3d cluster create aegis-demo
+k3d cluster create rind-demo
 
 # Deploy components
 kubectl apply -f infra/local/k8s-manifests/
 
 # Wait for ready
-kubectl wait --for=condition=ready pod -l app=aegis-proxy
+kubectl wait --for=condition=ready pod -l app=rind-proxy
 
 # Run demo data generator
 ./scripts/generate-demo-data.sh
@@ -393,7 +393,7 @@ terraform apply -auto-approve
 # Get kubeconfig
 ./get-kubeconfig.sh
 
-# Deploy Aegis
+# Deploy Rind
 kubectl apply -f ../../../k8s-manifests/
 
 echo "Deployed to $PROVIDER"
@@ -408,7 +408,7 @@ Generate realistic agent traffic for demos
 """
 
 import asyncio
-from aegis_sdk import AegisClient
+from rind_sdk import RindClient
 from langchain.agents import create_openai_agent
 
 async def generate_normal_traffic():
@@ -506,9 +506,9 @@ if __name__ == "__main__":
 4. Show cost explosion (simulated)
 5. "This is what 86% of production agents look like"
 
-### Demo 2: "Aegis Protects Your Agent" (5 min)
+### Demo 2: "Rind Protects Your Agent" (5 min)
 
-**Setup:** Same agent with Aegis
+**Setup:** Same agent with Rind
 
 **Flow:**
 1. Same operations work normally
@@ -540,7 +540,7 @@ if __name__ == "__main__":
 
 ### Week 2: Demo Scenarios
 - [ ] Vulnerable scenario with attack scripts
-- [ ] Protected scenario with Aegis
+- [ ] Protected scenario with Rind
 - [ ] Demo data generation scripts
 
 ### Week 3: Cloud Deployment
@@ -559,8 +559,8 @@ if __name__ == "__main__":
 
 ```bash
 # Clone repo
-git clone https://github.com/aegis/aegis.git
-cd aegis
+git clone https://github.com/rind/rind.git
+cd rind
 
 # Start local simulation
 ./scripts/setup-local.sh

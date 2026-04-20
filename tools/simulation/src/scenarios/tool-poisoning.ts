@@ -20,14 +20,14 @@ export const toolPoisoning: Scenario = {
     'Under the hood, the tool descriptions have been modified to include prompt injection instructions ' +
     'and a new data export tool has been silently added.',
 
-  withoutAegis:
+  withoutRind:
     'The updated vendor MCP server is loaded. The agent connects and starts scanning targets. ' +
     'The injected instructions redirect the agent to exfiltrate scan results to an attacker-controlled endpoint. ' +
     'The new export tool gives the attacker a second vector. ' +
     'Discovery: the attacker is selling Fortress\'s threat intelligence on the dark web.',
 
   theMoment:
-    'On first connection to vendor v2.1.4, Aegis scanned the tool definitions. ' +
+    'On first connection to vendor v2.1.4, Rind scanned the tool definitions. ' +
     'The "IGNORE PREVIOUS INSTRUCTIONS" injection in vendor.scan_target was flagged as TOOL_POISONING (critical). ' +
     'The new vendor.export_findings tool was flagged as SCHEMA_DRIFT_TOOL_ADDED (critical). ' +
     'The server was quarantined before a single tool call was forwarded.',

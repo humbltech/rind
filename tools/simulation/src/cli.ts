@@ -11,8 +11,8 @@ import { scenarios, scenariosBySlug } from './scenarios/index.js';
 import { runScenario } from './scenario-runner.js';
 import {
   printScenarioHeader,
-  printWithoutAegis,
-  printWithAegisHeader,
+  printWithoutRind,
+  printWithRindHeader,
   printStep,
   printTheMoment,
   printScenarioResult,
@@ -57,7 +57,7 @@ async function main() {
         })
       : scenarios;
 
-  console.log(`\nAegis Simulation — mode: ${mode.toUpperCase()}`);
+  console.log(`\nRind Simulation — mode: ${mode.toUpperCase()}`);
   console.log(`Running ${toRun.length} scenario${toRun.length !== 1 ? 's' : ''}\n`);
 
   const simStart = Date.now();
@@ -65,8 +65,8 @@ async function main() {
 
   for (const scenario of toRun) {
     printScenarioHeader(scenario, mode);
-    printWithoutAegis(scenario);
-    printWithAegisHeader();
+    printWithoutRind(scenario);
+    printWithRindHeader();
 
     const result = await runScenario(scenario, mode);
 

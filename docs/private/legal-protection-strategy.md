@@ -1,4 +1,4 @@
-# Legal Protection Strategy — Aegis
+# Legal Protection Strategy — Rind
 **Private — do not commit to public repo**
 **Last updated:** April 2026
 
@@ -11,7 +11,7 @@
 - Solo developer with full-time employer
 - Employment contract has **broad IP assignment clause** (covers adjacent fields)
 - Parent incorporation held by spouse (HumblTech or equivalent)
-- Aegis operates entirely under the parent company brand
+- Rind operates entirely under the parent company brand
 - No personal name used publicly; all commits under `humbltechnologies@gmail.com / HumblTech`
 
 ---
@@ -27,19 +27,19 @@
 **Moderate risk (when publishing):**
 - Pushing to GitHub under a brand org
 - Publishing npm package
-- Blog posts under Aegis brand
-- If employer discovers Aegis via npm downloads, GitHub, or HN posts
+- Blog posts under Rind brand
+- If employer discovers Rind via npm downloads, GitHub, or HN posts
 
 **Higher risk (when going public):**
 - Identity revealed (funding announcement, conference, LinkedIn)
-- Employer traces back the timeline of when Aegis was built
+- Employer traces back the timeline of when Rind was built
 
 ---
 
 ## Structural Protections
 
 ### 1. Parent Incorporation as IP Owner (Already in place)
-The parent company (spouse's incorporation) owns all Aegis IP. The individual is a private shareholder. Code is authored by the company, not the individual.
+The parent company (spouse's incorporation) owns all Rind IP. The individual is a private shareholder. Code is authored by the company, not the individual.
 
 **Strength:** Corporate veil provides some separation. Employer would need to sue the company, not the individual, to claim IP.
 
@@ -60,7 +60,7 @@ If the director (who coined the idea) contributes initial commits before anythin
 
 ### 5. One-Hour Legal Consultation (Highest ROI action)
 Cost: ~$300-500 CAD
-Question to ask: "My employment contract has an IP assignment clause covering [describe scope]. I'm building a side project in [describe Aegis at a high level] on personal time, personal equipment, through a separate incorporation. Does this clause cover my side project?"
+Question to ask: "My employment contract has an IP assignment clause covering [describe scope]. I'm building a side project in [describe Rind at a high level] on personal time, personal equipment, through a separate incorporation. Does this clause cover my side project?"
 
 **The lawyer's answer shapes everything else.**
 
@@ -72,8 +72,8 @@ Question to ask: "My employment contract has an IP assignment clause covering [d
 |-------|-----------|-----------|
 | Code exists locally | Very low | Nothing published |
 | Push to private GitHub org | Low | Private repo, brand email only |
-| Publish npm package (`npx aegis-scan`) | Moderate | Brand name only, no personal identity. Director commits in repo first. |
-| Blog post on dev.to | Moderate | "Aegis Team" author, no personal info |
+| Publish npm package (`npx rind-scan`) | Moderate | Brand name only, no personal identity. Director commits in repo first. |
+| Blog post on dev.to | Moderate | "Rind Team" author, no personal info |
 | Landing page live | Moderate | Same |
 | Show HN post | Moderate | Pseudonymous, brand account |
 | Funding announcement | High | Requires identity; legal clearance needed first |
@@ -90,8 +90,8 @@ Current state verified April 2026:
 
 Before pushing to GitHub: configure git identity at the repo level:
 ```bash
-git config user.email "dev@[aegis-domain].dev"
-git config user.name "Aegis Dev"
+git config user.email "dev@[rind-domain].dev"
+git config user.name "Rind Dev"
 ```
 
 ---
@@ -100,7 +100,7 @@ git config user.name "Aegis Dev"
 
 1. **Book employment lawyer consultation** — do this before publishing anything
 2. **Have director make initial commits** — strengthens multi-contributor story
-3. **Never use work email or laptop for Aegis** — maintain absolute separation
+3. **Never use work email or laptop for Rind** — maintain absolute separation
 4. **Document work sessions** — simple log: date, machine (personal), hours worked
 5. **All public publishing** deferred until after lawyer review confirms it's safe
 

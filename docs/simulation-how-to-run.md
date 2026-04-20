@@ -5,11 +5,11 @@
 ## Directory Structure
 
 ```
-aegis/                          ← You are here (project root)
+rind/                          ← You are here (project root)
 ├── apps/
-│   ├── proxy/                  ← Aegis proxy (your product)
-│   ├── dashboard/              ← Aegis dashboard
-│   └── api/                    ← Aegis API
+│   ├── proxy/                  ← Rind proxy (your product)
+│   ├── dashboard/              ← Rind dashboard
+│   └── api/                    ← Rind API
 │
 ├── simulation/                 ← All simulation code lives here
 │   ├── docker-compose.yml      ← Main compose file
@@ -29,7 +29,7 @@ aegis/                          ← You are here (project root)
 │   ├── engine/                 ← Simulation engine
 │   │   └── runner.py
 │   │
-│   ├── policies/               ← Aegis policies
+│   ├── policies/               ← Rind policies
 │   │   ├── nimbus.yaml
 │   │   ├── meridian.yaml
 │   │   └── healix.yaml
@@ -46,27 +46,27 @@ aegis/                          ← You are here (project root)
 
 ```bash
 # 1. Go to project root
-cd /Users/atinderpalsingh/projects/aegis
+cd /Users/atinderpalsingh/projects/rind
 
 # 2. Start everything with ONE command
 make sim-start
 
 # This runs: docker-compose up in simulation/ folder
-# Starts: agents, Aegis proxy, dashboard, databases, LLM gateway
+# Starts: agents, Rind proxy, dashboard, databases, LLM gateway
 ```
 
 **What gets started:**
 
 | Service | URL | What It Is |
 |---------|-----|------------|
-| Aegis Dashboard | http://localhost:3000 | Your product's UI |
-| Aegis Proxy | http://localhost:8080 | Your product's proxy |
+| Rind Dashboard | http://localhost:3000 | Your product's UI |
+| Rind Proxy | http://localhost:8080 | Your product's proxy |
 | Nimbus Agent | http://localhost:8001 | Sample LangChain agent |
 | Meridian Agent | http://localhost:8002 | Sample LangGraph agent |
 | Healix Agent | http://localhost:8003 | Sample CrewAI agent |
 | LiteLLM | http://localhost:4000 | LLM gateway |
 | MongoDB | localhost:27017 | Agent data |
-| PostgreSQL | localhost:5432 | Aegis data |
+| PostgreSQL | localhost:5432 | Rind data |
 
 ---
 
@@ -157,7 +157,7 @@ make sim-run COMPANY=nimbus DURATION=1 SPEED=1
 ## The Makefile Explained
 
 ```makefile
-# Makefile (in project root: /Users/atinderpalsingh/projects/aegis/Makefile)
+# Makefile (in project root: /Users/atinderpalsingh/projects/rind/Makefile)
 
 # Default values
 COMPANY ?= nimbus
@@ -244,7 +244,7 @@ demo-history:
 
 ```bash
 # Terminal 1: Start environment
-cd /Users/atinderpalsingh/projects/aegis
+cd /Users/atinderpalsingh/projects/rind
 make sim-start
 
 # Wait 30 seconds for services to start
@@ -331,7 +331,7 @@ make sim-scenario SCENARIO=attack_all
 |----------|----------|--------------|
 | `demo_quick` | 5 min | Quick demo: normal + attacks |
 | `demo_full` | 20 min | Full demo: entire day compressed |
-| `demo_before_after` | 10 min | Shows same attacks without/with Aegis |
+| `demo_before_after` | 10 min | Shows same attacks without/with Rind |
 
 ```bash
 make sim-scenario SCENARIO=demo_quick    # For quick meetings
@@ -386,7 +386,7 @@ make sim-attack ATTACK=all INTENSITY=heavy
 # ============================================
 # STARTING
 # ============================================
-cd /Users/atinderpalsingh/projects/aegis
+cd /Users/atinderpalsingh/projects/rind
 make sim-start                    # Start environment
 open http://localhost:3000        # Open dashboard
 
@@ -457,7 +457,7 @@ Reason: Cross-tenant access attempt
 SUMMARY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Attacks attempted: 15
-Blocked by Aegis: 15 (100%)
+Blocked by Rind: 15 (100%)
 Dashboard: http://localhost:3000/audit
 ```
 
@@ -499,10 +499,10 @@ Dashboard: http://localhost:3000/audit
 
 | What | Where |
 |------|-------|
-| Run commands from | `/Users/atinderpalsingh/projects/aegis/` (project root) |
-| Makefile | `/Users/atinderpalsingh/projects/aegis/Makefile` |
-| Simulation code | `/Users/atinderpalsingh/projects/aegis/simulation/` |
-| Agents | `/Users/atinderpalsingh/projects/aegis/simulation/agents/` |
-| Scenarios | `/Users/atinderpalsingh/projects/aegis/simulation/scenarios/` |
-| Policies | `/Users/atinderpalsingh/projects/aegis/simulation/policies/` |
-| Docker Compose | `/Users/atinderpalsingh/projects/aegis/simulation/docker-compose.yml` |
+| Run commands from | `/Users/atinderpalsingh/projects/rind/` (project root) |
+| Makefile | `/Users/atinderpalsingh/projects/rind/Makefile` |
+| Simulation code | `/Users/atinderpalsingh/projects/rind/simulation/` |
+| Agents | `/Users/atinderpalsingh/projects/rind/simulation/agents/` |
+| Scenarios | `/Users/atinderpalsingh/projects/rind/simulation/scenarios/` |
+| Policies | `/Users/atinderpalsingh/projects/rind/simulation/policies/` |
+| Docker Compose | `/Users/atinderpalsingh/projects/rind/simulation/docker-compose.yml` |

@@ -17,9 +17,9 @@ export const sessionKillswitch: Scenario = {
   situation:
     'A Stackline developer triggers an AI workflow to "analyze and categorize all open GitHub issues." ' +
     'The agent enters a delegation loop — calling agent.delegate repeatedly with the same task. ' +
-    'An engineer sees unusual activity in the Aegis session list and kills the session.',
+    'An engineer sees unusual activity in the Rind session list and kills the session.',
 
-  withoutAegis:
+  withoutRind:
     'The agent loops for hours. No visibility into what it is doing, how many calls it has made, ' +
     'or how much it is costing. Discovery: the next billing statement shows a $2,000 charge. ' +
     'The GitHub API is also rate-limited, breaking CI for the rest of the day.',
