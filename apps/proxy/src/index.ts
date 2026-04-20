@@ -1,15 +1,31 @@
-// Aegis proxy entry point
-// Usage: node dist/index.js (or via `aegis proxy start` CLI — Week 4)
+// Aegis proxy — CLI entry point
+// Usage: npx @aegis/proxy  ·  aegis-proxy  ·  node dist/index.js
+//
+// Reads configuration from environment variables (see cli.ts → buildConfigFromEnv).
+// In interactive terminals: prints the Aegis banner and a human-readable startup summary.
+// In production pipelines (piped output): banner is suppressed; pino emits structured JSON.
 
 import { createProxyServer } from './server.js';
+import {
+  buildConfigFromEnv,
+  isInteractiveTerminal,
+  upstreamIsUnconfigured,
+  printBanner,
+  printStartupSummary,
+  printNextSteps,
+} from './cli.js';
 
-const config = {
-  port: Number(process.env['PROXY_PORT'] ?? 7777),
-  agentId: process.env['AEGIS_AGENT_ID'] ?? 'default-agent',
-  upstreamMcpUrl: process.env['MCP_UPSTREAM_URL'] ?? 'http://localhost:3100',
-  policyFile: process.env['AEGIS_POLICY_FILE'],
-  logLevel: (process.env['LOG_LEVEL'] ?? 'info') as 'debug' | 'info' | 'warn' | 'error',
-};
+const config = buildConfigFromEnv();
+
+if (isInteractiveTerminal()) {
+  printBanner();
+
+  if (upstreamIsUnconfigured()) {
+    printNextSteps(config);
+  } else {
+    printStartupSummary(config);
+  }
+}
 
 const { start } = createProxyServer(config);
 start();

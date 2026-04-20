@@ -55,6 +55,103 @@ export async function intercept(
 
 ---
 
+### Code Readability — The Outermost Layer Reads Like English
+
+The top-level of every file — the outermost orchestration layer — must read like prose. A developer should be able to understand the flow without reading any implementation details.
+
+```typescript
+// ✅ GOOD — outermost layer reads like English
+export async function intercept(event, forward, opts) {
+  if (!isSessionActive(event.sessionId))   return blocked('BLOCKED_SESSION_KILLED');
+  if (await loopDetected(event, opts))     return blocked('BLOCKED_LOOP');
+  if (!requestIsClean(event))              return blocked('BLOCKED_INJECTION');
+
+  const policy = opts.policyEngine.evaluate(event);
+  if (policy.denies())                     return blocked('DENY');
+  if (policy.requiresApproval())           return pendingApproval(event, policy);
+  if (await rateLimitExceeded(event, policy, opts)) return rateLimited(event, policy);
+  if (costLimitExceeded(event, policy))    return blocked('BLOCKED_COST_LIMIT');
+
+  const response = await forward(event);
+  const threats = inspectResponse(response);
+  if (hasCriticalThreats(threats))         return blocked('BLOCKED_THREAT');
+
+  return allowed(response);
+}
+
+// ❌ BAD — implementation details leak into the orchestration layer
+export async function intercept(event, forward, opts) {
+  const session = sessionStore.get(event.sessionId);
+  if (!session || session.killed) {
+    return { output: null, interceptorResult: { action: 'BLOCKED_SESSION_KILLED', reason: `Session ${event.sessionId} has been terminated.` } };
+  }
+  // 200 more lines of inline logic...
+}
+```
+
+**The rule**: If you can't read the top-level flow in under 10 seconds, extract named functions until you can.
+
+**Function naming**: Functions at the orchestration layer are verbs that answer a yes/no question or describe what they do: `isSessionActive()`, `loopDetected()`, `requestIsClean()`, `hasCriticalThreats()`. Never `check1()`, `doThing()`, `process()`.
+
+**Comments explain WHY, not WHAT**: The code says what happens. Comments say why it must happen this way.
+
+```typescript
+// ✅ WHY comment
+// Fail closed on loop detection errors — a crashing detector is a potential bypass vector
+if (loopDetectorThrew) return blocked('BLOCKED_LOOP');
+
+// ❌ WHAT comment (redundant — the code already says this)
+// Block the request if loop detected
+if (loopDetectorThrew) return blocked('BLOCKED_LOOP');
+```
+
+---
+
+### Function-Level Abstractions — Extract When It Aids Reading
+
+Extract a function when the extraction makes the call site read more clearly AND the function name communicates intent that the implementation does not. Do not extract for DRY alone if the name is no clearer than the code.
+
+**Extract** when:
+- The logic is more than 3 lines and has a name that explains its purpose
+- The same logic appears in 2+ places
+- Inline logic breaks the English-prose flow of the outermost layer
+
+**Do not extract** when:
+- The function would be called exactly once and its name is no clearer than the code
+- The extraction introduces a parameter list longer than the original inline code
+- The extracted function is under 3 lines and naming it adds no clarity
+
+**On latency**: Function call overhead in Node.js is nanoseconds — never inline for performance unless a profiler shows a hot path. Readability wins until benchmarked evidence says otherwise.
+
+---
+
+### File Size — Extract Before It Becomes a Problem
+
+- **Target**: files under 200 lines
+- **Hard limit**: files over 400 lines must be split, no exceptions
+- **How to split**: extract by responsibility — `scanner/permissions.ts` not `scanner/part2.ts`
+- **Shared components**: if 2+ files need the same helper, it goes in a shared location with a clear name, not copy-pasted
+
+When a file is getting long, extract the next logical group of functions before finishing the feature. Do not wait until the file is already too long.
+
+---
+
+### UI Design Language — Brand-First, Alive, Not Hardcoded
+
+> **Before any UI implementation**: run `/strategic-council` **deep mode** for brand/design decisions (D-033). No dashboard code before the design language is decided.
+
+**When implementing UI**:
+1. Ask the user to run Claude Code in **design mode** for inspiration from real products (`claude --design` or equivalent) — or use the Playwright browser tools to screenshot real designs for reference
+2. Follow the decided brand guidelines exactly — no ad-hoc color decisions
+3. Subtle animations, gradients, transitions — the UI should feel alive and cohesive, not like a developer-built admin panel
+4. No hardcoded hex values anywhere — all colors via Tailwind theme tokens or CSS variables
+
+**Aegis brand (preliminary, pending D-033)**:
+- Primary accent: teal `#14b8a6` (confirmed)
+- Full brand language: TBD — requires D-033 deep council session
+
+---
+
 ### Separation of Concerns
 
 The proxy has four distinct layers. They must not bleed into each other:
