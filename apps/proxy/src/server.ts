@@ -157,6 +157,41 @@ export function createProxyServer(config: ProxyConfig) {
     return c.json(result);
   });
 
+  // ─── Continuous re-scan (D-030) ───────────────────────────────────────────────
+  // Trigger a re-scan of an already-registered server — detects schema mutations
+  // mid-session (rug pull detection). Schema drift logic is in runFullScan():
+  // if serverId is already in the schema store, it compares against the baseline.
+  app.post('/scan/refresh', async (c) => {
+    const body = await c.req.json<{ serverId: string; tools: unknown[] }>();
+    logger.info({ serverId: body.serverId }, 'Re-scan triggered (rug pull detection)');
+
+    if (!Array.isArray(body.tools)) {
+      return c.json({ error: 'tools must be an array' }, 400);
+    }
+
+    const result = runFullScan(
+      body.serverId,
+      body.tools as Parameters<typeof runFullScan>[1],
+    );
+
+    const level = result.passed ? 'info' : 'warn';
+    logger[level](
+      { serverId: body.serverId, findingCount: result.findings.length, passed: result.passed },
+      'Re-scan complete',
+    );
+
+    bus.emit('scan:complete', result);
+    emitAudit(bus, {
+      eventType: 'scan:complete',
+      sessionId: '',
+      agentId: '',
+      serverId: body.serverId,
+      action: result.passed ? 'ALLOW' : 'DENY',
+    }, config);
+
+    return c.json(result);
+  });
+
   // ─── Tool call proxy ──────────────────────────────────────────────────────────
   app.post('/proxy/tool-call', async (c) => {
     const body = await c.req.json<Omit<ToolCallEvent, 'timestamp'> & { sessionId?: string }>();

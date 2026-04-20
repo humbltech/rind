@@ -27,7 +27,7 @@ export interface ToolResponseEvent {
 // ─── Response-side threat detection ─────────────────────────────────────────
 
 export interface ResponseThreat {
-  type: 'PROMPT_INJECTION' | 'CREDENTIAL_LEAK' | 'SUSPICIOUS_REDIRECT';
+  type: 'PROMPT_INJECTION' | 'CREDENTIAL_LEAK' | 'SUSPICIOUS_REDIRECT' | 'INDIRECT_PROMPT_INJECTION';
   severity: 'critical' | 'high' | 'medium';
   pattern: string;
   sanitized: boolean;
@@ -57,7 +57,8 @@ export type ScanFindingCategory =
   | 'SCHEMA_DRIFT'
   | 'SCHEMA_DRIFT_TOOL_ADDED'
   | 'SCHEMA_DRIFT_TOOL_MODIFIED'
-  | 'SCHEMA_DRIFT_TOOL_REMOVED';
+  | 'SCHEMA_DRIFT_TOOL_REMOVED'
+  | 'CROSS_SERVER_SHADOWING';
 
 export interface ScanFinding {
   category: ScanFindingCategory;

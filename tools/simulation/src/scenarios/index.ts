@@ -8,6 +8,10 @@ import { echoleakExfiltration } from './echoleak-exfiltration.js';
 import { costRunawayLoop } from './cost-runaway-loop.js';
 import { kiroInfraOutage } from './kiro-infra-outage.js';
 import { copilotRce } from './copilot-rce.js';
+import { supabaseTicketInjection } from './supabase-ticket-injection.js';
+import { whatsappCrossServerShadow } from './whatsapp-cross-server-shadow.js';
+import { openclawRugPull } from './openclaw-rug-pull.js';
+import { perplexityDriveDeletion } from './perplexity-drive-deletion.js';
 
 export const scenarios: Scenario[] = [
   replitDbDeletion,
@@ -17,6 +21,10 @@ export const scenarios: Scenario[] = [
   costRunawayLoop,
   kiroInfraOutage,
   copilotRce,
+  supabaseTicketInjection,
+  whatsappCrossServerShadow,
+  openclawRugPull,
+  perplexityDriveDeletion,
 ];
 
 export const scenariosBySlug = new Map<string, Scenario>(scenarios.map((s) => [s.slug, s]));

@@ -3,7 +3,7 @@
 
 import type { ScanFinding, ScanResult, ServerSchema, ToolDefinition } from './types.js';
 import { checkAuth } from './auth.js';
-import { checkPoisoning } from './poisoning.js';
+import { checkPoisoning, checkCrossServerShadowing } from './poisoning.js';
 import { checkPermissions } from './permissions.js';
 import { detectSchemaDrift, hashToolSchema } from './schema-hash.js';
 
@@ -12,10 +12,19 @@ import { detectSchemaDrift, hashToolSchema } from './schema-hash.js';
 const schemaStore = new Map<string, ServerSchema>();
 
 export function runFullScan(serverId: string, tools: ToolDefinition[]): ScanResult {
+  // Collect tool names from all OTHER registered servers for cross-server shadowing check (D-028)
+  const externalToolNames: string[] = [];
+  for (const [id, schema] of schemaStore) {
+    if (id !== serverId) {
+      for (const t of schema.tools) externalToolNames.push(t.name);
+    }
+  }
+
   const findings: ScanFinding[] = [
     ...checkAuth(tools),
     ...checkPoisoning(tools),
     ...checkPermissions(tools),
+    ...checkCrossServerShadowing(tools, externalToolNames),
   ];
 
   const stored = schemaStore.get(serverId);
