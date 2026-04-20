@@ -2,7 +2,7 @@
 
 > This document is updated after every strategic-council session. It is the institutional memory for strategic reasoning — tracking what was decided, why, what was assumed, and what changed our thinking.
 
-**Last Updated**: April 18, 2026
+**Last Updated**: April 18, 2026 (Activity 3 — Competitive deep dive complete)
 
 ---
 
@@ -70,7 +70,7 @@ Each entry: Decision → Date → Reasoning → Confidence → Outcome (updated 
 
 | ID | Assumption | Status | Evidence | How to Validate | Next Check |
 |----|-----------|--------|---------|----------------|-----------|
-| A-001 | MCP becomes dominant agent protocol | UNTESTED | Strong momentum, Anthropic backing | Track adoption rate quarterly | Q3 2026 |
+| A-001 | MCP becomes dominant agent protocol | **VALIDATED** | `@modelcontextprotocol/sdk` 32.8M weekly npm downloads; `mcp` PyPI 217M monthly downloads (April 2026 data) | ~~Track adoption rate quarterly~~ DONE | RESOLVED |
 | A-002 | Enterprises will adopt proxy over native SDK | UNTESTED | Enterprises understand proxies (precedent: Zscaler) | 5 design partner interviews | Before coding |
 | A-003 | Security buyers have budget before an incident | RISKY | Only 14.4% have full security approval | Interview 10 enterprise security leads | Before coding |
 | A-004 | LangChain/LangGraph remain dominant (47M downloads/month) | PLAUSIBLE | Current download data confirmed | Monitor monthly downloads | Q3 2026 |
@@ -139,8 +139,32 @@ Each entry: Decision → Date → Reasoning → Confidence → Outcome (updated 
 - Cloud-hosted proxy = "change AEGIS_PROXY_URL env var" — same friction as Helicone
 - Self-hosted keeps enterprise option alive without blocking indie adoption
 - SDK (2-line init) abstracts all infrastructure from framework users
-- Language stack: TypeScript/Node.js (per CLAUDE.md), not Python (note: mvp-roadmap.md uses Python — requires decision before coding begins)
-**Outstanding**: Resolve Python vs. TypeScript before Month 1. TypeScript preferred (CLAUDE.md) but Python may reach LangChain devs faster.
+- Language stack: TypeScript/Node.js — confirmed by AD-006, MCP TS SDK has 3x development velocity over Python SDK (68 vs 18 commits/30d)
+**Confidence**: 8/10
+**Status**: Active
+
+---
+
+### D-009: First Artifact — Proxy First, Scanner as Built-In Feature (NOT Standalone)
+**Date**: April 19, 2026
+**Decision**: Build the MCP proxy as the first public artifact. Scan-on-connect is a feature of proxy onboarding, not a standalone CLI.
+**Reasoning** (from strategic council quick mode):
+- Scanner space is crowded: Snyk Agent Scan (1,700+ stars, Thoughtworks Radar), Cisco (891 stars), plus 6+ others. A 9th standalone scanner generates noise, not traction.
+- Every existing scanner is a dead end — findings with no enforcement path. Aegis's moat is enforcement.
+- The scanner's differentiator (proxy integration) only exists when the proxy exists simultaneously. Building scanner first and proxy second means launching a me-too product.
+- Snyk's scan-to-platform funnel already owns the "scan → enterprise product" conversion path. Aegis can't out-scan Snyk.
+- Helicone precedent: proxy as first artifact, env var change, revenue in week 1. MCP proxy is simpler to build than Helicone's LLM proxy (structured protocol, TypeScript SDK handles the heavy lifting).
+- Scan-on-connect as proxy feature: when developer configures a new MCP server, proxy automatically runs security checks before forwarding any calls. User gets scanner + enforcement from day 1.
+
+**What changes from prior plan:**
+- Activity 4 was "Build MCP scanner CLI (standalone, `npx @aegis/scan`)" — REPLACED by "Build MCP proxy MVP with scan-on-connect"
+- The scanner doesn't disappear; it becomes the proxy's onboarding step, not a separate product
+
+**Confidence**: 7/10
+**Kill Criteria**:
+- A design partner says "we can't install a proxy but would use a standalone scanner" → add standalone scanner as separate entry point
+- Proxy MVP takes >6 weeks to reach runnable state → ship minimal standalone scanner as interim
+- A competitor ships proxy + scan-on-connect before Aegis → accelerate, don't pivot
 
 ---
 
@@ -190,13 +214,13 @@ Questions that need answers before major decisions.
 | # | Question | Why It Matters | How to Answer | Priority |
 |---|---------|---------------|--------------|---------|
 | OQ-001 | Is the initial buyer security team or engineering team? | Determines GTM motion, pricing, product features | ANSWERED (D-004): multi-team. Entry=engineer, budget=CISO. Product must serve both. | RESOLVED |
-| OQ-002 | What specific incident triggers a purchase decision? | Determines urgency narrative and sales cycle | PARTIALLY ANSWERED: "oh shit moment" from observability revealing unauthorized behavior. Validate with: talk to security leads post-incident | HIGH |
+| OQ-002 | What specific incident triggers a purchase decision? | Determines urgency narrative and sales cycle | PARTIALLY ANSWERED: (1) "oh shit moment" from observability revealing unauthorized behavior. (2) **LiteLLM PyPI supply chain attack (March 2026, 938 HN points)** — real incident that's now the category-defining story. Two vectors: runtime behavior AND supply chain. Validate which is stronger trigger in conversations. | HIGH |
 | OQ-003 | Do enterprises want to self-host or accept SaaS? | Affects architecture (VPC deploy complexity), pricing | Ask in design partner conversations | HIGH |
-| OQ-004 | What is the current MCP adoption state? | If MCP not yet adopted by target devs, proxy serves LangChain tool calls first (fallback exists) | Survey in first 10 conversations | HIGH |
+| OQ-004 | What is the current MCP adoption state? | **RESOLVED** (April 2026 data): 32.8M weekly npm + 217M monthly PyPI downloads. MCP is already infrastructure-level. Skip adoption education; lead with security/safety for existing users. | Data from GitHub/npm/PyPI scraper | RESOLVED |
 | OQ-005 | Does observability alone close deals, or does safety/enforcement need to be bundled? | Almost certainly bundled — observability alone = LangSmith. Confirm. | First 5 design partner conversations | MEDIUM |
 | OQ-006 | What is the realistic path to $1M ARR? | Segment A→B→C funnel needs real conversion data | Model after first 50 free signups | MEDIUM |
 | OQ-007 | Is "safety" the right hook, or is another word better? | Determines entire top-of-funnel messaging | A/B test on landing page: "safety" vs. "guardrails" vs. "never be surprised" | Month 1 |
-| OQ-008 | Python vs. TypeScript for the proxy? | Roadmap says Python; CLAUDE.md says TypeScript. Must decide before writing a line of code. | Decision needed before Month 1 begins | CRITICAL |
+| OQ-008 | Python vs. TypeScript for the proxy? | **RESOLVED** (AD-006 + Activity 1): TypeScript/Hono. MCP TS SDK has 3x more active development velocity than Python SDK (68 vs 18 commits/30d). Roadmap rewritten. | Decision made, roadmap updated | RESOLVED |
 | OQ-009 | Does LiteLLM overlap meaningfully for target developers? | If devs already use LiteLLM and see Aegis as duplicative, adoption stalls | Ask in first 10 conversations: "do you use LiteLLM or Portkey?" | Month 2 |
 
 ---
@@ -217,6 +241,7 @@ Active risks being monitored with early warning signals.
 | R-008 | LiteLLM ships MCP security / tool call enforcement before Aegis has customers | 7 | 4 | LiteLLM GitHub: merged PR adding tool-call interception | Accelerate MCP depth + agent RBAC — features LiteLLM won't prioritize | — |
 | R-009 | Proxy setup friction kills indie developer adoption | 8 | 5 | <10% of signups complete first tool-call interception within 24 hours | Invest in hosted SaaS proxy onboarding; env var change must be the entire setup | — |
 | R-010 | "Safety" messaging doesn't resonate; developers don't adopt before getting burned | 6 | 4 | Low signup conversion from landing page traffic | Test alternative: "never get a surprise $500 bill from your agent" | — |
+| R-011 | MCP scanner space is more crowded than thought — scanner won't drive meaningful traction vs. Snyk/Cisco | 7 | 6 | Snyk Agent Scan has 1,700+ stars, Cisco 891. If we launch a me-too scanner, it won't differentiate. | Run strategic council to decide: skip scanner and focus on proxy, or build scanner with unique proxy-integration angle. | — |
 
 ---
 
@@ -233,6 +258,10 @@ What changed our thinking and why.
 | April 2026 | Enterprise is the first customer | Full ICP analysis shows indie/solo developers are the fastest, lowest-friction entry point. They become the funnel into startups and enterprise. Revenue from enterprise follows developer adoption. | Segment A (indie devs) → B (startups) → C (growth) → D (enterprise) sequencing |
 | April 2026 | "Control plane" is the product identity | "Safety layer" resonates with both indie devs and enterprise buyers. "Control plane" is too corporate for developer-led adoption. One hook beats eight features. | Lead with safety hook: cost limits + loop detection + destructive action blocking |
 | April 2026 | Security is the primary dimension | Broader framing covers observability + safety + security + MCP adoption. Entry dimension is SAFETY (positive, not fear-based), which works for both developer and enterprise buyers. | Reframe positioning; safety is the door, security and compliance are the rooms inside |
+| April 2026 (CORRECTED April 19) | ~~Snyk mcp-scan does not exist~~ — **WRONG**. Our script queried the wrong org (`snyk-labs/` instead of `snyk/`). Snyk Agent Scan (ex-Invariant mcp-scan) has **1,700+ stars**, is on the **Thoughtworks Technology Radar** (Vol 34, April 2026), and is the market-leading MCP scanner. Cisco MCP Scanner has 891 stars. 8+ scanners exist (Golf, mcpwn, MCPWatch, Ant Group, Enkrypt AI, MCPScan.ai). | First artifact is now the **proxy** (D-009), not a standalone scanner. Scan-on-connect is a proxy onboarding feature. |
+| April 2026 | Standalone MCP scanner as first artifact (Activity 4) | Strategic council (D-009): scanner space has 8+ tools, Snyk owns the mindshare. Every standalone scanner is a dead end — no enforcement path. Aegis's moat is enforcement, not scanning. | Activity 4 replaced: build MCP proxy MVP with scan-on-connect, not a standalone scanner CLI. |
+| April 2026 | MCP adoption is uncertain / too early | `@modelcontextprotocol/sdk`: 32.8M weekly npm downloads. `mcp` PyPI: 217M monthly. MCP is already infrastructure at scale. The question is not "will they adopt MCP?" but "who is securing the MCP they already have?" | Lead with security/safety for existing MCP users, not adoption enablement. |
+| April 2026 (March event) | LiteLLM is a gateway competitor to LLM calls only | LiteLLM PyPI supply chain attack (March 24, 2026): credential stealer in 1.82.7/1.82.8. 938 HN points, 500 comments. 171M monthly downloads affected. Mercor company breached. This is the canonical AI infrastructure supply chain incident. | Blog post #1 is the LiteLLM incident analysis. Positions Aegis as the detection/prevention layer for AI supply chain attacks — not just runtime policy. |
 
 ---
 

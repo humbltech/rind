@@ -1,26 +1,35 @@
 # Aegis MVP Roadmap
 
 > **Note**: This roadmap was rewritten in April 2026 to reflect the confirmed TypeScript/Node.js stack (AD-006). The previous Python/FastAPI version is superseded. See `architecture/architecture-decisions.md` AD-006 for the decision rationale.
+>
+> **Pivoted April 19, 2026 (D-009)**: The original Phase 1 was a standalone MCP scanner CLI. This was replaced after discovering 8+ MCP scanners already exist (Snyk Agent Scan: 1,700+ stars, Cisco: 891 stars). The scanner is now a built-in feature of proxy onboarding (scan-on-connect), not a standalone artifact. Phase 1 is now the MCP proxy MVP.
+>
+> **Signal mining additions (April 2026)**: Four features added to the proxy MVP based on public signal mining across 14 sources (MCP SDK issues, LiteLLM HN post-mortems, Snyk Agent Scan issues, OWASP MCP Top 10). See `research/design-partner-signals/public-signal-mining-2026-04.md`.
 
 ## Overview
 
-**MVP Goal**: A working scanner + SDK that lets developers see what their agents are doing, stop runaway costs, and block destructive actions — all in under 5 minutes of setup.
+**MVP Goal**: A working MCP proxy that scans on connect, enforces policies, inspects both requests and responses, and lets developers see + stop what their agents are doing — in under 5 minutes of setup.
 
 **Timeline**: 8 weeks (evenings + weekends, solo developer)
 **Team**: 1 engineer, ~14-16 hours/week
 
-**Sequence rationale**: Scanner first → design partner conversations → SDK informed by feedback → dashboard. Do not build the SDK before talking to at least 3 real users.
+**Sequence rationale**: Proxy first (scan-on-connect built in) → design partner conversations → SDK informed by feedback → dashboard. The proxy is the moat. No existing competitor does cross-framework execution-layer enforcement.
 
 ---
 
 ## Success Criteria for MVP
 
 By end of Week 8:
-- [ ] `npx @aegis/scan` runs against any MCP config and reports security findings
+- [ ] MCP proxy intercepts tool calls, enforces allow/deny policies, logs all activity
+- [ ] Proxy inspects both requests AND responses (prompt injection in tool outputs, credential patterns in error messages)
+- [ ] Scan-on-connect: when a new MCP server is configured, proxy automatically checks for auth gaps, tool poisoning patterns, rug pull risk
+- [ ] Runtime schema drift detection: proxy hashes MCP tool schemas on first connect; alerts if tools are added/changed in subsequent connections
+- [ ] Session kill-switch: any active proxy session can be terminated immediately via CLI or dashboard
 - [ ] `@aegis/langchain` SDK wraps LangChain tools with cost tracking + loop detection
+- [ ] Policy data model supports agent identity from day 1 (even if v1 UI only exposes tool-name matching)
 - [ ] First tool call appears in basic dashboard within 5 minutes of install
-- [ ] 3 design partners using the SDK and providing feedback
-- [ ] SDK and scanner published to npm
+- [ ] 3 design partners using the proxy and providing feedback
+- [ ] Proxy and SDK published to npm
 
 ---
 
@@ -62,98 +71,187 @@ mkdir -p tools/mcp-scanner
 
 ---
 
-## Phase 1: MCP Scanner (Weeks 2-3)
+## Phase 1: MCP Proxy MVP (Weeks 2-4)
 
-### `tools/mcp-scanner` → published as `@aegis/scan`
+### `apps/proxy` → core product, published as `@aegis/proxy`
 
-**Goal**: `npx @aegis/scan ./path/to/mcp-config.json` produces a security report
+**Goal**: A working MCP proxy that sits between an AI agent and its MCP servers, intercepts every tool call, scans on connect, and enforces basic policies — installable in under 5 minutes.
 
-**Why this first**: Validates the monorepo, ships something real, creates a conversation piece for design partners. No backend, no account needed.
+**Why this first**: The proxy is the moat. Every existing competitor (8+ MCP scanners) finds problems and stops there. Aegis fixes them at runtime. Scan-on-connect means scanning is a side effect of using the proxy — not a separate CLI step.
 
-#### Week 2: Core scanner logic
+**Precedent**: Helicone shipped proxy-first (single env var change), had week-1 revenue, and built observability + guardrails on top. MCP proxy is simpler than Helicone's LLM proxy because MCP is a structured JSON-RPC protocol with a TypeScript SDK.
+
+#### Week 2: Proxy core + scan-on-connect
 
 ```
-tools/mcp-scanner/
+apps/proxy/
 ├── src/
-│   ├── index.ts          # CLI entry point
-│   ├── parser.ts         # MCP config file parser (Claude Desktop format)
-│   ├── connector.ts      # MCP server connection + tools/list call
-│   ├── checks/
-│   │   ├── auth.ts       # Missing authentication check
-│   │   ├── poisoning.ts  # Tool poisoning pattern detection
-│   │   ├── permissions.ts # Over-permissioning check
-│   │   └── rugpull.ts    # Hash-based tool definition change detection
-│   ├── reporter.ts       # Colored terminal output + JSON mode
-│   └── types.ts          # Scanner types
+│   ├── index.ts              # Entry point — starts proxy server
+│   ├── server.ts             # Hono server, MCP protocol handler
+│   ├── interceptor.ts        # Request + response interception middleware
+│   ├── session.ts            # Session tracking (agent identity, call history)
+│   ├── scanner/
+│   │   ├── index.ts          # Scan orchestrator (runs on connect)
+│   │   ├── auth.ts           # Missing authentication check
+│   │   ├── poisoning.ts      # Tool description poison pattern detection
+│   │   ├── permissions.ts    # Over-permissioning check
+│   │   ├── schema-hash.ts    # Hash tool schemas; detect drift on reconnect
+│   │   └── types.ts          # ScanFinding, ScanResult types
+│   ├── policy/
+│   │   ├── engine.ts         # Policy evaluation (allow/deny/require-approval)
+│   │   ├── rules.ts          # Rule types: tool match, agent identity, time window
+│   │   └── loader.ts         # Load policy from YAML config
+│   ├── inspector/
+│   │   ├── request.ts        # Inspect outbound tool call inputs
+│   │   └── response.ts       # Inspect inbound tool responses (NEW)
+│   └── types.ts              # Shared types
 ├── package.json
 ├── tsconfig.json
 └── README.md
 ```
 
-```typescript
-// tools/mcp-scanner/src/types.ts
-export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+Core types:
 
-export interface ScanFinding {
-  id: string;
-  severity: Severity;
-  title: string;
-  description: string;
-  server: string;
-  tool?: string;
-  remediation: string;
+```typescript
+// apps/proxy/src/types.ts
+
+export type PolicyAction = 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL' | 'RATE_LIMIT';
+
+export interface ToolCallEvent {
+  sessionId: string;
+  agentId: string;           // identity-aware from day 1
+  serverId: string;
+  toolName: string;
+  input: unknown;
+  timestamp: number;
 }
 
-export interface ScanResult {
-  scannedAt: string;
-  configPath: string;
-  serversScanned: number;
-  toolsFound: number;
+export interface ToolResponseEvent {
+  sessionId: string;
+  agentId: string;
+  serverId: string;
+  toolName: string;
+  output: unknown;
+  durationMs: number;
+  threats: ResponseThreat[];  // prompt injection, credential patterns
+}
+
+export interface ResponseThreat {
+  type: 'PROMPT_INJECTION' | 'CREDENTIAL_LEAK' | 'SUSPICIOUS_REDIRECT';
+  severity: 'critical' | 'high' | 'medium';
+  pattern: string;
+  sanitized: boolean;
+}
+
+export interface ServerSchema {
+  serverId: string;
+  hash: string;              // SHA-256 of sorted tool definitions
+  tools: ToolDefinition[];
+  scannedAt: number;
   findings: ScanFinding[];
-  summary: {
-    critical: number;
-    high: number;
-    medium: number;
-    low: number;
-    info: number;
-  };
+}
+
+export interface Session {
+  sessionId: string;
+  agentId: string;
+  startedAt: number;
+  active: boolean;           // false = killed via kill-switch
+  toolCallCount: number;
+  estimatedCostUsd: number;
 }
 ```
 
-Security checks to implement:
-1. **Missing auth** — server has no auth config (no `env` with `*_TOKEN`/`*_KEY`, no `headers`)
-2. **Tool poisoning** — suspicious patterns in tool descriptions (instructions to ignore rules, base64 strings, override commands)
-3. **Over-permissioning** — filesystem tools with no path restrictions, wildcard DB access
-4. **Rug pull detection** — hash tool definitions; compare to stored hash; warn if changed (`.aegis-scan-cache.json`)
+Proxy features for Week 2:
 
-#### Week 3: Polish + publish
+1. **Intercept all tool calls** — proxy wraps `@modelcontextprotocol/sdk` server; every `tools/call` request passes through interceptor
+2. **Scan-on-connect** — on first connection to any MCP server, run auth/poisoning/permissions checks; store results and schema hash
+3. **Runtime schema drift detection** — on subsequent connections, compare current tool schema hash against stored; alert if new tools added or existing tools changed
+4. **Response-side inspection** — scan tool outputs for prompt injection patterns (`SYSTEM:`, `IGNORE PREVIOUS`, base64-encoded instructions) and credential patterns (connection strings, API key formats, private keys)
+5. **Session tracking** — every proxy session has a session ID, agent ID, start time, and active flag
+6. **Session kill-switch** — `aegis session kill <session-id>` immediately sets `active: false`; proxy blocks all subsequent calls in that session
 
-- Colored terminal output (chalk): critical=red, high=orange, medium=yellow, low=blue
-- JSON output mode (`--json` flag) for CI/CD integration
-- Exit code 1 if any critical/high findings (for CI gates)
-- `--fix` flag for auto-remediation suggestions
-- README with screenshots and comparison to alternatives
-- Publish to npm as `@aegis/scan` (public package under GitHub org)
+#### Week 3: Policy engine + logging
 
-**Deliverable:**
+Policy engine (YAML-driven):
+
+```yaml
+# aegis.policy.yaml — example
+policies:
+  - name: "block-destructive"
+    agent: "*"                    # applies to all agents
+    match:
+      tool: ["delete", "drop", "destroy", "remove", "truncate"]
+    action: REQUIRE_APPROVAL
+
+  - name: "agent-public-restrictions"
+    agent: "agent-public"         # identity-aware
+    match:
+      tool: ["user.delete", "user.modify", "billing.*"]
+    action: DENY
+
+  - name: "after-hours-block"
+    agent: "*"
+    match:
+      timeWindow:
+        daysOfWeek: [1, 2, 3, 4, 5]  # Mon-Fri only
+        hours: "09:00-18:00"
+    action: DENY
+```
+
+Policy data model stores `agentId` on every rule — v1 UI only exposes tool-name matching, but the data model supports full identity-aware policy so v2 is not a rewrite.
+
+Logging:
+
+- Every `ToolCallEvent` and `ToolResponseEvent` written to structured JSON log
+- Log format compatible with OpenTelemetry spans (future export to Datadog/Splunk)
+- Loop detection: same `agentId + toolName + input hash` seen > N times in a session → auto-deny + flag
+
+#### Week 4: Cost tracking + install polish
+
+- Token estimation per LLM call (tiktoken-compatible, model pricing table)
+- Running cost total per session, per agent
+- `costLimitUsd` session config: block next LLM call if cumulative cost exceeds limit
+- `aegis proxy start` CLI command — starts proxy, prints connection string
+- `aegis logs` — tail session logs
+- `aegis session list` — show active sessions
+- `aegis session kill <id>` — kill a session
+- `aegis servers list` — show all connected MCP servers with schema hash + scan status
+- README with 5-minute setup walkthrough
+
+**Deliverable — what a developer sees after install:**
+
 ```bash
-npx @aegis/scan ~/.cursor/mcp.json
+$ aegis proxy start
+  Aegis Proxy v0.1.0
+  Listening on localhost:7777
 
-  Aegis MCP Scanner v0.1.0
-  Scanning 4 MCP servers...
+  Configure your agent to use MCP via: http://localhost:7777/mcp
 
-  CRITICAL  filesystem  No authentication configured
-  HIGH      github      Tool descriptions contain suspicious override instructions
-  MEDIUM    supabase    Read + write access; consider read-only for this agent
-  INFO      brave-search  No issues found
+$ # Connect an MCP server — scan-on-connect runs automatically
+  [SCAN] filesystem-mcp connected
+  [WARN] CRITICAL: No authentication configured
+  [WARN] HIGH:     Tool 'fs.write' has no path restrictions
+  [OK]   Schema hash stored: sha256:a3f9...
 
-  4 servers scanned · 3 findings (1 critical, 1 high, 1 medium)
-  Run with --json for CI/CD integration
+$ # Run an agent — tool calls intercepted in real time
+  [CALL] filesystem → fs.read /tmp/data.csv       ALLOW  12ms
+  [CALL] filesystem → fs.write /etc/hosts         DENY   policy:block-destructive
+  [RESP] filesystem → fs.read                     CLEAN  0 threats
+
+$ aegis session list
+  SESSION             AGENT           CALLS   COST      STATUS
+  sess_abc123         my-agent        47      $0.082    active
+  sess_def456         test-agent      3       $0.004    killed
+
+$ aegis logs --session sess_abc123
+  [12:04:01] CALL  fs.read /tmp/data.csv → ALLOW
+  [12:04:02] RESP  fs.read → CLEAN (no threats)
+  [12:04:03] CALL  fs.write /etc/hosts → DENY (policy: block-destructive)
 ```
 
 ---
 
-## Phase 2: Landing Page + Outreach (Week 3, parallel with scanner polish)
+## Phase 2: Landing Page + Outreach (Week 4, parallel with proxy polish)
 
 ### `apps/landing` → deployed to Vercel on new domain
 
@@ -162,19 +260,19 @@ npx @aegis/scan ~/.cursor/mcp.json
 Content (minimum):
 - Hero: "Stop your agent before it breaks production"
 - 4 bullets: observability, safety, security, MCP adoption
-- Scanner CTA: `npx @aegis/scan` with terminal screenshot
+- Proxy CTA: `aegis proxy start` terminal screenshot showing scan-on-connect + blocked call
 - Waitlist form embed (Tally/Typeform)
 - Brand email link
 
 **Deploy**: Vercel on `[domain]` — free tier, no identity exposure.
 
-**Outreach starts here** (see `positioning.md` — Developer Discovery section):
-- HN: "Show HN: Free MCP security scanner"
+**Outreach starts here** (see `positioning.md` — Developer Discovery section) — deferred until legal cleared:
+- HN: "Show HN: MCP proxy that scans on connect and blocks at runtime"
 - LangChain Discord + MLOps Slack — use brand handle
 - r/LangChain, r/netsec
-- 3 incident prevention blog posts on dev.to or GitHub Gist
+- LiteLLM supply chain blog post + MCP security incident posts on dev.to
 
-**Target**: 3-5 design partner conversations started within 2 weeks of scanner launch.
+**Target**: 3-5 private design partner conversations via CISO network before any public outreach.
 
 ---
 
@@ -184,9 +282,9 @@ Content (minimum):
 
 **Goal**: 2-line LangChain integration that captures traces, tracks costs, and blocks loops
 
-**Start this AFTER first design partner conversations.** Their feedback shapes the SDK design.
+**Start this AFTER proxy MVP is working locally.** Private design partner feedback (via CISO network) shapes the SDK design.
 
-#### Week 4: `packages/sdk-core`
+#### Week 5: `packages/sdk-core`
 
 Shared types per `architecture/project-setup.md`:
 - `AegisSpan` type — traces, tool calls, LLM calls
@@ -336,17 +434,17 @@ aegis/                          # This repo
 ├── apps/
 │   ├── dashboard/              # Next.js 15 (Week 7-8)
 │   ├── api/                    # Hono API (Week 6)
-│   └── proxy/                  # MCP Proxy (Horizon 2)
+│   └── proxy/                  # MCP Proxy — @aegis/proxy (Weeks 2-4) ← Phase 1
 │
 ├── packages/
-│   ├── sdk-core/               # @aegis/core shared types (Week 4)
-│   ├── sdk-langchain/          # @aegis/langchain (Week 5)
-│   ├── policy-engine/          # Policy evaluation (Horizon 2)
-│   ├── db/                     # Supabase schema + migrations (Week 6)
-│   └── ui/                     # Shared components (Week 7)
+│   ├── sdk-core/               # @aegis/core shared types (Week 5)
+│   ├── sdk-langchain/          # @aegis/langchain (Week 6)
+│   ├── policy-engine/          # Shared policy evaluator (extracted from proxy, Week 3)
+│   ├── db/                     # Supabase schema + migrations (Week 7)
+│   └── ui/                     # Shared components (Week 8)
 │
 ├── tools/
-│   └── mcp-scanner/            # @aegis/scan CLI (Week 2-3)
+│   └── mcp-scanner/            # Thin wrapper — calls proxy scan engine (post-MVP, optional)
 │
 ├── docs/                       # Strategic docs (existing)
 ├── research/                   # Research (existing)
@@ -387,14 +485,14 @@ aegis/                          # This repo
 
 | Week | Milestone | Demo |
 |------|-----------|------|
-| 1 | Monorepo scaffold + brand infrastructure | `pnpm build` succeeds; domain live |
-| 2 | Scanner core logic | `node tools/mcp-scanner/dist/index.js ./mcp.json` |
-| 3 | Scanner published + landing page + outreach starts | `npx @aegis/scan` works |
-| 4 | `sdk-core` types + first design partner conversations | Types compile |
-| 5 | `sdk-langchain` callback handler | Agent traces captured locally |
-| 6 | `apps/api` telemetry ingestion | Traces stored in Supabase |
-| 7 | Dashboard basic views | Cost + blocked actions visible |
-| 8 | Design partners in dashboard | 3 partners using the SDK |
+| 1 | Monorepo scaffold + brand infrastructure | `pnpm build` succeeds |
+| 2 | Proxy core: intercept, scan-on-connect, schema drift, response inspection | `aegis proxy start` + tool call blocked in terminal |
+| 3 | Policy engine: allow/deny, identity-aware rules, session kill-switch | `aegis session kill` stops a running agent |
+| 4 | Cost tracking, loop detection, CLI polish, logging | Full terminal demo — call log, cost, blocked action |
+| 5 | `sdk-core` types + private design partner access (CISO network) | Types compile; proxy shared with 1-2 internal testers |
+| 6 | `sdk-langchain` callback handler | Agent traces captured locally |
+| 7 | `apps/api` telemetry ingestion + landing page | Traces stored in Supabase; landing page live |
+| 8 | Dashboard basic views + design partners in dashboard | Cost + blocked actions visible; 3 partners using proxy |
 
 ---
 
@@ -402,15 +500,15 @@ aegis/                          # This repo
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| MCP proxy (proxy-through H1) | P0 | Intercepts MCP traffic — requires hosted infrastructure |
-| Policy engine | P0 | YAML policy DSL, evaluator — needed for team tier |
+| Hosted proxy (cloud-deployed, no local install) | P0 | Required for team tier; env var config like Helicone |
 | Multi-tenancy | P0 | Required for SaaS — orgs, projects, RLS |
-| Slack/Telegram alerts | P1 | Event bus → subscriber channels (AD-003) |
+| Slack/PagerDuty alerts | P0 | Kill-switch + anomaly alerts to existing on-call stack |
 | SSO (OIDC) | P1 | Enterprise requirement — Okta, Azure AD |
 | Python SDK wrapper | P1 | PyPI `aegis-sdk` — HTTP wrapper of cloud API |
-| JIT permissions | P2 | AD-004 — requires proxy layer |
-| Agent RBAC | P2 | AD-004 — requires proxy + identity store |
-| Compliance export | P2 | SOC2, EU AI Act audit trail |
+| JIT permissions | P2 | AD-004 — requires proxy layer (already in place) |
+| Agent RBAC | P2 | AD-004 — identity-aware policy already in data model |
+| Compliance export | P2 | SOC2, EU AI Act audit trail — sessions already logged |
+| Standalone MCP scanner CLI | P3 | Optional — thin wrapper over proxy scan engine if demand emerges |
 
 ---
 

@@ -215,10 +215,12 @@ That moment creates urgency no sales email can match. The product creates its ow
 
 **2. Incident Prevention Content** (H1, Week 2+)
 SEO-optimized posts, no identity required, published under Aegis brand:
+- **"The LiteLLM supply chain attack: what it means for your agent stack"** — PRIORITY #1 (March 2026 incident, 938 HN points, 171M monthly downloads affected, still active). Frame: Aegis detects unsigned/unverified MCP servers — same risk vector as a compromised PyPI package.
 - "How the Replit DB deletion would have been prevented with one policy rule"
 - "The $47K agent loop: what a cost limit would have cost ($0)"
 - "Amazon Kiro outage: why REQUIRE_APPROVAL for production infra matters"
 - "MCP server rug pulls: what they are and how to prevent them"
+- "MCP has 217 million monthly downloads. Who's securing it?" — awareness/SEO
 
 **3. 2-Line LangChain Integration** (H1, Day 1)
 ```python
