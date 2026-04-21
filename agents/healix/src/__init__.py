@@ -1,1 +1,0 @@
-# Healix Agent - Healthcare Scheduling
