@@ -10,7 +10,7 @@ import { z } from 'zod';
 
 export const StdioServerConfigSchema = z.object({
   transport: z.literal('stdio'),
-  command: z.string(),
+  command: z.string().min(1, 'Command must not be empty'),
   args: z.array(z.string()).optional(),
   // Env vars to set for the child process (merged with safe inherited defaults)
   env: z.record(z.string()).optional(),

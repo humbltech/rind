@@ -92,8 +92,9 @@ export function buildHookCommand(rindUrl: string): string {
   }
 
   // Use the normalised href (trailing slash stripped) — never the raw user input.
+  // Single-quote the URL so path components with hyphens or slashes don't confuse curl.
   const url = parsed.href.replace(/\/$/, '');
-  return `curl -s -X POST ${url}/hook/evaluate -H 'Content-Type: application/json' -d @-`;
+  return `curl -s -X POST '${url}/hook/evaluate' -H 'Content-Type: application/json' -d @-`;
 }
 
 // ─── Merge ────────────────────────────────────────────────────────────────────

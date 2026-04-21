@@ -12,7 +12,11 @@ import type { UpstreamClient, ToolInfo } from './interface.js';
 import type { HttpServerConfig } from '../types.js';
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
+  // Explicitly reject Date, RegExp, Error and other non-plain objects — they serialize
+  // to empty objects during JSON.stringify/parse, silently corrupting tool output.
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  const proto = Object.getPrototypeOf(v) as unknown;
+  return proto === Object.prototype || proto === null;
 }
 
 export class HttpUpstreamClient implements UpstreamClient {

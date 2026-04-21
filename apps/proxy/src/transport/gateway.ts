@@ -154,8 +154,13 @@ export async function dispatchToolCall(
   }
 
   // Use the MCP-Session-ID header when present (set by compliant MCP clients).
-  // Fall back to a per-request UUID — never a shared derived key — so that
-  // loop detection and rate limiting scope correctly to individual callers.
+  // Fall back to a per-request UUID so that loop detection and rate limiting
+  // scope to individual callers rather than colliding across them.
+  //
+  // Important limitation: per-request fallback UUIDs break SESSION-LEVEL limits
+  // (maxCallsPerSession, maxCostPerSession) because each call appears as a new session.
+  // Clients MUST send MCP-Session-ID for those limits to apply. The Streamable HTTP
+  // transport spec requires session IDs — this fallback is a courtesy for non-compliant clients.
   const sessionId = mcpSessionId ?? `mcp:${randomUUID()}`;
   const agentId   = agentIdHeader ?? `agent:${serverId}`;
 
