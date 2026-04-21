@@ -444,9 +444,12 @@ export function rulesFromPack(
   policies: PolicyRule[],
   packId: string,
 ): PolicyRuleWithMeta[] {
+  // Narrow with a type predicate rather than casting the whole array — avoids
+  // treating every PolicyRule as PolicyRuleWithMeta before the guard confirms it.
   const prefix = `pack:${packId}`;
-  return (policies as PolicyRuleWithMeta[]).filter(
-    (r) => r._meta?.source === prefix,
+  return policies.filter(
+    (r): r is PolicyRuleWithMeta =>
+      '_meta' in r && (r as PolicyRuleWithMeta)._meta?.source === prefix,
   );
 }
 

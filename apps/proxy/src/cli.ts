@@ -5,6 +5,7 @@
 // Design: teal accent on dark terminal, Box-drawing borders, clear information hierarchy.
 // No external dependencies — ANSI escape codes only.
 
+import { createRequire } from 'node:module';
 import type { ProxyConfig } from './types.js';
 
 // ─── ANSI helpers ─────────────────────────────────────────────────────────────
@@ -24,8 +25,10 @@ const row  = (label: string, value: string) =>
 
 // ─── Version ──────────────────────────────────────────────────────────────────
 
-// Bumped at release time — keeps the banner truthful without a runtime import.
-const VERSION = '0.1.0';
+// Read version from package.json at runtime — single source of truth.
+// createRequire is used because ESM import assertions vary across Node versions.
+const _require = createRequire(import.meta.url);
+const VERSION: string = (_require('../package.json') as { version: string }).version;
 
 // ─── Exported helpers (called from index.ts) ──────────────────────────────────
 

@@ -8,8 +8,12 @@
 
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
+import { createRequire } from 'node:module';
 import pino from 'pino';
 import { randomUUID } from 'node:crypto';
+
+const _require = createRequire(import.meta.url);
+const PROXY_VERSION: string = (_require('../package.json') as { version: string }).version;
 import type { ProxyConfig, ToolCallEvent, AuditEntry, PolicyRule } from './types.js';
 import { runFullScan, listStoredSchemas } from './scanner/index.js';
 import { intercept } from './interceptor.js';
@@ -29,9 +33,9 @@ import { createUpstreamClient } from './transport/upstream/factory.js';
 import { mcpGateway } from './transport/gateway.js';
 import { z } from 'zod';
 
-// ─── Inline validation schemas for policy CRUD ───────────────────────────────
-// Mirrors the loader's Zod schema — kept minimal here since the loader owns the
-// canonical schema. These are used for API request validation only.
+// ─── Inline validation schemas ────────────────────────────────────────────────
+// All HTTP request bodies are validated with Zod before use — never rely on
+// TypeScript generics alone (they are compile-time only, not runtime validation).
 
 const PolicyRuleSchema: z.ZodType<PolicyRule> = z.object({
   name: z.string(),
@@ -79,6 +83,15 @@ const PolicyConfigSchema = z.object({
   policies: z.array(PolicyRuleSchema),
 });
 
+const ScanBodySchema = z.object({
+  serverId: z.string().min(1),
+  tools: z.array(z.unknown()),
+});
+
+const CreateSessionBodySchema = z.object({
+  agentId: z.string().optional(),
+});
+
 export function createProxyServer(config: ProxyConfig) {
   const logger = pino({
     level: config.logLevel ?? 'info',
@@ -89,11 +102,24 @@ export function createProxyServer(config: ProxyConfig) {
   });
 
   // ── Policy store + engine (D-021) ────────────────────────────────────────────
-  const policyConfig = config.policy
-    ? config.policy
-    : config.policyFile
-      ? loadPolicyFile(config.policyFile)
-      : emptyPolicyConfig();
+  // loadPolicyFile throws synchronously on missing or malformed files. Catch here
+  // so startup failures produce a structured log entry (not a raw stack trace)
+  // and exit with a clear message rather than leaking internal paths.
+  let policyConfig;
+  try {
+    policyConfig = config.policy
+      ? config.policy
+      : config.policyFile
+        ? loadPolicyFile(config.policyFile)
+        : emptyPolicyConfig();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // Log to stderr directly — pino logger not initialised yet at this point
+    process.stderr.write(`[rind] Failed to load policy file: ${message}\n`);
+    process.exit(1);
+    // TypeScript unreachable after process.exit — needed to satisfy definite assignment
+    throw err;
+  }
 
   const policyStore = new InMemoryPolicyStore(policyConfig);
   const policyEngine = new PolicyEngine(policyStore);
@@ -131,7 +157,7 @@ export function createProxyServer(config: ProxyConfig) {
   const app = new Hono();
 
   // ─── Health ───────────────────────────────────────────────────────────────────
-  app.get('/health', (c) => c.json({ status: 'ok', version: '0.1.0' }));
+  app.get('/health', (c) => c.json({ status: 'ok', version: PROXY_VERSION }));
 
   // ─── MCP protocol gateway (D-040 Phase A3) ───────────────────────────────────
   // /mcp/:serverId — receives MCP JSON-RPC from Claude Code, Cursor, Windsurf, etc.
@@ -200,7 +226,7 @@ export function createProxyServer(config: ProxyConfig) {
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
     try {
       policyStore.addRule(parsed.data);
-      emitPolicyAudit(bus, 'rule-added', parsed.data.name, config);
+      emitPolicyAudit(bus, 'rule-added', parsed.data.name);
       return c.json({ added: true, rule: parsed.data }, 201);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : 'Unknown error' }, 409);
@@ -215,7 +241,7 @@ export function createProxyServer(config: ProxyConfig) {
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
     try {
       policyStore.updateRule(name, parsed.data);
-      emitPolicyAudit(bus, 'rule-updated', name, config);
+      emitPolicyAudit(bus, 'rule-updated', name);
       return c.json({ updated: true, rule: parsed.data });
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : 'Unknown error' }, 404);
@@ -227,7 +253,7 @@ export function createProxyServer(config: ProxyConfig) {
     const { name } = c.req.param();
     const removed = policyStore.removeRule(name);
     if (!removed) return c.json({ error: `Rule "${name}" not found` }, 404);
-    emitPolicyAudit(bus, 'rule-removed', name, config);
+    emitPolicyAudit(bus, 'rule-removed', name);
     return c.json({ removed: true, name });
   });
 
@@ -237,7 +263,7 @@ export function createProxyServer(config: ProxyConfig) {
     const parsed = PolicyConfigSchema.safeParse(body);
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
     policyStore.update(parsed.data);
-    emitPolicyAudit(bus, 'config-replaced', '*', config);
+    emitPolicyAudit(bus, 'config-replaced', '*');
     return c.json({ replaced: true, ruleCount: parsed.data.policies.length });
   });
 
@@ -282,7 +308,7 @@ export function createProxyServer(config: ProxyConfig) {
 
     const newRules = expandPackRules(pack);
     policyStore.update({ policies: [...current.policies, ...newRules] });
-    emitPolicyAudit(bus, 'pack-enabled', packId, config);
+    emitPolicyAudit(bus, 'pack-enabled', packId);
     logger.info({ packId, ruleCount: newRules.length }, 'Policy pack enabled');
     return c.json({ enabled: true, packId, ruleCount: newRules.length }, 201);
   });
@@ -302,7 +328,7 @@ export function createProxyServer(config: ProxyConfig) {
       return c.json({ error: `Pack "${packId}" is not enabled` }, 404);
     }
     policyStore.update({ policies: next });
-    emitPolicyAudit(bus, 'pack-disabled', packId, config);
+    emitPolicyAudit(bus, 'pack-disabled', packId);
     logger.info({ packId }, 'Policy pack disabled');
     return c.json({ disabled: true, packId });
   });
@@ -326,7 +352,13 @@ export function createProxyServer(config: ProxyConfig) {
   // and MCP tools. The hook blocks execution if Rind returns { continue: false }.
   // This endpoint runs the interceptor in evaluate-only mode (steps 1-5, no forward).
   app.post('/hook/evaluate', async (c) => {
-    const raw = await c.req.json();
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      // Malformed JSON from Claude Code's hook runner — deny to fail closed.
+      return c.json({ continue: false, stopReason: 'Rind: hook payload is not valid JSON' }, 400);
+    }
     const parsed = HookRequestSchema.safeParse(raw);
     if (!parsed.success) {
       return c.json({ continue: false, stopReason: `Rind: invalid hook payload — ${parsed.error.message}` }, 400);
@@ -365,8 +397,9 @@ export function createProxyServer(config: ProxyConfig) {
 
   // ─── Session management ────────────────────────────────────────────────────────
   app.post('/sessions', async (c) => {
-    const body = await c.req.json<{ agentId?: string }>();
-    const session = createSession(body.agentId ?? config.agentId);
+    const parsed = CreateSessionBodySchema.safeParse(await c.req.json());
+    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+    const session = createSession(parsed.data.agentId ?? config.agentId);
     logger.info({ sessionId: session.sessionId, agentId: session.agentId }, 'Session created');
     bus.emit('session:created', session);
     emitAudit(bus, {
@@ -401,21 +434,16 @@ export function createProxyServer(config: ProxyConfig) {
 
   // ─── Scan-on-connect ──────────────────────────────────────────────────────────
   app.post('/scan', async (c) => {
-    const body = await c.req.json<{ serverId: string; tools: unknown[] }>();
-    logger.info({ serverId: body.serverId }, 'Scan-on-connect triggered');
+    const parsed = ScanBodySchema.safeParse(await c.req.json());
+    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+    const { serverId, tools } = parsed.data;
+    logger.info({ serverId }, 'Scan-on-connect triggered');
 
-    if (!Array.isArray(body.tools)) {
-      return c.json({ error: 'tools must be an array' }, 400);
-    }
-
-    const result = runFullScan(
-      body.serverId,
-      body.tools as Parameters<typeof runFullScan>[1],
-    );
+    const result = runFullScan(serverId, tools as Parameters<typeof runFullScan>[1]);
 
     const level = result.passed ? 'info' : 'warn';
     logger[level](
-      { serverId: body.serverId, findingCount: result.findings.length, passed: result.passed },
+      { serverId, findingCount: result.findings.length, passed: result.passed },
       'Scan complete',
     );
 
@@ -424,7 +452,7 @@ export function createProxyServer(config: ProxyConfig) {
       eventType: 'scan:complete',
       sessionId: '',
       agentId: '',
-      serverId: body.serverId,
+      serverId,
       action: result.passed ? 'ALLOW' : 'DENY',
     }, config);
 
@@ -436,21 +464,16 @@ export function createProxyServer(config: ProxyConfig) {
   // mid-session (rug pull detection). Schema drift logic is in runFullScan():
   // if serverId is already in the schema store, it compares against the baseline.
   app.post('/scan/refresh', async (c) => {
-    const body = await c.req.json<{ serverId: string; tools: unknown[] }>();
-    logger.info({ serverId: body.serverId }, 'Re-scan triggered (rug pull detection)');
+    const parsed = ScanBodySchema.safeParse(await c.req.json());
+    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+    const { serverId, tools } = parsed.data;
+    logger.info({ serverId }, 'Re-scan triggered (rug pull detection)');
 
-    if (!Array.isArray(body.tools)) {
-      return c.json({ error: 'tools must be an array' }, 400);
-    }
-
-    const result = runFullScan(
-      body.serverId,
-      body.tools as Parameters<typeof runFullScan>[1],
-    );
+    const result = runFullScan(serverId, tools as Parameters<typeof runFullScan>[1]);
 
     const level = result.passed ? 'info' : 'warn';
     logger[level](
-      { serverId: body.serverId, findingCount: result.findings.length, passed: result.passed },
+      { serverId, findingCount: result.findings.length, passed: result.passed },
       'Re-scan complete',
     );
 
@@ -459,7 +482,7 @@ export function createProxyServer(config: ProxyConfig) {
       eventType: 'scan:complete',
       sessionId: '',
       agentId: '',
-      serverId: body.serverId,
+      serverId,
       action: result.passed ? 'ALLOW' : 'DENY',
     }, config);
 
@@ -661,16 +684,15 @@ function emitAudit(
   } as AuditEntry);
 }
 
-// Records every policy mutation in the audit trail with a structured event type.
+// Records every policy mutation in the audit trail with its own distinct eventType.
 function emitPolicyAudit(
   bus: RindEventBus,
   operation: 'rule-added' | 'rule-updated' | 'rule-removed' | 'config-replaced' | 'pack-enabled' | 'pack-disabled',
   target: string,
-  config: ProxyConfig,
 ): void {
   bus.emit('audit', {
     timestamp: new Date().toISOString(),
-    eventType: 'tool:call', // reuse existing event type for audit stream
+    eventType: 'policy:mutation',
     sessionId: '',
     agentId: 'rind:policy-api',
     serverId: '',

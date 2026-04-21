@@ -214,7 +214,8 @@ export interface AuditEntry {
     | 'tool:threat'
     | 'scan:complete'
     | 'session:created'
-    | 'session:killed';
+    | 'session:killed'
+    | 'policy:mutation';
   sessionId: string;
   agentId: string;
   serverId: string;

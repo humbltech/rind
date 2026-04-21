@@ -106,8 +106,9 @@ export function buildToolsList(id: McpId, tools: ToolInfo[]): McpResponseMessage
 /**
  * Builds the initialize handshake response.
  * Advertises Rind as an MCP proxy gateway with minimal capabilities.
+ * Accepts the proxy version so callers can inject it from package.json.
  */
-export function buildInitializeResponse(id: McpId): McpResponseMessage {
+export function buildInitializeResponse(id: McpId, version = '0.0.1'): McpResponseMessage {
   return buildSuccess(id, {
     protocolVersion: '2024-11-05',
     capabilities: {
@@ -115,7 +116,7 @@ export function buildInitializeResponse(id: McpId): McpResponseMessage {
     },
     serverInfo: {
       name:    'rind-gateway',
-      version: '1.0.0',
+      version,
     },
   });
 }
@@ -128,11 +129,13 @@ export function buildMethodNotFound(id: McpId, method: string): McpResponseMessa
 }
 
 /**
- * Builds an "internal error" from an unknown Error or string.
+ * Builds an "internal error" response.
+ * Returns a generic message — never exposes upstream error details to the client,
+ * which could leak internal paths, SDK internals, or credential fragments.
+ * The caller is responsible for logging the original error with a correlation ID.
  */
-export function buildInternalError(id: McpId, err: unknown): McpResponseMessage {
-  const message = err instanceof Error ? err.message : String(err);
-  return buildError(id, JSON_RPC.INTERNAL_ERROR, `Internal error: ${message}`);
+export function buildInternalError(id: McpId, _err?: unknown): McpResponseMessage {
+  return buildError(id, JSON_RPC.INTERNAL_ERROR, 'Internal proxy error — check Rind logs');
 }
 
 /**

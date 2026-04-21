@@ -45,10 +45,23 @@ export class UpstreamPool {
     return serverId in this.servers;
   }
 
-  /** Closes all open upstream connections. */
+  /**
+   * Closes all open upstream connections.
+   * Errors from individual clients are collected rather than swallowed — the caller
+   * receives an AggregateError if any close failed, enabling logging at the call site.
+   */
   async closeAll(): Promise<void> {
-    const closing = [...this.clients.values()].map((c) => c.close().catch(() => {}));
-    await Promise.all(closing);
+    const results = await Promise.allSettled(
+      [...this.clients.values()].map((c) => c.close()),
+    );
     this.clients.clear();
+
+    const errors = results
+      .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+      .map((r) => r.reason as unknown);
+
+    if (errors.length > 0) {
+      throw new AggregateError(errors, `${errors.length} upstream client(s) failed to close cleanly`);
+    }
   }
 }

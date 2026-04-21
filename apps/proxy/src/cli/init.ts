@@ -93,13 +93,19 @@ export function parseInitArgs(argv: string[]): InitArgs | null {
 
 // ─── File I/O helpers ─────────────────────────────────────────────────────────
 
-/** Reads a file as a parsed JSON value, or returns null when missing/invalid. */
+/**
+ * Reads a file as a parsed JSON value.
+ * Returns null when the file is absent.
+ * Throws with a clear message when the file exists but is not valid JSON —
+ * so the caller can warn the user rather than silently treating it as empty.
+ */
 function readJsonFile(path: string): unknown {
   if (!existsSync(path)) return null;
+  const raw = readFileSync(path, 'utf-8');
   try {
-    return JSON.parse(readFileSync(path, 'utf-8'));
+    return JSON.parse(raw);
   } catch {
-    return null;
+    throw new Error(`${path} exists but is not valid JSON — fix it before running init`);
   }
 }
 
@@ -151,14 +157,21 @@ export async function runInit(argv: string[]): Promise<void> {
     process.stdout.write('\nRind init\n\n');
   }
 
-  // ── Step 1: Wrap MCP servers ────────────────────────────────────────────────
-  applyMcpJsonWrap(mcpJsonPath, dryRun);
+  try {
+    // ── Step 1: Wrap MCP servers ──────────────────────────────────────────────
+    applyMcpJsonWrap(mcpJsonPath, dryRun);
 
-  // ── Step 2: Add PreToolUse hook ─────────────────────────────────────────────
-  applySettingsHook(settingsPath, rindUrl, dryRun);
+    // ── Step 2: Add PreToolUse hook ───────────────────────────────────────────
+    applySettingsHook(settingsPath, rindUrl, dryRun);
 
-  // ── Step 3: Generate starter policy ─────────────────────────────────────────
-  applyPolicyYaml(policyPath, dryRun);
+    // ── Step 3: Generate starter policy ──────────────────────────────────────
+    applyPolicyYaml(policyPath, dryRun);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`\nError: ${message}\n`);
+    process.exit(1);
+    return;
+  }
 
   // ── Done ─────────────────────────────────────────────────────────────────────
   process.stdout.write('\n');

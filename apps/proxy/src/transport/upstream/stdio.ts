@@ -12,6 +12,10 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import type { UpstreamClient, ToolInfo } from './interface.js';
 import type { StdioServerConfig } from '../types.js';
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
 export class StdioUpstreamClient implements UpstreamClient {
   private readonly client: Client;
   private readonly transport: StdioClientTransport;
@@ -48,10 +52,10 @@ export class StdioUpstreamClient implements UpstreamClient {
 
   async callTool(name: string, input: unknown): Promise<unknown> {
     await this.ensureConnected();
-    const result = await this.client.callTool({
-      name,
-      arguments: input as Record<string, unknown>,
-    });
+    // MCP tool arguments must be a plain object. Coerce non-objects to {} rather
+    // than casting — avoids sending a malformed arguments payload to the upstream.
+    const args = isPlainObject(input) ? (input as Record<string, unknown>) : {};
+    const result = await this.client.callTool({ name, arguments: args });
     return result;
   }
 

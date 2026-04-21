@@ -10,6 +10,7 @@
 // so it can be tested independently of Hono.
 
 import { Hono } from 'hono';
+import { randomUUID } from 'node:crypto';
 import type { UpstreamPool } from './pool.js';
 import type { UpstreamClient } from './upstream/interface.js';
 import type { InterceptorOptions } from '../interceptor.js';
@@ -84,6 +85,9 @@ export function mcpGateway(pool: UpstreamPool, interceptorOpts: InterceptorOptio
       interceptorOpts,
     );
 
+    // MCP notifications must not receive a JSON-RPC response body (protocol requirement)
+    if (response.result === '__notification__') return c.body(null, 204);
+
     return c.json(response);
   });
 
@@ -106,6 +110,12 @@ export async function dispatchRequest(
 
   if (isInitialize(request)) {
     return buildInitializeResponse(id);
+  }
+
+  // MCP notifications are fire-and-forget — the protocol forbids sending a response.
+  // Return a sentinel so the HTTP handler can respond with 204 instead of JSON.
+  if (request.method.startsWith('notifications/')) {
+    return { jsonrpc: '2.0', id: null, result: '__notification__' };
   }
 
   if (request.method === 'tools/list') {
@@ -143,8 +153,10 @@ export async function dispatchToolCall(
     return buildInvalidRequest(id, 'tools/call params must include a "name" string');
   }
 
-  // Phase 2: real MCP-Session-ID tracking replaces the derived fallback
-  const sessionId = mcpSessionId ?? `mcp:${serverId}`;
+  // Use the MCP-Session-ID header when present (set by compliant MCP clients).
+  // Fall back to a per-request UUID — never a shared derived key — so that
+  // loop detection and rate limiting scope correctly to individual callers.
+  const sessionId = mcpSessionId ?? `mcp:${randomUUID()}`;
   const agentId   = agentIdHeader ?? `agent:${serverId}`;
 
   const event: ToolCallEvent = {

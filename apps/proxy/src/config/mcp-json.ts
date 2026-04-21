@@ -46,6 +46,20 @@ export function parseMcpJson(raw: unknown): McpJsonConfig | null {
   const servers = obj['mcpServers'];
   if (typeof servers !== 'object' || servers === null || Array.isArray(servers)) return null;
 
+  // Validate that every entry is at least an object (not a primitive or null).
+  // Individual entry shape is validated later by isStdioEntry / isHttpEntry.
+  const entries = servers as Record<string, unknown>;
+  for (const [, entry] of Object.entries(entries)) {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      return null; // malformed entry — caller decides how to handle
+    }
+    // Must have either a 'command' field (stdio) or a 'url' field (http)
+    const e = entry as Record<string, unknown>;
+    if (typeof e['command'] !== 'string' && typeof e['url'] !== 'string') {
+      return null; // entry `id` has neither command nor url — unrecognised shape
+    }
+  }
+
   return { mcpServers: servers as Record<string, McpServerEntry> };
 }
 

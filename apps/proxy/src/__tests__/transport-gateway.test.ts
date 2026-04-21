@@ -92,7 +92,8 @@ describe('dispatchRequest — tools/list', () => {
     });
     const res = await dispatchRequest(req('tools/list'), upstream, 'srv', undefined, undefined, makeAllowOpts());
     expect(res.error?.code).toBe(JSON_RPC.INTERNAL_ERROR);
-    expect(res.error?.message).toContain('connection refused');
+    // Generic message — underlying error must not leak to callers
+    expect(res.error?.message).toBe('Internal proxy error — check Rind logs');
   });
 });
 
@@ -213,7 +214,8 @@ describe('dispatchToolCall — DENY / block', () => {
     );
 
     expect(res.error?.code).toBe(JSON_RPC.INTERNAL_ERROR);
-    expect(res.error?.message).toContain('upstream timeout');
+    // Generic message — underlying error must not leak to callers
+    expect(res.error?.message).toBe('Internal proxy error — check Rind logs');
   });
 });
 

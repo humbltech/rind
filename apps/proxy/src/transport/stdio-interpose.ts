@@ -28,6 +28,7 @@ import { intercept } from '../interceptor.js';
 import type { ToolCallEvent } from '../types.js';
 import { parseMcpRequest, isToolsCall, extractToolCall, buildError, buildInternalError } from './mcp-message.js';
 import { JSON_RPC } from './types.js';
+import type { McpRequestMessage } from './types.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -101,13 +102,21 @@ export class StdioInterposer {
       const rl = createInterface({ input: this.inbound, crlfDelay: Infinity });
 
       rl.on('line', (line) => {
-        // Enqueue — each message waits for the previous one to complete
-        this.processingQueue = this.processingQueue.then(() => this.processLine(line));
+        // Enqueue — each message waits for the previous one to complete.
+        // .catch(() => {}) prevents a rejected processLine from breaking the chain:
+        // errors inside processLine are already handled internally (they write an
+        // error response to the outbound stream and return normally), so a rejection
+        // here means something unexpected escaped — log it but keep the queue alive.
+        this.processingQueue = this.processingQueue
+          .then(() => this.processLine(line))
+          .catch(() => {});
       });
 
       rl.on('close', () => {
-        // Wait for any in-progress evaluation before resolving
-        this.processingQueue.then(resolve);
+        // Wait for in-progress evaluation before resolving.
+        // Chain a no-op .catch so an unexpected queue rejection doesn't prevent
+        // the start() Promise.all from resolving when streams close.
+        this.processingQueue.catch(() => {}).then(resolve);
       });
     });
   }
@@ -142,7 +151,7 @@ export class StdioInterposer {
   // ── Tool call interception ────────────────────────────────────────────────
 
   private async interceptToolCall(
-    request: ReturnType<typeof parseMcpRequest> & object,
+    request: McpRequestMessage,
   ): Promise<void> {
     const { id } = request;
 

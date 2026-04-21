@@ -163,7 +163,12 @@ export async function runWrap(argv: string[]): Promise<void> {
 
   const child = spawn(args.command, args.commandArgs, {
     stdio: ['pipe', 'pipe', 'inherit'], // pipe stdin/stdout; inherit stderr
-    env:   process.env as Record<string, string>,
+    // Filter out undefined values — process.env is Record<string, string | undefined>
+    // and spawn requires Record<string, string>. Passing undefined values would coerce
+    // them to the string "undefined" in some Node.js versions.
+    env: Object.fromEntries(
+      Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    ),
   });
 
   child.on('error', (err) => {

@@ -74,9 +74,25 @@ export function alreadyHasRindHook(settings: ClaudeSettings): boolean {
  * Builds the shell command string for the PreToolUse hook.
  * Uses curl to POST stdin (the hook JSON) to Rind's evaluate endpoint.
  * stdin JSON is passed via `-d @-` so the hook script stays one line.
+ *
+ * Throws if rindUrl is not a valid HTTP/HTTPS URL — prevents shell injection
+ * from a malformed or adversarial --rind-url value being written into settings.json.
  */
 export function buildHookCommand(rindUrl: string): string {
-  const url = rindUrl.replace(/\/$/, '');
+  // Parse the URL to validate it and normalise it — rejects strings containing
+  // shell metacharacters that are not valid URL syntax (spaces, quotes, semicolons).
+  let parsed: URL;
+  try {
+    parsed = new URL(rindUrl);
+  } catch {
+    throw new Error(`Invalid rindUrl: "${rindUrl}" is not a valid URL`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Invalid rindUrl: must be http:// or https://, got "${parsed.protocol}//"`);
+  }
+
+  // Use the normalised href (trailing slash stripped) — never the raw user input.
+  const url = parsed.href.replace(/\/$/, '');
   return `curl -s -X POST ${url}/hook/evaluate -H 'Content-Type: application/json' -d @-`;
 }
 

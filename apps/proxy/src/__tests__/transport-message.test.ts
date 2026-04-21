@@ -221,15 +221,17 @@ describe('buildMethodNotFound', () => {
 });
 
 describe('buildInternalError', () => {
-  it('extracts message from an Error', () => {
+  // buildInternalError returns a generic message regardless of the underlying error
+  // to prevent internal implementation details from leaking to callers via JSON-RPC.
+  it('returns generic message for an Error (no information disclosure)', () => {
     const res = buildInternalError(1, new Error('network timeout'));
-    expect(res.error?.message).toContain('network timeout');
+    expect(res.error?.message).toBe('Internal proxy error — check Rind logs');
     expect(res.error?.code).toBe(JSON_RPC.INTERNAL_ERROR);
   });
 
-  it('converts a string error', () => {
+  it('returns generic message for a string error (no information disclosure)', () => {
     const res = buildInternalError(1, 'something went wrong');
-    expect(res.error?.message).toContain('something went wrong');
+    expect(res.error?.message).toBe('Internal proxy error — check Rind logs');
   });
 });
 
