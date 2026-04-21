@@ -1,0 +1,189 @@
+// Tests for config/settings-json.ts — pure transform functions.
+// No file I/O, no process references.
+
+import { describe, it, expect } from 'vitest';
+import {
+  parseClaudeSettings,
+  alreadyHasRindHook,
+  buildHookCommand,
+  mergeRindHook,
+} from '../config/settings-json.js';
+import type { ClaudeSettings } from '../config/settings-json.js';
+
+const DEFAULT_URL = 'http://localhost:7777';
+
+// ─── parseClaudeSettings ──────────────────────────────────────────────────────
+
+describe('parseClaudeSettings', () => {
+  it('returns empty object for null', () => {
+    expect(parseClaudeSettings(null)).toEqual({});
+  });
+
+  it('returns empty object for undefined', () => {
+    expect(parseClaudeSettings(undefined)).toEqual({});
+  });
+
+  it('returns empty object for a string', () => {
+    expect(parseClaudeSettings('not-an-object')).toEqual({});
+  });
+
+  it('returns empty object for an array', () => {
+    expect(parseClaudeSettings([])).toEqual({});
+  });
+
+  it('returns the object as-is for a valid settings shape', () => {
+    const settings = { hooks: { PreToolUse: [] }, permissions: { allow: [] } };
+    expect(parseClaudeSettings(settings)).toBe(settings);
+  });
+
+  it('accepts an empty object', () => {
+    expect(parseClaudeSettings({})).toEqual({});
+  });
+});
+
+// ─── alreadyHasRindHook ───────────────────────────────────────────────────────
+
+describe('alreadyHasRindHook', () => {
+  it('returns false for empty settings', () => {
+    expect(alreadyHasRindHook({})).toBe(false);
+  });
+
+  it('returns false when hooks is absent', () => {
+    const settings: ClaudeSettings = { permissions: { allow: [] } };
+    expect(alreadyHasRindHook(settings)).toBe(false);
+  });
+
+  it('returns false when PreToolUse is empty', () => {
+    const settings: ClaudeSettings = { hooks: { PreToolUse: [] } };
+    expect(alreadyHasRindHook(settings)).toBe(false);
+  });
+
+  it('returns false when PreToolUse has non-Rind hooks', () => {
+    const settings: ClaudeSettings = {
+      hooks: {
+        PreToolUse: [
+          { matcher: '*', hooks: [{ type: 'command', command: 'my-other-hook' }] },
+        ],
+      },
+    };
+    expect(alreadyHasRindHook(settings)).toBe(false);
+  });
+
+  it('returns true when a hook command contains /hook/evaluate', () => {
+    const settings: ClaudeSettings = {
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: '*',
+            hooks: [{ type: 'command', command: 'curl -s -X POST http://localhost:7777/hook/evaluate -d @-' }],
+          },
+        ],
+      },
+    };
+    expect(alreadyHasRindHook(settings)).toBe(true);
+  });
+
+  it('returns true even when the Rind URL is different (checks by path signature)', () => {
+    const settings: ClaudeSettings = {
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: '*',
+            hooks: [{ type: 'command', command: 'curl -s https://rind.example.com/hook/evaluate -d @-' }],
+          },
+        ],
+      },
+    };
+    expect(alreadyHasRindHook(settings)).toBe(true);
+  });
+});
+
+// ─── buildHookCommand ─────────────────────────────────────────────────────────
+
+describe('buildHookCommand', () => {
+  it('builds a curl command for the given URL', () => {
+    const cmd = buildHookCommand('http://localhost:7777');
+    expect(cmd).toContain('http://localhost:7777/hook/evaluate');
+    expect(cmd).toContain('curl');
+    expect(cmd).toContain('-X POST');
+    expect(cmd).toContain('-d @-');
+  });
+
+  it('strips a trailing slash from the URL', () => {
+    const cmd = buildHookCommand('http://localhost:7777/');
+    expect(cmd).toContain('http://localhost:7777/hook/evaluate');
+    // No double slash
+    expect(cmd).not.toContain('//hook/evaluate');
+  });
+
+  it('works with a custom host and port', () => {
+    const cmd = buildHookCommand('https://rind.internal:9000');
+    expect(cmd).toContain('https://rind.internal:9000/hook/evaluate');
+  });
+});
+
+// ─── mergeRindHook ────────────────────────────────────────────────────────────
+
+describe('mergeRindHook', () => {
+  it('adds a PreToolUse hook to empty settings', () => {
+    const result = mergeRindHook({}, DEFAULT_URL);
+    expect(result.hooks?.PreToolUse).toHaveLength(1);
+    expect(result.hooks?.PreToolUse?.[0]?.matcher).toBe('*');
+    expect(result.hooks?.PreToolUse?.[0]?.hooks[0]?.command).toContain('/hook/evaluate');
+  });
+
+  it('prepends the Rind hook before existing PreToolUse hooks', () => {
+    const existing: ClaudeSettings = {
+      hooks: {
+        PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'my-hook' }] }],
+      },
+    };
+    const result = mergeRindHook(existing, DEFAULT_URL);
+    const matchers = result.hooks!.PreToolUse!;
+
+    expect(matchers).toHaveLength(2);
+    // Rind hook comes first
+    expect(matchers[0]!.hooks[0]!.command).toContain('/hook/evaluate');
+    // Existing hook preserved second
+    expect(matchers[1]!.hooks[0]!.command).toBe('my-hook');
+  });
+
+  it('preserves other hooks keys (e.g. PostToolUse)', () => {
+    const existing: ClaudeSettings = {
+      hooks: {
+        PostToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'post-hook' }] }],
+      },
+    };
+    const result = mergeRindHook(existing, DEFAULT_URL);
+    expect(result.hooks?.PostToolUse).toBeDefined();
+    expect(result.hooks?.PostToolUse?.[0]?.hooks[0]?.command).toBe('post-hook');
+  });
+
+  it('preserves top-level settings keys (permissions, env, etc.)', () => {
+    const existing: ClaudeSettings = {
+      permissions: { allow: ['Bash'] },
+      env: { MY_VAR: 'hello' },
+    };
+    const result = mergeRindHook(existing, DEFAULT_URL);
+    expect(result.permissions).toEqual({ allow: ['Bash'] });
+    expect(result.env).toEqual({ MY_VAR: 'hello' });
+  });
+
+  it('is idempotent — does not add a second hook if one already exists', () => {
+    const settings: ClaudeSettings = {
+      hooks: {
+        PreToolUse: [
+          { matcher: '*', hooks: [{ type: 'command', command: `curl -s ${DEFAULT_URL}/hook/evaluate -d @-` }] },
+        ],
+      },
+    };
+    const result = mergeRindHook(settings, DEFAULT_URL);
+    expect(result.hooks!.PreToolUse).toHaveLength(1);
+  });
+
+  it('produces a new object — original is not mutated', () => {
+    const original: ClaudeSettings = { hooks: { PreToolUse: [] } };
+    mergeRindHook(original, DEFAULT_URL);
+    expect(original.hooks!.PreToolUse).toHaveLength(0); // unchanged
+  });
+});

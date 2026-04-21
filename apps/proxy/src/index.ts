@@ -17,6 +17,7 @@ import {
   printNextSteps,
 } from './cli.js';
 import { runWrap } from './cli/wrap.js';
+import { runInit } from './cli/init.js';
 
 // ── Subcommand dispatch ────────────────────────────────────────────────────────
 
@@ -25,6 +26,9 @@ const subcommand = process.argv[2];
 if (subcommand === 'wrap') {
   // stdio wrapper mode — runs entirely on stdio, no HTTP server
   runWrap(process.argv);
+} else if (subcommand === 'init') {
+  // auto-config generator — wraps .mcp.json + adds Claude Code hook + writes starter policy
+  runInit(process.argv);
 } else {
   // Default: HTTP proxy server mode
   const config = buildConfigFromEnv();
