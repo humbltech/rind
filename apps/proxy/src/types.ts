@@ -240,7 +240,12 @@ export type ForwardFn = (
 export interface ProxyConfig {
   port: number;
   agentId: string;
-  upstreamMcpUrl: string; // the MCP server to proxy to
+  upstreamMcpUrl: string; // legacy single-server URL (Phase 1 passthrough)
+  // D-040 Phase A3: multi-server MCP routing map.
+  // Keys are logical server IDs; values are upstream connection configs.
+  // When set, /mcp/:serverId routes are mounted and this takes precedence
+  // over upstreamMcpUrl for MCP protocol traffic.
+  servers?: import('./transport/types.js').McpServerMap;
   policyFile?: string; // path to rind.policy.yaml
   policy?: PolicyConfig; // in-memory policy — takes precedence over policyFile; used in tests and simulation
   logLevel?: 'debug' | 'info' | 'warn' | 'error';

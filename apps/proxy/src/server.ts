@@ -24,6 +24,9 @@ import { LoopDetector } from './loop-detector.js';
 import { RateLimiter } from './rate-limiter.js';
 import { listPacks, getPack, expandPackRules, rulesFromPack, recommendPacks } from './policy/packs.js';
 import { HookRequestSchema, evaluateHook } from './hooks/claude-code.js';
+import { UpstreamPool } from './transport/pool.js';
+import { createUpstreamClient } from './transport/upstream/factory.js';
+import { mcpGateway } from './transport/gateway.js';
 import { z } from 'zod';
 
 // ─── Inline validation schemas for policy CRUD ───────────────────────────────
@@ -120,11 +123,43 @@ export function createProxyServer(config: ProxyConfig) {
   const loopDetector = new LoopDetector();
   const rateLimiter = new RateLimiter();
 
+  // ── Upstream pool (D-040 Phase A3) ───────────────────────────────────────────
+  // Manages lazy connections to all configured MCP servers.
+  const upstreamPool = new UpstreamPool(config.servers ?? {}, createUpstreamClient);
+
   // ── Hono app ──────────────────────────────────────────────────────────────────
   const app = new Hono();
 
   // ─── Health ───────────────────────────────────────────────────────────────────
   app.get('/health', (c) => c.json({ status: 'ok', version: '0.1.0' }));
+
+  // ─── MCP protocol gateway (D-040 Phase A3) ───────────────────────────────────
+  // /mcp/:serverId — receives MCP JSON-RPC from Claude Code, Cursor, Windsurf, etc.
+  // Intercepts tools/call through the policy engine; proxies everything else.
+  if (Object.keys(config.servers ?? {}).length > 0) {
+    const gatewayInterceptorOpts = {
+      policyEngine,
+      loopDetector,
+      rateLimiter,
+      onToolCallEvent: (event: ToolCallEvent, rule?: import('./types.js').PolicyRule) => {
+        ringBuffer.push(event);
+        bus.emit('tool:call', event);
+        emitAudit(bus, {
+          eventType: 'tool:call',
+          sessionId: event.sessionId,
+          agentId: event.agentId,
+          serverId: event.serverId,
+          toolName: event.toolName,
+          action: 'evaluated',
+          policyRule: rule?.name,
+        }, config);
+      },
+      onToolResponseEvent: () => {},
+      blockOnCriticalResponseThreats: false,
+    };
+    app.route('/', mcpGateway(upstreamPool, gatewayInterceptorOpts));
+    logger.info({ servers: Object.keys(config.servers ?? {}) }, 'MCP gateway mounted');
+  }
 
   // ─── Status summary (D-026) ───────────────────────────────────────────────────
   app.get('/status', (c) => {
