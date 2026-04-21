@@ -104,6 +104,37 @@ describe('dispatchRequest — unknown method', () => {
   });
 });
 
+// ─── dispatchRequest — MCP notifications ─────────────────────────────────────
+// MCP notifications must never receive a JSON-RPC response body (protocol rule).
+// The gateway returns a sentinel result so the HTTP handler can emit 204 instead.
+
+describe('dispatchRequest — notifications', () => {
+  it('returns the __notification__ sentinel for notifications/initialized', async () => {
+    const res = await dispatchRequest(
+      req('notifications/initialized'),
+      makeUpstream(),
+      'srv',
+      undefined,
+      undefined,
+      makeAllowOpts(),
+    );
+    expect(res.result).toBe('__notification__');
+    expect(res.error).toBeUndefined();
+  });
+
+  it('returns the sentinel for any notifications/* method', async () => {
+    for (const method of ['notifications/progress', 'notifications/cancelled', 'notifications/roots/list_changed']) {
+      const res = await dispatchRequest(req(method), makeUpstream(), 'srv', undefined, undefined, makeAllowOpts());
+      expect(res.result).toBe('__notification__');
+    }
+  });
+
+  it('does NOT return the sentinel for non-notification methods', async () => {
+    const res = await dispatchRequest(req('tools/list'), makeUpstream(), 'srv', undefined, undefined, makeAllowOpts());
+    expect(res.result).not.toBe('__notification__');
+  });
+});
+
 // ─── dispatchToolCall — ALLOW paths ──────────────────────────────────────────
 
 describe('dispatchToolCall — ALLOW', () => {

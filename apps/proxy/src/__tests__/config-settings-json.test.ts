@@ -120,6 +120,28 @@ describe('buildHookCommand', () => {
     const cmd = buildHookCommand('https://rind.internal:9000');
     expect(cmd).toContain('https://rind.internal:9000/hook/evaluate');
   });
+
+  it('single-quotes the URL in the curl command', () => {
+    const cmd = buildHookCommand('http://localhost:7777');
+    // URL must be quoted so path components don't confuse the shell
+    expect(cmd).toMatch(/'http:\/\/localhost:7777\/hook\/evaluate'/);
+  });
+
+  it('throws on a non-URL string', () => {
+    expect(() => buildHookCommand('not-a-url')).toThrow(/invalid/i);
+  });
+
+  it('throws on a non-http/https protocol', () => {
+    expect(() => buildHookCommand('ftp://localhost/hook')).toThrow(/http/i);
+    expect(() => buildHookCommand('file:///etc/passwd')).toThrow(/http/i);
+  });
+
+  it('rejects a URL containing shell metacharacters that break URL parsing', () => {
+    // Semicolons and spaces are invalid in URLs — new URL() rejects them,
+    // so they cannot reach the curl command string.
+    expect(() => buildHookCommand('http://localhost:7777; rm -rf /')).toThrow();
+    expect(() => buildHookCommand('http://localhost:7777\' | evil')).toThrow();
+  });
 });
 
 // ─── mergeRindHook ────────────────────────────────────────────────────────────

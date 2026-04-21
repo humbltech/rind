@@ -297,6 +297,56 @@ describe('cli-protection pack', () => {
     expect(result.action).toBe('DENY');
   });
 
+  // ── block-rm-recursive: rm -r without -f ─────────────────────────────────────
+
+  it('denies rm -r / (root, no force flag)', () => {
+    const engine = makeCliEngine();
+    const result = engine.evaluate(makeEvent('Bash', { command: 'rm -r /' }));
+    expect(result.action).toBe('DENY');
+  });
+
+  it('denies rm -r ~ (home directory, no force flag)', () => {
+    const engine = makeCliEngine();
+    const result = engine.evaluate(makeEvent('Bash', { command: 'rm -r ~' }));
+    expect(result.action).toBe('DENY');
+  });
+
+  it('denies rm -r ~/ (home with trailing slash)', () => {
+    const engine = makeCliEngine();
+    const result = engine.evaluate(makeEvent('Bash', { command: 'rm -r ~/' }));
+    expect(result.action).toBe('DENY');
+  });
+
+  it('denies rm -R / (uppercase recursive flag)', () => {
+    const engine = makeCliEngine();
+    const result = engine.evaluate(makeEvent('Bash', { command: 'rm -R /' }));
+    expect(result.action).toBe('DENY');
+  });
+
+  it('denies rm --recursive / (long flag form)', () => {
+    const engine = makeCliEngine();
+    const result = engine.evaluate(makeEvent('Bash', { command: 'rm --recursive /' }));
+    expect(result.action).toBe('DENY');
+  });
+
+  it('denies rm -r ./ (current directory)', () => {
+    const engine = makeCliEngine();
+    const result = engine.evaluate(makeEvent('Bash', { command: 'rm -r ./' }));
+    expect(result.action).toBe('DENY');
+  });
+
+  it('allows rm -r ./src (subdirectory, not root/home/cwd)', () => {
+    const engine = makeCliEngine();
+    const result = engine.evaluate(makeEvent('Bash', { command: 'rm -r ./src' }));
+    expect(result.action).toBe('ALLOW');
+  });
+
+  it('allows rm -r node_modules (project directory cleanup)', () => {
+    const engine = makeCliEngine();
+    const result = engine.evaluate(makeEvent('Bash', { command: 'rm -r node_modules' }));
+    expect(result.action).toBe('ALLOW');
+  });
+
   // ── REQUIRE_APPROVAL rules ───────────────────────────────────────────────────
 
   it('requires approval for aws ec2 terminate-instances', () => {
