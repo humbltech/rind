@@ -23,6 +23,7 @@ import { AuditWriter } from './audit-writer.js';
 import { LoopDetector } from './loop-detector.js';
 import { RateLimiter } from './rate-limiter.js';
 import { listPacks, getPack, expandPackRules, rulesFromPack, recommendPacks } from './policy/packs.js';
+import { HookRequestSchema, evaluateHook } from './hooks/claude-code.js';
 import { z } from 'zod';
 
 // ─── Inline validation schemas for policy CRUD ───────────────────────────────
@@ -283,6 +284,48 @@ export function createProxyServer(config: ProxyConfig) {
         enabled: rulesFromPack(activePolicies, pack.id).length > 0,
       })),
     );
+  });
+
+  // ─── Claude Code PreToolUse hook endpoint (D-040) ────────────────────────────
+  // Claude Code fires this before every tool call — built-in (Bash, Write, Edit, …)
+  // and MCP tools. The hook blocks execution if Rind returns { continue: false }.
+  // This endpoint runs the interceptor in evaluate-only mode (steps 1-5, no forward).
+  app.post('/hook/evaluate', async (c) => {
+    const raw = await c.req.json();
+    const parsed = HookRequestSchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({ continue: false, stopReason: `Rind: invalid hook payload — ${parsed.error.message}` }, 400);
+    }
+
+    const hookResponse = await evaluateHook(parsed.data, {
+      policyEngine,
+      loopDetector,
+      rateLimiter,
+      onToolCallEvent: (event, rule) => {
+        ringBuffer.push(event);
+        bus.emit('tool:call', event);
+        emitAudit(bus, {
+          eventType: 'tool:call',
+          sessionId: event.sessionId,
+          agentId: event.agentId,
+          serverId: event.serverId,
+          toolName: event.toolName,
+          action: 'evaluated',
+          policyRule: rule?.name,
+        }, config);
+      },
+      onToolResponseEvent: () => {
+        // Hook is evaluate-only — no upstream response to emit
+      },
+      blockOnCriticalResponseThreats: false,
+    });
+
+    logger.info(
+      { toolName: parsed.data.tool_name, decision: 'continue' in hookResponse ? 'deny' : 'allow' },
+      'Hook evaluation complete',
+    );
+
+    return c.json(hookResponse);
   });
 
   // ─── Session management ────────────────────────────────────────────────────────

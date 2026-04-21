@@ -199,6 +199,214 @@ const registry: PolicyPack[] = [
       },
     ],
   },
+
+  {
+    // cli-protection (D-040): Intercepts dangerous CLI commands executed via the
+    // Bash built-in tool in Claude Code. Rules match on the `command` parameter
+    // of the Bash tool using regex so they fire through the hook evaluation endpoint.
+    id: 'cli-protection',
+    version: '1.0.0',
+    name: 'CLI Protection',
+    description: 'Blocks or requires approval for dangerous CLI commands: cloud infra deletion, data exfiltration, force-push, supply chain attacks.',
+    category: 'infrastructure',
+    tags: ['bash', 'cli', 'shell', 'cloud', 'exfil', 'git', 'npm'],
+    severity: 'strict',
+    // Bash is the Claude Code built-in; also matches gh/aws/kubectl as explicit tool names
+    requiredTools: ['Bash', 'bash', 'shell', 'terminal'],
+    customizable: [],
+    rules: [
+      // ── Cloud infrastructure deletion ───────────────────────────────────────
+      {
+        name: 'cli-protection:block-aws-destructive',
+        agent: '*',
+        match: {
+          tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
+          parameters: {
+            command: {
+              // aws ec2 terminate-instances, aws s3 rm, aws cloudformation delete-stack,
+              // aws eks delete-cluster, aws rds delete-db-instance, aws lambda delete-function
+              regex: '\\baws\\b.*(terminate-instances|delete-stack|delete-cluster|delete-db|delete-function|s3\\s+rm\\b)',
+            },
+          },
+        },
+        action: 'REQUIRE_APPROVAL',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+      {
+        name: 'cli-protection:block-gcloud-destructive',
+        agent: '*',
+        match: {
+          tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
+          parameters: {
+            command: {
+              regex: '\\bgcloud\\b.*(delete|destroy|remove)\\b',
+            },
+          },
+        },
+        action: 'REQUIRE_APPROVAL',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+      {
+        name: 'cli-protection:block-kubectl-delete',
+        agent: '*',
+        match: {
+          tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
+          parameters: {
+            command: {
+              // kubectl delete deployment/pod/namespace/cluster — allow kubectl get/describe/logs
+              regex: '\\bkubectl\\s+delete\\b',
+            },
+          },
+        },
+        action: 'REQUIRE_APPROVAL',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+      {
+        name: 'cli-protection:block-docker-destructive',
+        agent: '*',
+        match: {
+          tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
+          parameters: {
+            command: {
+              // docker rm -f, docker rmi -f, docker system prune
+              regex: '\\bdocker\\b.*(\\brm\\s+-f|\\brmi\\s+-f|system\\s+prune)',
+            },
+          },
+        },
+        action: 'REQUIRE_APPROVAL',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+
+      // ── GitHub CLI destructive operations ────────────────────────────────────
+      {
+        name: 'cli-protection:block-gh-destructive',
+        agent: '*',
+        match: {
+          tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
+          parameters: {
+            command: {
+              // gh repo delete, gh release delete, gh secret set
+              regex: '\\bgh\\b.*(repo\\s+delete|release\\s+delete|secret\\s+set)',
+            },
+          },
+        },
+        action: 'DENY',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+
+      // ── Git destructive operations ────────────────────────────────────────────
+      {
+        name: 'cli-protection:block-git-force-push',
+        agent: '*',
+        match: {
+          tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
+          parameters: {
+            command: {
+              // git push --force, git push -f, git push --force-with-lease to main/master
+              regex: '\\bgit\\s+push\\b.*(--force|-f\\b|--force-with-lease)',
+            },
+          },
+        },
+        action: 'REQUIRE_APPROVAL',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+
+      // ── SaaS CLI destructive operations ─────────────────────────────────────
+      {
+        name: 'cli-protection:block-supabase-destructive',
+        agent: '*',
+        match: {
+          tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
+          parameters: {
+            command: {
+              // supabase db reset, supabase migration repair
+              regex: '\\bsupabase\\b.*(db\\s+reset|migration\\s+repair)',
+            },
+          },
+        },
+        action: 'DENY',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+      {
+        name: 'cli-protection:block-stripe-destructive',
+        agent: '*',
+        match: {
+          tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
+          parameters: {
+            command: {
+              // stripe refunds create, stripe payment_intents cancel
+              regex: '\\bstripe\\b.*(refunds?\\s+create|cancel|delete)',
+            },
+          },
+        },
+        action: 'REQUIRE_APPROVAL',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+
+      // ── Supply chain attacks ─────────────────────────────────────────────────
+      {
+        name: 'cli-protection:block-npm-publish',
+        agent: '*',
+        match: {
+          tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
+          parameters: {
+            command: {
+              // npm publish, npx publish
+              regex: '\\bnpm\\s+publish\\b',
+            },
+          },
+        },
+        action: 'DENY',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+
+      // ── Data exfiltration via curl ────────────────────────────────────────────
+      {
+        name: 'cli-protection:block-curl-exfil',
+        agent: '*',
+        match: {
+          tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
+          parameters: {
+            command: {
+              // curl -d @/path/to/file, curl --data @file, curl -T file (file upload)
+              // Also catches curl ... | sh (remote code execution)
+              regex: '\\bcurl\\b.*(-d\\s+@|--data\\s+@|-T\\s+|\\|\\s*sh\\b|\\|\\s*bash\\b)',
+            },
+          },
+        },
+        action: 'DENY',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+
+      // ── Local file system destruction ─────────────────────────────────────────
+      {
+        name: 'cli-protection:block-rm-rf',
+        agent: '*',
+        match: {
+          tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
+          parameters: {
+            command: {
+              // rm -rf / or rm -rf ~ or rm -rf ./ or rm --recursive --force
+              regex: '\\brm\\b.*((-[^\\s]*r[^\\s]*f|-[^\\s]*f[^\\s]*r)|--recursive.*--force|--force.*--recursive).*(/|~|\\./)',
+            },
+          },
+        },
+        action: 'DENY',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+    ],
+  },
 ];
 
 // ─── Registry API ─────────────────────────────────────────────────────────────
