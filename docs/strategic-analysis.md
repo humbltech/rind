@@ -748,3 +748,56 @@ What changed our thinking and why.
 | OQ-002 (What triggers purchase) | After 5 conversations with post-incident security leads | Before public launch |
 | OQ-003 through OQ-006 | All resolved before first code is written | Before Month 1 |
 | Full strategy review | Monthly | 1st of each month |
+
+---
+
+### D-040: Endpoint Agent Integration Architecture
+**Date**: April 20, 2026
+**Decision**: Layered defense strategy — three integration paths, phased by effort and demand.
+
+**The universal split** (verified across all tools):
+- **Surface 1 (MCP tools)**: External services (databases, APIs, cloud infra). Where every verified catastrophic incident occurred. Universal across all tools via MCP proxy.
+- **Surface 2 (Built-in tools + CLI)**: File I/O, terminal, bash commands. Tool-specific. `gh repo delete`, `aws ec2 terminate-instances`, `curl` exfiltration, `rm -rf`, `npm publish`, `git push --force`.
+
+**Coverage after each phase:**
+```
+                    Surface 1 (MCP)    Surface 2 (Built-in + CLI)
+Claude Code         Phase A ✓          Phase A hook ✓ (100%)
+Cursor              Phase A ✓          Phase B shell guard ~80%
+Windsurf            Phase A ✓          Phase B shell guard ~80%
+Copilot             Phase A ✓          Phase B shell guard ~80%
+Documented gap      —                  File I/O in VS Code-based editors (no blocking API)
+```
+
+**Phase A (Weeks 1-3, ship first)**:
+1. `POST /hook/evaluate` endpoint — Claude Code PreToolUse hook integration (evaluate-only interceptor mode)
+2. `cli-protection` policy pack — regex rules on Bash tool `command` field (aws, gh, kubectl, curl, rm, npm publish, git push --force, supabase, stripe)
+3. MCP protocol layer — Rind speaks MCP JSON-RPC (inbound Streamable HTTP + outbound stdio/HTTP/SSE)
+4. Stdio wrapper CLI — `npx @rind/proxy wrap -- <command>` interposes on JSON-RPC stdin/stdout
+5. Auto-config generator — `npx @rind/proxy init --claude-code/--cursor/--windsurf`
+
+**Phase B (Weeks 4-6, contingent on demand)**:
+- Shell guard — `rind guard install` installs preexec hook + PATH wrappers for top 10 dangerous CLIs
+- Label: "defense-in-depth, not a guarantee" — known bypasses documented
+
+**Phase C (Weeks 8-12, optional)**:
+- VS Code observability extension — terminal command observer, file operation observer, sidebar panel
+- This is OBSERVABILITY, not enforcement (VS Code has no API to block terminal commands before execution)
+
+**Phase D (Month 4+, strategic)**:
+- Partnerships with Cursor/Windsurf/Codeium for native pre-execution hook APIs
+- Anthropic collaboration on subagent hook propagation
+
+**Key architectural decision**: One `/hook/evaluate` endpoint runs the existing interceptor in evaluate-only mode (steps 1-5, no forward step). Every integration path (Claude Code hook, shell guard, VS Code extension, SDK) funnels through the same policy engine.
+
+**Known gap**: Subagent hook isolation in Claude Code — parent PreToolUse hooks do not fire for subagent tool calls. Mitigation: configure hooks at subagent level. Monitor Anthropic's hook API evolution.
+
+**Confidence**: 8/10
+**Kill criteria**:
+- Claude Code removes PreToolUse hook API → rearchitect Phase A
+- Shell guard has >20% false positive rate in testing → don't ship, use honest gap documentation only
+- <10 users configure hooks after 4 weeks → investigate friction, simplify auto-config
+
+**Revisit if**: Cursor/Windsurf add pre-execution hooks (build immediately). VS Code adds terminal blocking API. Competitor ships reliable VS Code-based enforcement.
+
+---

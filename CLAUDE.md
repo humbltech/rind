@@ -6,7 +6,7 @@
 
 Rind sits at the execution layer. Every MCP tool call, API action, and agent decision passes through it. This gives four capabilities from one integration: see everything agents do (observability), prevent catastrophic actions before they happen (safety), enforce access policies (security), and make MCP production-ready in minutes (MCP adoption). The core insight: prompt-level tools can be bypassed and observability tools can't stop anything — Rind controls what agents **can do**, not just what they say or what gets logged.
 
-**Current phase**: Phase 1 core complete (61 tests passing). Proxy core: scanner, interceptor, policy engine (priority-sorted, cache-invalidating), session management, response inspector, event bus, ring buffer, audit writer, loop detector, rate limiter. Policy configuration experience (D-036) in progress: Phase 1A complete (CRUD API + policy packs — `packs.ts`, 11 new endpoints), Phase 1B next (dashboard policies page). Decisions D-013–D-039 logged. Phase 2: JWT identity, async approval workflow, cloud-hosted MCP reverse proxy (D-037).
+**Current phase**: Phase 1 complete (61 tests passing). Proxy core + policy packs (D-036 Phase 1A) + dashboard policies page (D-036 Phase 1B) — all shipped. Now implementing D-040 Phase A: endpoint agent integration architecture. Phase A order: (1) Claude Code PreToolUse hook endpoint, (2) `cli-protection` pack, (3) MCP protocol layer, (4) stdio wrapper CLI, (5) auto-config generator.
 
 ---
 
@@ -347,6 +347,10 @@ rind/                                   # Repo root
 **Dashboard architecture (D-038)**: Context-driven composition — one engine, three dimensions: `{ tier, role, teamId }`. Not separate dashboards. Build order: Developer View (Phase 1B) → Security + Admin (Phase 2) → Ops + Compliance (Phase 3). Team-level scoping in enterprise = `teamId` filter on API queries.
 
 **Policy pack state (D-039)**: Three derived states — Disabled / Enabled / Customized. Toggle is binary. "Customized" badge + "N of M rules active" count when rules differ from pack defaults. "Reset to defaults" restores factory state. Packs are authoring tools; rules are runtime reality.
+
+**Endpoint agent integration (D-040)**: Layered defense — Claude Code hooks (100% coverage), MCP proxy (all tools), shell guard (CLI commands in VS Code tools), VS Code extension (observability only). Ship order: Phase A (weeks 1-3): hook endpoint + cli-protection pack + MCP protocol layer + stdio wrapper + auto-config. Phase B (weeks 4-6, contingent): shell guard for Cursor/Windsurf CLI coverage. Phase C (optional): VS Code observability extension. Phase D: tool maker partnerships.
+
+Key architecture: `POST /hook/evaluate` runs interceptor in evaluate-only mode (steps 1-5, no forward). One engine, multiple entry points. Subagent gap documented — parent hooks don't fire for Claude Code subagent calls.
 
 ---
 
