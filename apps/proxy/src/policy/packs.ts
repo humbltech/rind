@@ -390,14 +390,33 @@ const registry: PolicyPack[] = [
 
       // ── Local file system destruction ─────────────────────────────────────────
       {
+        // Catches rm -rf, rm -fr, rm -Rf, rm -fR, rm --recursive --force (and reverse)
+        // targeting root, home, current dir, or bare wildcard (*).
         name: 'cli-protection:block-rm-rf',
         agent: '*',
         match: {
           tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
           parameters: {
             command: {
-              // rm -rf / or rm -rf ~ or rm -rf ./ or rm --recursive --force
-              regex: '\\brm\\b.*((-[^\\s]*r[^\\s]*f|-[^\\s]*f[^\\s]*r)|--recursive.*--force|--force.*--recursive).*(/|~|\\./)',
+              regex: '\\brm\\b.*(-[^\\s]*[rR][^\\s]*[fF]|-[^\\s]*[fF][^\\s]*[rR]|--recursive.*--force|--force.*--recursive).*(/|~|\\./|\\*)',
+            },
+          },
+        },
+        action: 'DENY',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+      {
+        // Catches rm -r (without -f) targeting root, home, or current dir.
+        // -r alone is still catastrophically destructive — don't require -f to block.
+        // Uses (?:\s|\*|$) so `rm -r /` (path at end of command) is not bypassed.
+        name: 'cli-protection:block-rm-recursive',
+        agent: '*',
+        match: {
+          tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
+          parameters: {
+            command: {
+              regex: '\\brm\\b.*(-[a-zA-Z]*[rR]\\b|--recursive).*\\s(/(?:\\s|\\*|$)|~/|~(?:\\s|\\*|$)|\\.(?:/(?:\\s|$)|(?:\\s|$)))',
             },
           },
         },

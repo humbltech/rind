@@ -63,13 +63,29 @@ export function parseWrapArgs(argv: string[]): WrapArgs | null {
     return null;
   }
 
+  const USAGE = `Usage: rind-proxy wrap [options] -- <command> [args...]
+
+Options:
+  --policy <path>         Path to rind.policy.yaml (default: ./rind.policy.yaml)
+  --server-id <id>        Logical server ID for audit logs (default: derived from command)
+  --agent-id <id>         Agent ID for audit logs (default: wrap)
+  --help                  Show this help message
+
+Examples:
+  rind-proxy wrap -- npx @github/mcp-server
+  rind-proxy wrap --server-id github -- npx @github/mcp-server
+`;
+
   let policyPath: string | undefined;
   let serverId: string | undefined;
   let agentId: string | undefined;
 
   for (let i = 0; i < options.length; i++) {
     const opt = options[i];
-    if (opt === '--policy' && options[i + 1]) {
+    if (opt === '--help') {
+      process.stdout.write(USAGE);
+      process.exit(0);
+    } else if (opt === '--policy' && options[i + 1]) {
       policyPath = options[++i];
     } else if (opt === '--server-id' && options[i + 1]) {
       serverId = options[++i];

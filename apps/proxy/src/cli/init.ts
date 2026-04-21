@@ -57,9 +57,25 @@ export function parseInitArgs(argv: string[]): InitArgs | null {
   let policyPath    = './rind.policy.yaml';
   let dryRun        = false;
 
+  const USAGE = `Usage: rind-proxy init [options]
+
+Options:
+  --claude-code           Generate Claude Code hook config + wrapped MCP config (default)
+  --rind-url <url>        Rind proxy URL (default: http://localhost:7777)
+  --mcp-json <path>       Path to .mcp.json (default: auto-detect)
+  --settings <path>       Path to .claude/settings.json (default: auto-detect)
+  --policy <path>         Output path for rind.policy.yaml (default: ./rind.policy.yaml)
+  --dry-run               Print what would change without writing any files
+  --help                  Show this help message
+`;
+
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     switch (arg) {
+      case '--help':
+        process.stdout.write(USAGE);
+        process.exit(0);
+        break;
       case '--claude-code': claudeCode = true; break;
       case '--dry-run':     dryRun = true; break;
       case '--rind-url':
@@ -80,7 +96,7 @@ export function parseInitArgs(argv: string[]): InitArgs | null {
         break;
       default:
         process.stderr.write(`Unknown option: ${arg}\n`);
-        process.stderr.write('Usage: rind-proxy init [--claude-code] [--rind-url <url>] [--dry-run]\n');
+        process.stderr.write(USAGE);
         return null;
     }
   }

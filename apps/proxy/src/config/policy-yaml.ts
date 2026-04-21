@@ -57,34 +57,34 @@ packs:
 policies:
   # Example: block writes to production config files
   # - name: no-production-config-writes
-  #   description: "Prevent agents from modifying production configuration"
+  #   description: Prevent agents from modifying production configuration
   #   priority: 10
   #   tool: Write
   #   parameters:
   #     file_path:
-  #       regex: ".*\\\\.prod\\\\.(yaml|json|env)$"
+  #       regex: '.*\\.prod\\.(yaml|json|env)$'
   #   action: deny
-  #   reason: "Production config files must be changed via CI/CD, not by agents"
+  #   reason: Production config files must be changed via CI/CD, not by agents
 
   # Example: require approval before any database schema change
   # - name: db-schema-approval
-  #   description: "Require human approval for all schema migrations"
+  #   description: Require human approval for all schema migrations
   #   priority: 20
   #   tool: Bash
   #   parameters:
   #     command:
-  #       regex: "(supabase|prisma|flyway|alembic).*(migrate|push|reset)"
+  #       regex: '(supabase|prisma|flyway|alembic).*(migrate|push|reset)'
   #   action: require-approval
-  #   reason: "Database schema changes require human review"
+  #   reason: Database schema changes require human review
 
   # Example: rate-limit expensive LLM API calls
   # - name: llm-api-rate-limit
-  #   description: "Limit agent-initiated LLM API calls to 20 per hour"
+  #   description: Limit agent-initiated LLM API calls to 20 per hour
   #   priority: 30
   #   tool: WebFetch
   #   parameters:
   #     url:
-  #       regex: "(api\\.openai\\.com|api\\.anthropic\\.com)"
+  #       regex: '(api\\.openai\\.com|api\\.anthropic\\.com)'
   #   action: rate-limit
   #   rateLimit:
   #     maxCalls: 20
