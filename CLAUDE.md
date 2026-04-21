@@ -6,7 +6,7 @@
 
 Rind sits at the execution layer. Every MCP tool call, API action, and agent decision passes through it. This gives four capabilities from one integration: see everything agents do (observability), prevent catastrophic actions before they happen (safety), enforce access policies (security), and make MCP production-ready in minutes (MCP adoption). The core insight: prompt-level tools can be bypassed and observability tools can't stop anything — Rind controls what agents **can do**, not just what they say or what gets logged.
 
-**Current phase**: Phase 1 complete. Proxy core fully built: scanner, interceptor, policy engine (with PolicyStore cache invalidation), session management, response inspector, event bus, ring buffer, audit writer, loop detector, rate limiter — 40 tests passing. All 15 strategic decisions D-013 through D-027 implemented. Phase 2 next: real-time policy API, JWT identity, async approval workflow.
+**Current phase**: Phase 1 core complete (61 tests passing). Proxy core: scanner, interceptor, policy engine (priority-sorted, cache-invalidating), session management, response inspector, event bus, ring buffer, audit writer, loop detector, rate limiter. Policy configuration experience (D-036) in progress: Phase 1A complete (CRUD API + policy packs — `packs.ts`, 11 new endpoints), Phase 1B next (dashboard policies page). Decisions D-013–D-039 logged. Phase 2: JWT identity, async approval workflow, cloud-hosted MCP reverse proxy (D-037).
 
 ---
 
@@ -294,10 +294,11 @@ rind/                                   # Repo root
 │           ├── session.ts              # Session store + hourly cost/call tracking
 │           ├── types.ts                # All shared TypeScript types
 │           ├── policy/
-│           │   ├── store.ts            # PolicyStore interface + InMemoryPolicyStore
-│           │   ├── engine.ts           # PolicyEngine (reads from store, cache-invalidating)
+│           │   ├── store.ts            # PolicyStore interface + InMemoryPolicyStore (addRule/updateRule/removeRule)
+│           │   ├── engine.ts           # PolicyEngine (priority-sorted, cache-invalidating)
 │           │   ├── rules.ts            # matchesRule() + parameter matching
-│           │   └── loader.ts           # YAML → Zod → PolicyConfig
+│           │   ├── loader.ts           # YAML → Zod → PolicyConfig
+│           │   └── packs.ts            # Policy pack registry + expand/recommend/rulesFromPack
 │           ├── scanner/                # Scan-on-connect tool definition analysis
 │           └── inspector/              # Request + response threat inspection
 ├── tools/
@@ -340,6 +341,12 @@ rind/                                   # Repo root
 2. GitHub Actions (shift-left)
 3. OpenTelemetry export
 4. Enterprise: Datadog/Splunk, Okta/Azure AD, AWS Bedrock
+
+**Hosted agent platform integration (D-037)**: Rind is a cloud MCP reverse proxy. To protect agents on Claude.ai, OpenAI, or any MCP-native platform, swap one URL: `your-mcp-server.com` → `proxy.rind.sh/k/{key}/your-mcp-server.com`. No SDK, no agent change, no platform change. Phase 2 cloud infrastructure.
+
+**Dashboard architecture (D-038)**: Context-driven composition — one engine, three dimensions: `{ tier, role, teamId }`. Not separate dashboards. Build order: Developer View (Phase 1B) → Security + Admin (Phase 2) → Ops + Compliance (Phase 3). Team-level scoping in enterprise = `teamId` filter on API queries.
+
+**Policy pack state (D-039)**: Three derived states — Disabled / Enabled / Customized. Toggle is binary. "Customized" badge + "N of M rules active" count when rules differ from pack defaults. "Reset to defaults" restores factory state. Packs are authoring tools; rules are runtime reality.
 
 ---
 
