@@ -1,5 +1,7 @@
 // Rind proxy — CLI entry point
-// Usage: npx @rind/proxy  ·  rind-proxy  ·  node dist/index.js
+// Usage:
+//   npx @rind/proxy                          start the HTTP proxy server
+//   rind-proxy wrap -- <command> [args...]   stdio wrapper for local MCP servers
 //
 // Reads configuration from environment variables (see cli.ts → buildConfigFromEnv).
 // In interactive terminals: prints the Rind banner and a human-readable startup summary.
@@ -14,18 +16,29 @@ import {
   printStartupSummary,
   printNextSteps,
 } from './cli.js';
+import { runWrap } from './cli/wrap.js';
 
-const config = buildConfigFromEnv();
+// ── Subcommand dispatch ────────────────────────────────────────────────────────
 
-if (isInteractiveTerminal()) {
-  printBanner();
+const subcommand = process.argv[2];
 
-  if (upstreamIsUnconfigured()) {
-    printNextSteps(config);
-  } else {
-    printStartupSummary(config);
+if (subcommand === 'wrap') {
+  // stdio wrapper mode — runs entirely on stdio, no HTTP server
+  runWrap(process.argv);
+} else {
+  // Default: HTTP proxy server mode
+  const config = buildConfigFromEnv();
+
+  if (isInteractiveTerminal()) {
+    printBanner();
+
+    if (upstreamIsUnconfigured()) {
+      printNextSteps(config);
+    } else {
+      printStartupSummary(config);
+    }
   }
-}
 
-const { start } = createProxyServer(config);
-start();
+  const { start } = createProxyServer(config);
+  start();
+}
