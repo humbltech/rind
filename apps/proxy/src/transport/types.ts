@@ -17,14 +17,25 @@ export const StdioServerConfigSchema = z.object({
   cwd: z.string().optional(),
 });
 
+// Valid HTTP header name: token chars only (RFC 7230 §3.2.6), no separators
+const validHeaderName = /^[a-zA-Z0-9!#$%&'*+\-.^_`|~]+$/;
+
 export const HttpServerConfigSchema = z.object({
   transport: z.literal('http'),
   url: z.string().url().refine(
     (u) => u.startsWith('http://') || u.startsWith('https://'),
     { message: 'URL must use http:// or https:// protocol' },
   ),
-  // Extra headers sent with every request (e.g. authorization tokens)
-  headers: z.record(z.string()).optional(),
+  // Extra headers sent with every request (e.g. authorization tokens).
+  // Names must be valid RFC 7230 token chars; values must not contain CR/LF
+  // (prevents HTTP response splitting regardless of whether fetch sanitizes them).
+  headers: z.record(
+    z.string().regex(validHeaderName, 'Header name must be a valid HTTP token'),
+    z.string().max(8192).refine(
+      (v) => !v.includes('\r') && !v.includes('\n'),
+      { message: 'Header value must not contain CR or LF' },
+    ),
+  ).optional(),
 });
 
 export const UpstreamServerConfigSchema = z.discriminatedUnion('transport', [

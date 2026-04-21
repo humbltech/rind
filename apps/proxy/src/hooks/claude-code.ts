@@ -29,16 +29,16 @@ import type { InterceptorOptions } from '../interceptor.js';
 // ─── Request schema ───────────────────────────────────────────────────────────
 
 export const HookRequestSchema = z.object({
-  session_id:       z.string().default('hook-session'),
-  hook_event_name:  z.string().optional(),
-  tool_name:        z.string(),
+  session_id:       z.string().min(1).max(256).default('hook-session'),
+  hook_event_name:  z.string().max(128).optional(),
+  tool_name:        z.string().min(1).max(256),
   tool_input:       z.unknown().default({}),
-  cwd:              z.string().optional(),
-  permission_mode:  z.string().optional(),
-  transcript_path:  z.string().optional(),
+  cwd:              z.string().max(512).optional(),
+  permission_mode:  z.string().max(64).optional(),
+  transcript_path:  z.string().max(512).optional(),
   // Only present when hook fires inside a subagent
-  agent_id:         z.string().optional(),
-  agent_type:       z.string().optional(),
+  agent_id:         z.string().min(1).max(256).optional(),
+  agent_type:       z.string().max(64).optional(),
 });
 
 export type HookRequest = z.infer<typeof HookRequestSchema>;
@@ -120,7 +120,8 @@ function serverIdFromToolName(toolName: string): string {
   // MCP tools in Claude Code follow the pattern: mcp__<server>__<tool>
   if (toolName.startsWith('mcp__')) {
     const parts = toolName.split('__');
-    return parts[1] ?? 'mcp-unknown';
+    // Use || not ?? — parts[1] may be '' (empty string) for malformed names like 'mcp__'
+    return parts[1] || 'mcp-unknown';
   }
   return 'builtin';
 }

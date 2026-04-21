@@ -73,6 +73,10 @@ describe('dispatchRequest — initialize', () => {
     const result = res.result as Record<string, unknown>;
     expect((result.serverInfo as { name: string }).name).toBe('rind-gateway');
     expect(result.protocolVersion).toBe('2024-11-05');
+    // Version must be a valid semver string read from package.json (not a placeholder like 'unknown')
+    const version = (result.serverInfo as { version: string }).version;
+    expect(typeof version).toBe('string');
+    expect(version).toMatch(/^\d+\.\d+\.\d+/);
   });
 });
 

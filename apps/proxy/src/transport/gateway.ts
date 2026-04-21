@@ -126,8 +126,8 @@ export async function dispatchRequest(
     try {
       const tools = await upstream.listTools();
       return buildToolsList(id, tools);
-    } catch (err) {
-      return buildInternalError(id, err);
+    } catch {
+      return buildInternalError(id);
     }
   }
 
