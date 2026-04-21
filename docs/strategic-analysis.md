@@ -801,3 +801,73 @@ Documented gap      —                  File I/O in VS Code-based editors (no b
 **Revisit if**: Cursor/Windsurf add pre-execution hooks (build immediately). VS Code adds terminal blocking API. Competitor ships reliable VS Code-based enforcement.
 
 ---
+
+### D-041: Capability Build Order Beyond MCP Interception
+**Date**: April 20, 2026
+**Decision**: Four-phase build order prioritizing enterprise readiness over comprehensive vision. LLM proxy explicitly excluded as a category error.
+
+**The question**: Given D-040 Phase A complete (Claude Code 100% coverage, MCP interception for all tools), what gets built next and in what order?
+
+**Phase 2 — Enterprise Readiness (build now, ~3 weeks)**:
+1. **Agent identity / API keys** (D-011) — per-agent API keys, agentId derived from key lookup. Self-reported agentId is a real security hole for agent-scoped policies. Enterprise security teams ask "who made this call?" as their first question. This closes it.
+2. **Real-time dashboard SSE** — replace 2-second polling with SSE stream. Developer experience differentiator; dashboard feels alive, not lagged. Infrastructure already exists (ring buffer + event bus).
+3. **Async approval workflow** — complete the `REQUIRE_APPROVAL` stub: callback URL, UI approve/deny panel, timeout-to-DENY. Closes the "human in the loop" story — required for enterprise compliance reviews and high-stakes tool calls.
+4. **Conversation context via `transcript_path`** — Claude Code's hook payload includes `transcript_path`: path to the live conversation file. Read it on a blocked call to surface WHY the agent was making the blocked call. Zero new infrastructure — file read on demand. Eliminates the need for an LLM proxy to understand agent intent.
+
+**Phase 3 — Coverage Expansion (after first enterprise deal, contingent)**:
+5. **Skill/agent scanning** — scan agent system prompts and configured tools for injected instructions, over-permissions, skills requesting excessive permissions. Detects rug-pull at agent configuration time, not just tool call time.
+6. **Multi-tenant / team scoping** — team-level API keys, org-level policy inheritance, per-team dashboards. Required before enterprise deals at companies with multiple engineering teams. Builds on D-038 dashboard context model.
+
+**Phase 4 — Contingent (only if users demand)**:
+7. **Shell guard** — Phase B from D-040. Only if Cursor/Windsurf users request broader CLI coverage. Known false-positive risk documented; do not ship if FP rate exceeds 20%.
+
+**Explicitly excluded**:
+- **LLM proxy / prompt scanning** — Lakera, CalypsoAI, Helicone, LangSmith territory. Commoditized layer we chose NOT to compete in. The `transcript_path` insight eliminates the legitimate use case (conversation context) without building an LLM proxy. Do not revisit this unless a design partner specifically shows an unmet need that is impossible to serve any other way.
+
+**Key insight**: `transcript_path` in the Claude Code hook payload is a file path to the live conversation transcript. Reading it on a blocked call gives full conversation context with zero new infrastructure — no LLM proxy needed.
+
+**Build order rationale**: Identity before SSE before async approval — each unlocks the next. Identity is the prerequisite for agent-scoped policies. SSE makes the approval workflow usable in real time. Async approval closes the enterprise demo story. Conversation context is a free feature with high WOW factor (costs only a file read).
+
+**Confidence**: 7/10
+**Kill criteria**:
+- Identity API keys generate zero usage after 2 weeks (engineers not configuring per-agent keys) → simplify to global API key only and defer per-agent scoping
+- Async approval has >10% timeout-to-DENY rate in practice (humans not responding in time) → increase default timeout or add configurable timeout; investigate alert delivery
+- Skill scanning reveals no findings in first 10 agent configurations → deprioritize; the runtime enforcement moat is sufficient
+
+**Revisit if**: A design partner has a tool call blocked but needs LLM-based reasoning about intent (not just transcript context) → evaluate LLM side-channel (non-blocking async only, per D-010). If multi-tenant is a deal-blocker before first customer → fast-track team scoping.
+
+**LLM proxy / prompt scanning note**: `transcript_path` covers conversation context for blocked calls (zero infrastructure). For broader prompt scanning, evaluate partnerships with Lakera/CalypsoAI rather than building. Do not build a competing prompt filter while MCP moat is not yet defensible with 2 engineers.
+
+---
+
+### Future Capability: Reversible PII Redaction (DLP Layer)
+**Date**: April 20, 2026
+**Status**: PARKED — not on near-term roadmap, logged for future reference
+
+**The idea**: A DLP (Data Loss Prevention) layer with reversible tokenization:
+1. Intercept prompts going TO the LLM — detect PII, API keys, credentials, personal data
+2. Replace sensitive values with typed placeholders: `{{PII_EMAIL_1}}`, `{{API_KEY_1}}`, `{{PII_SSN_1}}`
+3. Send redacted prompt to LLM — LLM never sees real sensitive data
+4. When LLM responds with placeholders in output, reverse-replace with original values
+5. User receives complete, correct response; LLM and logs never touched real data
+
+**Example**:
+```
+User prompt:    "Draft an email to john@acme.com with my card 4111-1111-1111-1111"
+→ Rind sends:  "Draft an email to {{PII_EMAIL_1}} with my card {{PII_CC_1}}"
+→ LLM output:  "Dear {{PII_EMAIL_1}}, your card ending in {{PII_CC_1}}..."
+→ User sees:   "Dear john@acme.com, your card ending in 4111..."
+```
+
+**Extension to tool calls**: Not just prompts — if an agent constructs a `curl` command with an API key in a header, redact before it appears in logs or gets forwarded. The tool call layer is where Rind already intercepts.
+
+**What makes this non-trivial**:
+- Reverse-replace requires a per-session token map; LLM must reproduce exact placeholder strings (they sometimes paraphrase — need fuzzy matching or strict format enforcement)
+- Detection quality: regex catches obvious patterns (SSN, email, credit card); custom credentials and internal IDs need more sophisticated detection
+- Natural fit in the existing response inspector pipeline (`extractStrings` already traverses responses)
+
+**Competitive context**: Nightfall AI, Private AI, Microsoft Presidio (OSS) do PII detection. None do the reversible-tokenization-at-tool-call-layer combination. That's the differentiated angle.
+
+**When to revisit**: After Phase 3 (multi-tenant) ships and there is enterprise demand for compliance-grade data handling. Requires a dedicated engineer or partnership with a detection library (Presidio is Apache 2.0, pre-approved candidate).
+
+---
