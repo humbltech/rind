@@ -7,11 +7,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Activity, Shield, AlertTriangle, Server } from 'lucide-react';
+import type React from 'react';
+import { Activity, AlertTriangle, Server } from 'lucide-react';
 import { Sidebar } from './components/sidebar';
 import { StatCard } from './components/stat-card';
 import { ToolCallTable, type ToolCallEntry } from './components/tool-call-table';
 import { ScanFindings, type ServerScanResult } from './components/scan-findings';
+import { HeaderBand, type BlockedIncident } from './components/header-band';
 
 // ─── Data shapes from the proxy API ───────────────────────────────────────────
 
@@ -27,12 +29,31 @@ interface ProxyStatus {
 export default function DashboardPage() {
   const { status, toolCalls, scanResults, isConnected } = useProxyData();
 
+  const sessions  = status?.sessions  ?? { total: 0, active: 0 };
+  const calls     = status?.toolCalls ?? { total: 0 };
+  const threats   = status?.threats   ?? { total: 0 };
+  const servers   = status?.servers   ?? { total: 0 };
+
+  // Derive the most recent blocked incident from the call log for the threat band
+  const lastBlocked = toolCalls.findLast((e) => e.outcome === 'blocked');
+  const incident: BlockedIncident | null = lastBlocked
+    ? { toolName: lastBlocked.toolName, agentId: lastBlocked.agentId, reason: lastBlocked.reason ?? 'POLICY_VIOLATION', timestamp: lastBlocked.timestamp }
+    : null;
+
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <main className="flex-1 overflow-auto">
         <div className="max-w-[1400px] mx-auto px-8 py-8 space-y-8">
-          <PageHeader isConnected={isConnected} />
+          <PageTitle />
+          <HeaderBand
+            threats={threats.total}
+            toolCalls={calls.total}
+            sessions={sessions.total}
+            servers={servers.total}
+            connected={isConnected}
+            incident={incident}
+          />
           <StatsGrid status={status} />
           <ToolCallSection entries={toolCalls} />
           <ScanSection servers={scanResults} />
@@ -44,14 +65,11 @@ export default function DashboardPage() {
 
 // ─── Page sections ────────────────────────────────────────────────────────────
 
-function PageHeader({ isConnected }: { isConnected: boolean }) {
+function PageTitle() {
   return (
-    <div className="flex items-center justify-between">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground tracking-tight">Overview</h1>
-        <p className="mt-0.5 text-sm text-muted">Live agent activity and security posture</p>
-      </div>
-      <ConnectionBadge connected={isConnected} />
+    <div>
+      <h1 className="text-xl font-semibold text-foreground tracking-tight">Overview</h1>
+      <p className="mt-0.5 text-sm text-muted">Live agent activity and security posture</p>
     </div>
   );
 }
@@ -133,27 +151,11 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ConnectionBadge({ connected }: { connected: boolean }) {
-  return (
-    <div className="flex items-center gap-2 text-xs text-muted">
-      <span
-        className={[
-          'w-1.5 h-1.5 rounded-full',
-          connected ? 'bg-low' : 'bg-dim',
-        ].join(' ')}
-        style={connected ? { boxShadow: '0 0 4px var(--rind-low)' } : undefined}
-      />
-      <span>{connected ? 'Connected to proxy' : 'Proxy unreachable'}</span>
-      <span className="text-dim">· polls every 2s</span>
-    </div>
-  );
-}
-
 // ─── Data polling hook ────────────────────────────────────────────────────────
 
 function useProxyData() {
-  const [status, setStatus]       = useState<ProxyStatus | null>(null);
-  const [toolCalls, setToolCalls] = useState<ToolCallEntry[]>([]);
+  const [status, setStatus]           = useState<ProxyStatus | null>(null);
+  const [toolCalls, setToolCalls]     = useState<ToolCallEntry[]>([]);
   const [scanResults, setScanResults] = useState<ServerScanResult[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 

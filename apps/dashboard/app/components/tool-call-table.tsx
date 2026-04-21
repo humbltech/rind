@@ -5,6 +5,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import type React from 'react';
 
 export interface ToolCallEntry {
   sessionId: string;
@@ -12,6 +13,9 @@ export interface ToolCallEntry {
   serverId: string;
   toolName: string;
   timestamp: number;
+  // Present when the proxy returns a decision alongside the call
+  outcome?: 'allowed' | 'blocked' | 'require-approval';
+  reason?: string;
 }
 
 interface ToolCallTableProps {
@@ -48,7 +52,7 @@ function TableHeader() {
   return (
     <thead className="sticky top-0 bg-surface border-b border-border z-10">
       <tr>
-        {['Time', 'Agent', 'Server', 'Tool'].map((h) => (
+        {['Time', 'Agent', 'Server', 'Tool', 'Outcome'].map((h) => (
           <th
             key={h}
             className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-muted"
@@ -89,7 +93,52 @@ function TableRow({ entry, isNew }: { entry: ToolCallEntry; isNew: boolean }) {
           {entry.toolName}
         </span>
       </td>
+      <td className="px-4 py-3">
+        {entry.outcome && <OutcomeBadge outcome={entry.outcome} />}
+      </td>
     </tr>
+  );
+}
+
+// Outcome pill — ALLOWED / BLOCKED / REQUIRE APPROVAL
+// Per design spec: ALLOWED is intentionally muted (expected state);
+// BLOCKED is critical-tinted (exception); REQUIRE APPROVAL is amber-tinted.
+function OutcomeBadge({ outcome }: { outcome: NonNullable<ToolCallEntry['outcome']> }) {
+  const config: Record<NonNullable<ToolCallEntry['outcome']>, { label: string; style: React.CSSProperties }> = {
+    allowed: {
+      label: 'ALLOWED',
+      style: {
+        color: 'var(--rind-foreground-muted)',
+        background: 'var(--rind-overlay)',
+        borderColor: 'var(--rind-border-subtle)',
+      },
+    },
+    blocked: {
+      label: 'BLOCKED',
+      style: {
+        color: 'var(--rind-critical)',
+        background: 'color-mix(in srgb, var(--rind-critical) 10%, transparent)',
+        borderColor: 'color-mix(in srgb, var(--rind-critical) 24%, transparent)',
+      },
+    },
+    'require-approval': {
+      label: 'REQUIRE APPROVAL',
+      style: {
+        color: 'var(--rind-medium)',
+        background: 'color-mix(in srgb, var(--rind-medium) 10%, transparent)',
+        borderColor: 'color-mix(in srgb, var(--rind-medium) 24%, transparent)',
+      },
+    },
+  };
+
+  const { label, style } = config[outcome];
+  return (
+    <span
+      className="font-mono text-[10px] tracking-[0.04em] px-2 py-0.5 rounded border"
+      style={style}
+    >
+      {label}
+    </span>
   );
 }
 

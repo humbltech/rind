@@ -1,15 +1,22 @@
-// Sidebar — the Geometric A mark (D-034) + RIND wordmark + navigation shell.
-// Phase 1: single active route (overview). Phase 2 will add sessions, policies, audit log.
-// The sidebar is static — no client interactivity needed.
+// Sidebar — Geometric A mark (D-034) + Rind wordmark + navigation shell.
+// Uses Next.js Link + usePathname for client-side routing.
+// Active state is derived from the current URL, not hardcoded.
 
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Activity, Shield, ScrollText, Settings } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { icon: Activity,    label: 'Overview',  active: true  },
-  { icon: Shield,      label: 'Policies',  active: false },
-  { icon: ScrollText,  label: 'Audit Log', active: false },
-  { icon: Settings,    label: 'Settings',  active: false },
+  { icon: Activity,   label: 'Overview',  href: '/'         },
+  { icon: Shield,     label: 'Policies',  href: '/policies' },
+  { icon: ScrollText, label: 'Audit Log', href: '/audit'    },
+  { icon: Settings,   label: 'Settings',  href: '/settings' },
 ] as const;
+
+// Routes that are built and navigable (all others show "soon")
+const ACTIVE_ROUTES = new Set(['/', '/policies']);
 
 export function Sidebar() {
   return (
@@ -24,12 +31,7 @@ export function Sidebar() {
 function LogoMark() {
   return (
     <div className="px-4 py-4 border-b border-border-subtle">
-      <div className="flex items-center gap-3">
-        {/*
-          Icon chip: dark canvas bg + subtle border + teal ambient glow.
-          The contained shape gives the mark visual anchoring — floating lines
-          on a flat bg read as a sketch; a chip reads as a product.
-        */}
+      <Link href="/" className="flex items-center gap-3 group">
         <div
           className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-canvas border border-border-subtle shrink-0 overflow-hidden"
           style={{
@@ -39,18 +41,12 @@ function LogoMark() {
             ].join(', '),
           }}
         >
-          {/* Teal wash rising from the base — gives the mark a light source */}
           <div
             className="absolute inset-0 pointer-events-none"
             style={{
               background: 'radial-gradient(ellipse 80% 60% at 50% 100%, color-mix(in srgb, var(--rind-accent) 14%, transparent), transparent)',
             }}
           />
-          {/*
-            Geometric A mark — D-034 canonical spec.
-            Gradient stroke: lighter teal at apex → standard teal at base.
-            Crossbar sits at 55% height, mathematically aligned to the diagonals.
-          */}
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-label="Rind" className="relative">
             <defs>
               <linearGradient id="rind-mark-grad" x1="10" y1="2" x2="10" y2="18" gradientUnits="userSpaceOnUse">
@@ -67,45 +63,66 @@ function LogoMark() {
           <span className="block text-sm font-semibold tracking-[0.12em] text-foreground uppercase">Rind</span>
           <span className="block text-[10px] text-muted tracking-wide">Control Plane · v0.1</span>
         </div>
-      </div>
+      </Link>
     </div>
   );
 }
 
 function Nav() {
+  const pathname = usePathname();
+
   return (
     <nav className="flex-1 px-3 py-4 space-y-0.5">
-      {NAV_ITEMS.map((item) => (
-        <NavItem key={item.label} {...item} />
-      ))}
+      {NAV_ITEMS.map((item) => {
+        const isBuilt   = ACTIVE_ROUTES.has(item.href);
+        const isActive  = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+        return (
+          <NavItem
+            key={item.label}
+            icon={item.icon}
+            label={item.label}
+            href={item.href}
+            active={isActive}
+            built={isBuilt}
+          />
+        );
+      })}
     </nav>
   );
 }
 
-function NavItem({ icon: Icon, label, active }: typeof NAV_ITEMS[number]) {
-  return (
-    <div
-      className={[
-        'flex items-center gap-3 px-3 py-2 rounded-md text-sm cursor-pointer transition-colors duration-150',
-        active
-          ? 'bg-overlay text-foreground'
-          : 'text-muted hover:text-foreground hover:bg-overlay/60',
-      ].join(' ')}
-    >
-      <Icon
-        size={15}
-        className={active ? 'text-accent' : 'text-dim'}
-        strokeWidth={active ? 2 : 1.5}
-      />
+interface NavItemProps {
+  icon: typeof NAV_ITEMS[number]['icon'];
+  label: string;
+  href: string;
+  active: boolean;
+  built: boolean;
+}
+
+function NavItem({ icon: Icon, label, href, active, built }: NavItemProps) {
+  const className = [
+    'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150',
+    active
+      ? 'bg-overlay text-foreground'
+      : 'text-muted hover:text-foreground hover:bg-overlay/60',
+    !built ? 'cursor-default pointer-events-none' : 'cursor-pointer',
+  ].join(' ');
+
+  const inner = (
+    <>
+      <Icon size={15} className={active ? 'text-accent' : 'text-dim'} strokeWidth={active ? 2 : 1.5} />
       <span>{label}</span>
-      {/* Disabled items show a pill so devs know Phase 2 is coming */}
-      {!active && (
+      {!built && (
         <span className="ml-auto text-[10px] text-dim border border-border-subtle rounded px-1.5 py-0.5">
           soon
         </span>
       )}
-    </div>
+    </>
   );
+
+  return built
+    ? <Link href={href} className={className}>{inner}</Link>
+    : <div className={className}>{inner}</div>;
 }
 
 function SidebarFooter() {
