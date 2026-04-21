@@ -93,7 +93,13 @@ export function buildHookCommand(rindUrl: string): string {
 
   // Use the normalised href (trailing slash stripped) — never the raw user input.
   // Single-quote the URL so path components with hyphens or slashes don't confuse curl.
+  // Single quotes are valid in URL paths per RFC 3986 (sub-delimiters), so new URL()
+  // won't reject them — but they would break the single-quoted shell string and could
+  // be used for injection. Reject them explicitly.
   const url = parsed.href.replace(/\/$/, '');
+  if (url.includes("'")) {
+    throw new Error(`Invalid rindUrl: URL must not contain single quotes`);
+  }
   return `curl -s -X POST '${url}/hook/evaluate' -H 'Content-Type: application/json' -d @-`;
 }
 

@@ -142,6 +142,18 @@ describe('buildHookCommand', () => {
     expect(() => buildHookCommand('http://localhost:7777; rm -rf /')).toThrow();
     expect(() => buildHookCommand('http://localhost:7777\' | evil')).toThrow();
   });
+
+  it('appends /hook/evaluate correctly when the URL has a path component', () => {
+    const cmd = buildHookCommand('http://localhost:7777/rind');
+    expect(cmd).toContain('http://localhost:7777/rind/hook/evaluate');
+    expect(cmd).not.toContain('//hook/evaluate');
+  });
+
+  it('rejects URLs with single quotes in the path (valid URL chars, unsafe in shell)', () => {
+    // Single quotes are sub-delimiters in RFC 3986 — new URL() accepts them,
+    // but they would break the single-quoted curl command string.
+    expect(() => buildHookCommand("http://localhost:7777/path'test")).toThrow(/single quote/i);
+  });
 });
 
 // ─── mergeRindHook ────────────────────────────────────────────────────────────

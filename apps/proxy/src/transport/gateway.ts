@@ -11,6 +11,7 @@
 
 import { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
 import type { UpstreamPool } from './pool.js';
 import type { UpstreamClient } from './upstream/interface.js';
 import type { InterceptorOptions } from '../interceptor.js';
@@ -31,6 +32,9 @@ import {
   buildInvalidRequest,
   buildError,
 } from './mcp-message.js';
+
+const _require = createRequire(import.meta.url);
+const PROXY_VERSION: string = (_require('../../package.json') as { version: string }).version;
 
 // ─── Gateway factory ─────────────────────────────────────────────────────────
 
@@ -109,7 +113,7 @@ export async function dispatchRequest(
   const { id } = request;
 
   if (isInitialize(request)) {
-    return buildInitializeResponse(id);
+    return buildInitializeResponse(id, PROXY_VERSION);
   }
 
   // MCP notifications are fire-and-forget — the protocol forbids sending a response.

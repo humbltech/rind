@@ -19,7 +19,10 @@ export const StdioServerConfigSchema = z.object({
 
 export const HttpServerConfigSchema = z.object({
   transport: z.literal('http'),
-  url: z.string().url(),
+  url: z.string().url().refine(
+    (u) => u.startsWith('http://') || u.startsWith('https://'),
+    { message: 'URL must use http:// or https:// protocol' },
+  ),
   // Extra headers sent with every request (e.g. authorization tokens)
   headers: z.record(z.string()).optional(),
 });
