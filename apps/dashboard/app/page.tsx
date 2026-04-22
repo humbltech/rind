@@ -6,8 +6,9 @@
 
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
+import Link from 'next/link';
 import { FolderOpen } from 'lucide-react';
 import { Sidebar } from './components/sidebar';
 import { VolumeCard, BreakdownCard, CountDeltaCard, CountScaleCard } from './components/stat-card';
@@ -210,14 +211,27 @@ function ActiveSessionsSection({ sessions, workDirs }: { sessions: ClaudeSession
 }
 
 function ToolCallSection({ entries }: { entries: ToolCallEntry[] }) {
+  const recent = useMemo(() => entries.slice(-15), [entries]);
+  const hasMore = entries.length > 15;
+
   return (
     <section>
       <SectionLabel>
-        Tool call log
-        <span className="ml-2 text-dim font-normal normal-case">(last {entries.length})</span>
+        Recent tool calls
+        <span className="ml-2 text-dim font-normal normal-case">
+          (last {recent.length}{hasMore ? ` of ${entries.length}` : ''})
+        </span>
+        {hasMore && (
+          <Link
+            href="/logs"
+            className="ml-auto text-[11px] font-normal normal-case text-accent hover:underline"
+          >
+            View all in Logs
+          </Link>
+        )}
       </SectionLabel>
       <div className="mt-3">
-        <ToolCallTable entries={entries} />
+        <ToolCallTable entries={recent} />
       </div>
     </section>
   );

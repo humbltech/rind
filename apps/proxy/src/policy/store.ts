@@ -8,6 +8,7 @@
 //   Phase 2: ApiBackedPolicyStore (REST API calls store.update() → cache invalidation → next request sees new policies)
 //   Phase 3: PersistentPolicyStore (DB-backed, pg_notify / Redis pub/sub for invalidation)
 
+import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import type { PolicyConfig, PolicyRule } from '../types.js';
 
 // ─── Interface ────────────────────────────────────────────────────────────────
@@ -47,9 +48,34 @@ export interface PolicyStore {
 export class InMemoryPolicyStore implements PolicyStore {
   private config: PolicyConfig;
   private subscribers: Array<() => void> = [];
+  private persistPath?: string;
 
-  constructor(config: PolicyConfig) {
-    this.config = config;
+  constructor(config: PolicyConfig, persistPath?: string) {
+    this.persistPath = persistPath;
+
+    // If a persist path is set, merge persisted API rules with the base config
+    if (persistPath) {
+      const persisted = loadPersistedRules(persistPath);
+      if (persisted.length > 0) {
+        // Persisted rules are API-created — merge with YAML base config
+        // API rules override YAML rules with the same name
+        const yamlNames = new Set(config.policies.map((r) => r.name));
+        const merged = [...config.policies];
+        for (const rule of persisted) {
+          if (yamlNames.has(rule.name)) {
+            const idx = merged.findIndex((r) => r.name === rule.name);
+            if (idx !== -1) merged[idx] = rule;
+          } else {
+            merged.push(rule);
+          }
+        }
+        this.config = { policies: merged };
+      } else {
+        this.config = config;
+      }
+    } else {
+      this.config = config;
+    }
   }
 
   get(): PolicyConfig {
@@ -58,6 +84,7 @@ export class InMemoryPolicyStore implements PolicyStore {
 
   update(config: PolicyConfig): void {
     this.config = config;
+    this.persist();
     for (const cb of this.subscribers) {
       try {
         cb();
@@ -94,5 +121,26 @@ export class InMemoryPolicyStore implements PolicyStore {
     if (next.length === this.config.policies.length) return false;
     this.update({ policies: next });
     return true;
+  }
+
+  private persist(): void {
+    if (!this.persistPath) return;
+    try {
+      writeFileSync(this.persistPath, JSON.stringify(this.config.policies, null, 2), 'utf-8');
+    } catch {
+      // Persistence failure is non-fatal — policies remain in memory
+    }
+  }
+}
+
+function loadPersistedRules(filePath: string): PolicyRule[] {
+  if (!existsSync(filePath)) return [];
+  try {
+    const raw = readFileSync(filePath, 'utf-8');
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed as PolicyRule[];
+  } catch {
+    return [];
   }
 }

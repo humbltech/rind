@@ -47,6 +47,12 @@ export default function PoliciesPage() {
     reload();
   }
 
+  async function handleRuleToggle(name: string) {
+    const res = await fetch(`/api/proxy/policies/rules/${encodeURIComponent(name)}/toggle`, { method: 'PATCH' });
+    if (!res.ok) throw new Error(await extractError(res));
+    reload();
+  }
+
   async function handleRuleSave(rule: PolicyRuleRow) {
     const isEdit = editingRule != null;
     const url    = isEdit
@@ -70,7 +76,7 @@ export default function PoliciesPage() {
         <div className="max-w-[1400px] mx-auto px-8 py-8 space-y-10">
           <PageTitle connected={isConnected} />
           <PackSection   packs={packSummaries} onToggle={handlePackToggle} />
-          <RulesSection  rules={rules} onDelete={handleRuleDelete} onEdit={setEditingRule} onNew={() => setEditingRule(null)} />
+          <RulesSection  rules={rules} onDelete={handleRuleDelete} onEdit={setEditingRule} onNew={() => setEditingRule(null)} onToggle={handleRuleToggle} />
         </div>
       </main>
 
@@ -115,12 +121,13 @@ function PackSection({ packs, onToggle }: { packs: PackSummary[]; onToggle: (id:
 }
 
 function RulesSection({
-  rules, onDelete, onEdit, onNew,
+  rules, onDelete, onEdit, onNew, onToggle,
 }: {
   rules: PolicyRuleRow[];
   onDelete: (name: string) => Promise<void>;
   onEdit: (rule: PolicyRuleRow) => void;
   onNew: () => void;
+  onToggle: (name: string) => Promise<void>;
 }) {
   return (
     <section>
@@ -135,7 +142,7 @@ function RulesSection({
           New rule
         </button>
       </div>
-      <RuleList rules={rules} onDelete={onDelete} onEdit={onEdit} />
+      <RuleList rules={rules} onDelete={onDelete} onEdit={onEdit} onToggle={onToggle} />
     </section>
   );
 }

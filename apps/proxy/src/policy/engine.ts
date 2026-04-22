@@ -46,6 +46,9 @@ export class PolicyEngine {
 
   evaluate(event: ToolCallEvent): PolicyEvalResult {
     for (const rule of this.rules) {
+      // Skip disabled rules (enabled defaults to true when not set)
+      if (rule.enabled === false) continue;
+
       if (!matchesRule(rule, event.agentId, event.toolName, event.input, this.compiledRegexes)) {
         continue;
       }

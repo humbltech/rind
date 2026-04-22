@@ -16,12 +16,16 @@ export interface ToolCallEvent {
   // Enriched after policy evaluation — not present on the initial event
   outcome?: 'allowed' | 'blocked' | 'require-approval';
   reason?: string;
+  // Name of the policy rule that matched (if any)
+  matchedRule?: string;
   // Source classification: 'builtin' for Claude Code tools, 'mcp' for MCP server tools
   source?: 'builtin' | 'mcp';
   // Human-readable label: "Bash: git status", "Read: server.ts", "Edit: types.ts"
   toolLabel?: string;
   // Working directory where the agent is operating
   cwd?: string;
+  // Deterministic correlation ID linking PreToolUse → PostToolUse for the same call
+  correlationId?: string;
 }
 
 export interface ToolResponseEvent {
@@ -131,6 +135,7 @@ export interface LoopCondition {
 export interface PolicyRule {
   name: string;
   agent: string; // '*' = all agents
+  enabled?: boolean; // default true — set to false to disable without deleting
   match: {
     tool?: string[];
     toolPattern?: string; // glob pattern e.g. "billing.*"
@@ -140,6 +145,10 @@ export interface PolicyRule {
     };
     // D-016: input parameter matching — recursive key lookup in tool input
     parameters?: Record<string, ParameterMatcher>;
+    // Sub-command matching (Bash only) — extracts sub-commands (e.g. "git push")
+    // and matches if ANY extracted sub-command is in this list (case-insensitive).
+    // "git status && npm publish" with subcommand: ['npm publish'] → matches.
+    subcommand?: string[];
   };
   action: PolicyAction;
   // D-013: REQUIRE_APPROVAL metadata (parsed but async flow is Phase 2)

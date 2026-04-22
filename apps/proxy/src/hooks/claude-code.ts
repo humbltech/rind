@@ -21,10 +21,12 @@
 //              "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "deny",
 //                                      "permissionDecisionReason": "..." } }
 
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import type { ToolCallEvent } from '../types.js';
+import type { ToolCallEvent, ResponseThreat } from '../types.js';
 import { intercept } from '../interceptor.js';
 import type { InterceptorOptions } from '../interceptor.js';
+import { inspectResponse } from '../inspector/response.js';
 
 // ─── Request schema ───────────────────────────────────────────────────────────
 
@@ -98,10 +100,22 @@ export interface ProcessedHookEvent {
   eventType: HookEventType;
   sessionId: string;
   agentId: string;
+  /** Deterministic correlation ID linking PostToolUse back to its PreToolUse */
+  correlationId?: string;
   agentType?: string;
   toolName?: string;
   toolLabel?: string;
   toolResponse?: unknown;
+  /** Truncated output preview (first 4KB) — only set for PostToolUse with large output */
+  outputPreview?: string;
+  /** Whether the full output was truncated */
+  outputTruncated?: boolean;
+  /** Full output size in bytes (before truncation) — only set for PostToolUse */
+  outputSizeBytes?: number;
+  /** SHA-256 hash of the full output — for deduplication and forensics */
+  outputHash?: string;
+  /** Threats detected in tool response — only set for PostToolUse */
+  threats?: import('../types.js').ResponseThreat[];
   prompt?: string;
   stopReason?: string;
   transcriptPath?: string;
@@ -109,8 +123,50 @@ export interface ProcessedHookEvent {
   timestamp: number;
 }
 
-// Process a general hook event into a structured format for storage
+// Process a general hook event into a structured format for storage.
+// For PostToolUse events: truncates large outputs and runs response inspection.
 export function processHookEvent(req: HookEvent): ProcessedHookEvent {
+  const isPostToolUse = req.hook_event_name === 'PostToolUse';
+  const output = req.tool_response;
+
+  // Serialize output once — reused for truncation, size, and hash
+  const outputText = isPostToolUse && output != null
+    ? (typeof output === 'string' ? output : JSON.stringify(output))
+    : undefined;
+
+  // Always capture a preview; truncate large outputs at 4KB
+  let outputPreview: string | undefined;
+  let outputTruncated = false;
+  let storedResponse = output;
+  const MAX_OUTPUT_BYTES = 4096;
+  const PREVIEW_BYTES = 1024; // always capture first 1KB as preview
+
+  if (outputText) {
+    if (outputText.length > MAX_OUTPUT_BYTES) {
+      outputPreview = outputText.slice(0, MAX_OUTPUT_BYTES);
+      outputTruncated = true;
+      storedResponse = outputPreview;
+    } else {
+      // Small output — capture first 1KB as preview for dashboard display
+      outputPreview = outputText.slice(0, PREVIEW_BYTES);
+    }
+  }
+
+  // Run response inspector on PostToolUse output for threat detection
+  let threats: ResponseThreat[] | undefined;
+  if (isPostToolUse && output != null) {
+    try {
+      const detected = inspectResponse(output);
+      if (detected.length > 0) threats = detected;
+    } catch {
+      // Inspector failure is non-fatal — event is still stored
+    }
+  }
+
+  // Compute response size and hash for forensics
+  const outputSizeBytes = outputText ? Buffer.byteLength(outputText, 'utf-8') : undefined;
+  const outputHash = outputText ? hashString(outputText) : undefined;
+
   return {
     eventType: req.hook_event_name,
     sessionId: req.session_id,
@@ -118,7 +174,12 @@ export function processHookEvent(req: HookEvent): ProcessedHookEvent {
     agentType: req.agent_type,
     toolName: req.tool_name,
     toolLabel: req.tool_name ? deriveToolLabel(req.tool_name, req.tool_input) : undefined,
-    toolResponse: req.tool_response,
+    toolResponse: storedResponse,
+    outputPreview,
+    outputTruncated: outputTruncated || undefined,
+    outputSizeBytes,
+    outputHash,
+    threats,
     prompt: req.prompt,
     stopReason: req.stop_reason,
     transcriptPath: req.agent_transcript_path,
@@ -322,6 +383,10 @@ function findSubCommand(tokens: string[], from: number): string | undefined {
 
 function dedupeAdjacent(items: string[]): string[] {
   return items.filter((item, i) => i === 0 || item !== items[i - 1]);
+}
+
+function hashString(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
 }
 
 function basename(path: string): string {

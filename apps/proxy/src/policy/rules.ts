@@ -50,6 +50,11 @@ export function matchesRule(
     if (!matchesParameters(match.parameters, input, compiledRegexes)) return false;
   }
 
+  // Sub-command matching (Bash only)
+  if (match.subcommand && match.subcommand.length > 0) {
+    if (!matchesSubcommand(match.subcommand, input)) return false;
+  }
+
   return true;
 }
 
@@ -126,6 +131,75 @@ function matchesValue(
   if (matcher.in !== undefined && !matcher.in.includes(value)) return false;
 
   return true;
+}
+
+// ─── Sub-command matching ─────────────────────────────────────────────────────
+
+/**
+ * Extract sub-commands from Bash input and check if any match the pattern list.
+ * "git status && npm publish" with patterns ['npm publish'] → true.
+ * Matching is case-insensitive.
+ */
+function matchesSubcommand(patterns: string[], input: unknown): boolean {
+  const inp = input as Record<string, unknown> | null | undefined;
+  if (!inp || typeof inp !== 'object') return false;
+  const cmd = typeof inp.command === 'string' ? inp.command.trim() : '';
+  if (!cmd) return false;
+
+  // Extract sub-commands: split on compound operators, then summarize each
+  const parts = cmd.split(/\s*(?:&&|\|\||[;|])\s*/);
+  const subs: string[] = [];
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    subs.push(summarizeBashCommand(trimmed));
+    // Also keep the full trimmed command for exact content matching
+    subs.push(trimmed.toLowerCase());
+  }
+
+  const lowerPatterns = patterns.map((p) => p.toLowerCase());
+
+  // Match if ANY sub-command matches ANY pattern (supports exact, prefix, and glob)
+  for (const sub of subs) {
+    const lower = sub.toLowerCase();
+    for (const pattern of lowerPatterns) {
+      // Glob pattern (contains *): "*git*status*" matches "git status"
+      if (pattern.includes('*')) {
+        if (matchGlob(pattern, lower)) return true;
+        continue;
+      }
+      // Exact match on summarized sub-command: "git push" matches "git push"
+      if (lower === pattern) return true;
+      // Or the full command starts with the pattern: "git push origin main" matches "git push"
+      if (lower.startsWith(pattern + ' ') || lower.startsWith(pattern)) return true;
+    }
+  }
+  return false;
+}
+
+/** Summarize a Bash command to binary + sub-command: "git -C /repo push" → "git push" */
+function summarizeBashCommand(cmd: string): string {
+  const tokens = cmd.split(/\s+/);
+  if (tokens.length === 0) return cmd;
+  const binary = tokens[0]!;
+
+  if (['git', 'npm', 'npx', 'pnpm', 'docker'].includes(binary)) {
+    const sub = findBashSubCommand(tokens, 1);
+    return sub ? `${binary} ${sub}` : binary;
+  }
+  return binary;
+}
+
+function findBashSubCommand(tokens: string[], from: number): string | undefined {
+  let i = from;
+  while (i < tokens.length) {
+    const t = tokens[i]!;
+    if (t.startsWith('--')) { i++; continue; }
+    if (t.startsWith('-') && t.length <= 3) { i += 2; continue; }
+    if (t.startsWith('/') || t.startsWith('"') || t.startsWith("'")) { i++; continue; }
+    return t;
+  }
+  return undefined;
 }
 
 // ─── Tool name matching ───────────────────────────────────────────────────────

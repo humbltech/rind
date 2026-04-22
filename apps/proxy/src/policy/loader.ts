@@ -66,11 +66,13 @@ const PolicyRuleMetaSchema = z.object({
 const PolicyRuleSchema = z.object({
   name: z.string(),
   agent: z.string().default('*'),
+  enabled: z.boolean().default(true),
   match: z.object({
     tool: z.array(z.string()).optional(),
     toolPattern: z.string().optional(),
     timeWindow: TimeWindowSchema.optional(),
     parameters: z.record(ParameterMatcherSchema).optional(), // D-016
+    subcommand: z.array(z.string()).optional(), // Bash sub-command matching
   }),
   action: z.enum(['ALLOW', 'DENY', 'REQUIRE_APPROVAL', 'RATE_LIMIT']),
   approval: ApprovalSchema.optional(), // D-013

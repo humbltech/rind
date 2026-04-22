@@ -9,17 +9,39 @@ import { Trash2, Pencil, ShieldCheck, User } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface ParameterMatcherUI {
+  contains?: string[];
+  regex?: string;
+  startsWith?: string;
+  gt?: number;
+  lt?: number;
+  gte?: number;
+  lte?: number;
+  eq?: unknown;
+  in?: unknown[];
+}
+
 export interface PolicyRuleRow {
   name: string;
   agent: string;
+  enabled?: boolean; // default true
   match: {
     tool?: string[];
     toolPattern?: string;
+    parameters?: Record<string, ParameterMatcherUI>;
+    subcommand?: string[];
+    timeWindow?: {
+      daysOfWeek?: number[];
+      hours?: string;
+    };
   };
   action: 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL' | 'RATE_LIMIT';
   priority?: number;
+  rateLimit?: { limit: number; window: string; scope: string };
+  failMode?: string;
+  loop?: { type: string; threshold: number; window?: number };
   _meta?: {
-    source: string; // 'manual' | 'yaml' | 'pack:sql-protection' | 'ai-assisted'
+    source: string;
     modifiedFromPack?: boolean;
   };
 }
@@ -28,11 +50,12 @@ interface RuleListProps {
   rules: PolicyRuleRow[];
   onDelete: (name: string) => Promise<void>;
   onEdit: (rule: PolicyRuleRow) => void;
+  onToggle: (name: string) => Promise<void>;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function RuleList({ rules, onDelete, onEdit }: RuleListProps) {
+export function RuleList({ rules, onDelete, onEdit, onToggle }: RuleListProps) {
   if (rules.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-surface py-12 text-center">
@@ -48,6 +71,7 @@ export function RuleList({ rules, onDelete, onEdit }: RuleListProps) {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border-subtle">
+            <Th><span className="sr-only">Status</span></Th>
             <Th>Rule</Th>
             <Th>Agent</Th>
             <Th>Match</Th>
@@ -59,7 +83,7 @@ export function RuleList({ rules, onDelete, onEdit }: RuleListProps) {
         </thead>
         <tbody className="divide-y divide-border-subtle">
           {rules.map((rule) => (
-            <RuleRow key={rule.name} rule={rule} onDelete={onDelete} onEdit={onEdit} />
+            <RuleRow key={rule.name} rule={rule} onDelete={onDelete} onEdit={onEdit} onToggle={onToggle} />
           ))}
         </tbody>
       </table>
@@ -69,25 +93,30 @@ export function RuleList({ rules, onDelete, onEdit }: RuleListProps) {
 
 // ─── Row ─────────────────────────────────────────────────────────────────────
 
-function RuleRow({ rule, onDelete, onEdit }: { rule: PolicyRuleRow; onDelete: RuleListProps['onDelete']; onEdit: RuleListProps['onEdit'] }) {
+function RuleRow({ rule, onDelete, onEdit, onToggle }: { rule: PolicyRuleRow; onDelete: RuleListProps['onDelete']; onEdit: RuleListProps['onEdit']; onToggle: RuleListProps['onToggle'] }) {
   const [deleting, setDeleting] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const isEnabled = rule.enabled !== false;
 
   async function handleDelete() {
     if (deleting) return;
     setDeleting(true);
-    try {
-      await onDelete(rule.name);
-    } finally {
-      setDeleting(false);
-    }
+    try { await onDelete(rule.name); } finally { setDeleting(false); }
   }
 
-  const matchLabel = rule.match.toolPattern
-    ? rule.match.toolPattern
-    : rule.match.tool?.join(', ') ?? '*';
+  async function handleToggle() {
+    if (toggling) return;
+    setToggling(true);
+    try { await onToggle(rule.name); } finally { setToggling(false); }
+  }
+
+  const matchLabel = formatMatchLabel(rule.match);
 
   return (
-    <tr className="group hover:bg-overlay/40 transition-colors duration-100">
+    <tr className={['group transition-colors duration-100', isEnabled ? 'hover:bg-overlay/40' : 'opacity-50'].join(' ')}>
+      <Td>
+        <ToggleSwitch enabled={isEnabled} onToggle={handleToggle} disabled={toggling} />
+      </Td>
       <Td>
         <span className="font-mono text-xs text-foreground">{rule.name}</span>
       </Td>
@@ -166,12 +195,53 @@ function SourceBadge({ source, modified }: { source?: string; modified?: boolean
   );
 }
 
+function formatMatchLabel(match: PolicyRuleRow['match']): string {
+  const parts: string[] = [];
+  if (match.toolPattern) parts.push(match.toolPattern);
+  else if (match.tool?.length) parts.push(match.tool.join(', '));
+  if (match.subcommand?.length) parts.push(`subcmd: ${match.subcommand.join(', ')}`);
+  if (match.parameters) {
+    for (const [key, matcher] of Object.entries(match.parameters)) {
+      if (matcher.contains?.length) parts.push(`${key} contains ${matcher.contains.join('+')}`);
+      else if (matcher.regex) parts.push(`${key} ~ /${matcher.regex}/`);
+      else if (matcher.startsWith) parts.push(`${key} starts "${matcher.startsWith}"`);
+      else if (matcher.gt !== undefined) parts.push(`${key} > ${matcher.gt}`);
+      else if (matcher.lt !== undefined) parts.push(`${key} < ${matcher.lt}`);
+    }
+  }
+  return parts.length > 0 ? parts.join(' + ') : '*';
+}
+
 const PACK_DISPLAY_NAMES: Record<string, string> = {
   'sql-protection':        'SQL',
   'shell-protection':      'Shell',
   'filesystem-protection': 'Filesystem',
   'exfil-protection':      'Exfil',
 };
+
+// ─── Toggle switch ───────────────────────────────────────────────────────
+
+function ToggleSwitch({ enabled, onToggle, disabled }: { enabled: boolean; onToggle: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      title={enabled ? 'Disable rule' : 'Enable rule'}
+      className={[
+        'relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-50',
+        enabled ? 'bg-accent' : 'bg-border',
+      ].join(' ')}
+    >
+      <span
+        className={[
+          'inline-block h-3 w-3 rounded-full bg-white transition-transform duration-200',
+          enabled ? 'translate-x-3.5' : 'translate-x-0.5',
+        ].join(' ')}
+      />
+    </button>
+  );
+}
 
 // ─── Table primitives ─────────────────────────────────────────────────────────
 

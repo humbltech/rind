@@ -20,10 +20,27 @@ export interface ToolCallEntry {
   reason?: string;
   // Tool source classification
   source?: 'builtin' | 'mcp';
+  // Name of the policy rule that matched
+  matchedRule?: string;
   // Tool input arguments (for display in expandable row)
   input?: unknown;
   // Working directory
   cwd?: string;
+  // Correlation ID linking PreToolUse → PostToolUse
+  correlationId?: string;
+  // ─── PostToolUse response data (joined via correlationId) ───
+  response?: {
+    outputPreview?: string;
+    outputTruncated?: boolean;
+    outputSizeBytes?: number;
+    outputHash?: string;
+    threats?: Array<{
+      type: string;
+      severity: string;
+      pattern: string;
+    }>;
+    timestamp?: number;
+  };
 }
 
 interface ToolCallTableProps {
@@ -122,6 +139,8 @@ function TableRow({ entry, isNew }: { entry: ToolCallEntry; isNew: boolean }) {
               agentId={entry.agentId}
               sessionId={entry.sessionId}
               sessionName={entry.sessionName}
+              response={entry.response}
+              correlationId={entry.correlationId}
             />
           </td>
         </tr>
@@ -204,16 +223,21 @@ function SourceBadge({ source }: { source?: 'builtin' | 'mcp' }) {
 }
 
 // Expandable input detail panel
-function InputDetail({ input, cwd, reason, agentId, sessionId, sessionName }: {
+function InputDetail({ input, cwd, reason, agentId, sessionId, sessionName, response, correlationId }: {
   input: unknown;
   cwd?: string;
   reason?: string;
   agentId: string;
   sessionId: string;
   sessionName?: string;
+  response?: ToolCallEntry['response'];
+  correlationId?: string;
 }) {
+  const [tab, setTab] = useState<'input' | 'response'>('input');
   const inputStr = formatInput(input);
   const hasInput = input != null && JSON.stringify(input) !== '{}';
+  const hasResponse = response != null;
+
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-x-6 gap-y-1">
@@ -221,6 +245,7 @@ function InputDetail({ input, cwd, reason, agentId, sessionId, sessionName }: {
         <DetailRow label="Session ID" value={sessionId} />
         {sessionName && <DetailRow label="Session Name" value={sessionName} />}
         {cwd && <DetailRow label="Working Dir" value={cwd} />}
+        {correlationId && <DetailRow label="Correlation" value={correlationId} />}
       </div>
       {reason && (
         <div className="flex gap-2 text-[11px]">
@@ -228,13 +253,117 @@ function InputDetail({ input, cwd, reason, agentId, sessionId, sessionName }: {
           <span className="font-mono text-critical">{reason}</span>
         </div>
       )}
-      {hasInput && (
+
+      {/* Tabs: Input / Response */}
+      {(hasInput || hasResponse) && (
+        <div className="flex items-center gap-1 mt-2">
+          <TabButton label="Input" active={tab === 'input'} onClick={() => setTab('input')} />
+          <TabButton
+            label={`Response${hasResponse ? '' : ' (pending)'}`}
+            active={tab === 'response'}
+            onClick={() => setTab('response')}
+            disabled={!hasResponse}
+          />
+          {hasResponse && response.outputSizeBytes != null && (
+            <span className="ml-auto text-[10px] text-dim font-mono">
+              {formatBytes(response.outputSizeBytes)}
+              {response.outputTruncated && ' (truncated)'}
+            </span>
+          )}
+        </div>
+      )}
+
+      {tab === 'input' && hasInput && (
         <pre className="font-mono text-[11px] text-muted whitespace-pre-wrap break-all max-h-[200px] overflow-auto mt-1 p-2 rounded bg-[var(--rind-canvas)]">
           {inputStr}
         </pre>
       )}
+
+      {tab === 'response' && hasResponse && (
+        <ResponseDetail response={response} />
+      )}
     </div>
   );
+}
+
+function TabButton({ label, active, onClick, disabled }: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="px-2.5 py-1 rounded text-[11px] font-mono transition-colors"
+      style={{
+        color: disabled ? 'var(--rind-foreground-dim)' : active ? 'var(--rind-accent)' : 'var(--rind-foreground-muted)',
+        background: active ? 'color-mix(in srgb, var(--rind-accent) 10%, transparent)' : 'transparent',
+        borderColor: active ? 'color-mix(in srgb, var(--rind-accent) 24%, transparent)' : 'transparent',
+        borderWidth: '1px',
+        borderStyle: 'solid',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ResponseDetail({ response }: { response: NonNullable<ToolCallEntry['response']> }) {
+  return (
+    <div className="space-y-2 mt-1">
+      {/* Threats */}
+      {response.threats && response.threats.length > 0 && (
+        <div className="space-y-1">
+          {response.threats.map((t, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-2 px-2 py-1 rounded text-[11px] font-mono"
+              style={{
+                background: t.severity === 'critical'
+                  ? 'color-mix(in srgb, var(--rind-critical) 10%, transparent)'
+                  : 'color-mix(in srgb, var(--rind-high) 10%, transparent)',
+                color: t.severity === 'critical' ? 'var(--rind-critical)' : 'var(--rind-high)',
+              }}
+            >
+              <span className="uppercase text-[9px] tracking-wider font-semibold">{t.severity}</span>
+              <span>{t.type}</span>
+              <span className="text-dim ml-auto truncate max-w-[200px]" title={t.pattern}>{t.pattern}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Response metadata */}
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+        {response.outputSizeBytes != null && (
+          <DetailRow label="Size" value={formatBytes(response.outputSizeBytes)} />
+        )}
+        {response.outputHash && (
+          <DetailRow label="Hash" value={response.outputHash.slice(0, 16) + '\u2026'} />
+        )}
+        {response.timestamp && (
+          <DetailRow label="Responded" value={new Date(response.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} />
+        )}
+      </div>
+
+      {/* Output preview */}
+      {response.outputPreview && (
+        <pre className="font-mono text-[11px] text-muted whitespace-pre-wrap break-all max-h-[200px] overflow-auto p-2 rounded bg-[var(--rind-canvas)]">
+          {response.outputPreview}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {

@@ -30,6 +30,7 @@ import { RateLimiter } from './rate-limiter.js';
 import { listPacks, getPack, expandPackRules, rulesFromPack, recommendPacks } from './policy/packs.js';
 import { HookRequestSchema, HookEventSchema, evaluateHook, processHookEvent, deriveToolLabel } from './hooks/claude-code.js';
 import type { ProcessedHookEvent, HookEvalOptions } from './hooks/claude-code.js';
+import { CorrelationTracker } from './hooks/correlator.js';
 import { discoverClaudeCodeContext, discoverMcpServers, resolveSessionName } from './hooks/claude-code-context.js';
 import { UpstreamPool } from './transport/pool.js';
 import { createUpstreamClient } from './transport/upstream/factory.js';
@@ -43,6 +44,7 @@ import { z } from 'zod';
 const PolicyRuleSchema: z.ZodType<PolicyRule> = z.object({
   name: z.string(),
   agent: z.string().default('*'),
+  enabled: z.boolean().default(true),
   match: z.object({
     tool: z.array(z.string()).optional(),
     toolPattern: z.string().optional(),
@@ -63,6 +65,7 @@ const PolicyRuleSchema: z.ZodType<PolicyRule> = z.object({
       eq: z.unknown().optional(),
       in: z.array(z.unknown()).optional(),
     })).optional(),
+    subcommand: z.array(z.string()).optional(),
   }),
   action: z.enum(['ALLOW', 'DENY', 'REQUIRE_APPROVAL', 'RATE_LIMIT']),
   approval: z.object({ timeout: z.string().optional(), onTimeout: z.enum(['DENY', 'ALLOW']).optional() }).optional(),
@@ -129,9 +132,16 @@ export function createProxyServer(config: ProxyConfig) {
     throw err;
   }
 
-  const policyStore = new InMemoryPolicyStore(policyConfig);
+  // Persist API-created rules to a JSON file alongside the audit log.
+  // On restart, persisted rules are merged with the YAML base config.
+  const policyPersistPath = config.auditLogPath
+    ? config.auditLogPath.replace(/\.jsonl$/, '-policies.json')
+    : 'rind-policies.json';
+  const policyStore = new InMemoryPolicyStore(policyConfig, policyPersistPath);
   // ── Runtime safety (D-015) — loop detector is shared between interceptor and policy engine
   const loopDetector = new LoopDetector();
+  // ── PreToolUse ↔ PostToolUse correlation tracker
+  const correlator = new CorrelationTracker();
   const policyEngine = new PolicyEngine(policyStore, loopDetector);
 
   // ── Event bus (D-019) ────────────────────────────────────────────────────────
@@ -276,6 +286,18 @@ export function createProxyServer(config: ProxyConfig) {
     }
   });
 
+  // Toggle a rule's enabled state
+  app.patch('/policies/rules/:name/toggle', async (c) => {
+    const { name } = c.req.param();
+    const rules = policyStore.get().policies;
+    const rule = rules.find((r) => r.name === name);
+    if (!rule) return c.json({ error: `Rule "${name}" not found` }, 404);
+    const updated = { ...rule, enabled: rule.enabled === false ? true : false };
+    policyStore.updateRule(name, updated);
+    emitPolicyAudit(bus, `rule-${updated.enabled ? 'enabled' : 'disabled'}`, name);
+    return c.json({ toggled: true, name, enabled: updated.enabled });
+  });
+
   // Delete a rule by name
   app.delete('/policies/rules/:name', (c) => {
     const { name } = c.req.param();
@@ -405,11 +427,11 @@ export function createProxyServer(config: ProxyConfig) {
     // blocks, it breaks the user's workflow. Policy rules still apply (they're explicit
     // user intent); loop/rate detection is Rind's own safety net for proxy-mode only.
     const hookEvalOpts: HookEvalOptions = { sendGuidance: config.hookSendGuidance ?? true };
+    let matchedRuleName: string | undefined;
     const hookResponse = await evaluateHook(parsed.data, {
       policyEngine,
       onToolCallEvent: (event, rule) => {
-        // Don't push to ring buffer here — the enriched event (with outcome) is
-        // pushed after evaluateHook returns. Only emit audit.
+        matchedRuleName = rule?.name;
         emitAudit(bus, {
           eventType: 'tool:call',
           sessionId: event.sessionId,
@@ -429,6 +451,8 @@ export function createProxyServer(config: ProxyConfig) {
     // Enrich the event with the policy decision before storing in the ring buffer
     const isDenied = 'continue' in hookResponse;
     const decision = isDenied ? 'deny' : 'allow';
+    // Generate correlation ID for Pre↔Post matching
+    const correlationId = correlator.recordPreToolUse(sid, parsed.data.tool_name, parsed.data.tool_input);
     // Resolve session name from Claude Code runtime files (cached per-request, not per-event)
     const sessionName = resolveSessionName(sid);
     const enrichedEvent = {
@@ -442,8 +466,10 @@ export function createProxyServer(config: ProxyConfig) {
       timestamp: Date.now(),
       outcome: (isDenied ? 'blocked' : 'allowed') as 'allowed' | 'blocked',
       reason: isDenied ? (hookResponse as { stopReason: string }).stopReason : undefined,
+      matchedRule: matchedRuleName,
       source: (parsed.data.tool_name.startsWith('mcp__') ? 'mcp' : 'builtin') as 'builtin' | 'mcp',
       cwd: parsed.data.cwd,
+      correlationId,
     };
     ringBuffer.push(enrichedEvent);
 
@@ -471,6 +497,16 @@ export function createProxyServer(config: ProxyConfig) {
     }
 
     const event = processHookEvent(parsed.data);
+
+    // Match PostToolUse to its PreToolUse via correlation tracker
+    if (event.eventType === 'PostToolUse' && parsed.data.tool_name) {
+      event.correlationId = correlator.matchPostToolUse(
+        parsed.data.session_id,
+        parsed.data.tool_name,
+        parsed.data.tool_input,
+      );
+    }
+
     hookEventBuffer.push(event);
 
     // Auto-register session
@@ -819,7 +855,12 @@ export function createProxyServer(config: ProxyConfig) {
         logger.info({ events: hookLoaded, file: hookEventsLogPath }, 'Reloaded persisted hook events');
       }
 
+      // Periodic cleanup of expired correlation entries (every 60s)
+      const correlatorCleanup = setInterval(() => correlator.cleanup(), 60_000);
+
       const server = serve({ fetch: app.fetch, port: config.port });
+      // Clean up interval when server closes to prevent leaks in tests
+      server.on('close', () => clearInterval(correlatorCleanup));
       logger.info(
         { port: config.port, upstreamMcpUrl: config.upstreamMcpUrl },
         'Rind proxy started',
@@ -848,7 +889,7 @@ function emitAudit(
 // Records every policy mutation in the audit trail with its own distinct eventType.
 function emitPolicyAudit(
   bus: RindEventBus,
-  operation: 'rule-added' | 'rule-updated' | 'rule-removed' | 'config-replaced' | 'pack-enabled' | 'pack-disabled',
+  operation: 'rule-added' | 'rule-updated' | 'rule-removed' | 'rule-enabled' | 'rule-disabled' | 'config-replaced' | 'pack-enabled' | 'pack-disabled',
   target: string,
 ): void {
   bus.emit('audit', {

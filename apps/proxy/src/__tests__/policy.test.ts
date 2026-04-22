@@ -195,3 +195,98 @@ describe('PolicyEngine — store invalidation (D-021)', () => {
     expect(engine.evaluate(makeEvent('db.execute')).action).toBe('DENY');
   });
 });
+
+// ─── Sub-command matching ────────────────────────────────────────────────────
+
+describe('PolicyEngine — subcommand matching', () => {
+  const subConfig: PolicyConfig = {
+    policies: [
+      {
+        name: 'block-git-push',
+        agent: '*',
+        match: {
+          tool: ['Bash'],
+          subcommand: ['git push', 'git reset'],
+        },
+        action: 'DENY',
+        failMode: 'closed',
+      },
+    ],
+  };
+
+  function makeEngine() {
+    return new PolicyEngine(new InMemoryPolicyStore(subConfig));
+  }
+
+  it('blocks when sub-command matches exactly', () => {
+    const engine = makeEngine();
+    expect(engine.evaluate(makeEvent('Bash', 'agent-1', { command: 'git push origin main' })).action).toBe('DENY');
+  });
+
+  it('blocks git push in compound command', () => {
+    const engine = makeEngine();
+    expect(engine.evaluate(makeEvent('Bash', 'agent-1', { command: 'git add . && git push' })).action).toBe('DENY');
+  });
+
+  it('blocks git reset with flags', () => {
+    const engine = makeEngine();
+    expect(engine.evaluate(makeEvent('Bash', 'agent-1', { command: 'git -C /repo reset --hard HEAD~1' })).action).toBe('DENY');
+  });
+
+  it('allows git status (not in blocked list)', () => {
+    const engine = makeEngine();
+    expect(engine.evaluate(makeEvent('Bash', 'agent-1', { command: 'git status' })).action).toBe('ALLOW');
+  });
+
+  it('allows git log', () => {
+    const engine = makeEngine();
+    expect(engine.evaluate(makeEvent('Bash', 'agent-1', { command: 'git log --oneline -10' })).action).toBe('ALLOW');
+  });
+
+  it('allows non-Bash tools', () => {
+    const engine = makeEngine();
+    expect(engine.evaluate(makeEvent('Read', 'agent-1', { file_path: '/git/config' })).action).toBe('ALLOW');
+  });
+
+  it('case-insensitive matching', () => {
+    const engine = makeEngine();
+    expect(engine.evaluate(makeEvent('Bash', 'agent-1', { command: 'GIT PUSH origin main' })).action).toBe('DENY');
+  });
+});
+
+describe('PolicyEngine — subcommand glob matching', () => {
+  const globConfig: PolicyConfig = {
+    policies: [
+      {
+        name: 'block-git-status-glob',
+        agent: '*',
+        match: {
+          tool: ['Bash'],
+          subcommand: ['*git*status*'],
+        },
+        action: 'DENY',
+        failMode: 'closed',
+      },
+    ],
+  };
+
+  it('matches glob pattern *git*status* against "git status --short"', () => {
+    const engine = makeEngine(globConfig);
+    expect(engine.evaluate(makeEvent('Bash', 'agent-1', { command: 'git status --short' })).action).toBe('DENY');
+  });
+
+  it('matches glob pattern *git*status* against "git status"', () => {
+    const engine = makeEngine(globConfig);
+    expect(engine.evaluate(makeEvent('Bash', 'agent-1', { command: 'git status' })).action).toBe('DENY');
+  });
+
+  it('does not match glob pattern against unrelated commands', () => {
+    const engine = makeEngine(globConfig);
+    expect(engine.evaluate(makeEvent('Bash', 'agent-1', { command: 'npm install' })).action).toBe('ALLOW');
+  });
+
+  it('matches glob in compound commands', () => {
+    const engine = makeEngine(globConfig);
+    expect(engine.evaluate(makeEvent('Bash', 'agent-1', { command: 'echo hello && git status' })).action).toBe('DENY');
+  });
+});

@@ -6,17 +6,18 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, Shield, ScrollText, Settings } from 'lucide-react';
+import { Activity, Shield, ScrollText, Settings, Search } from 'lucide-react';
 
 const NAV_ITEMS = [
   { icon: Activity,   label: 'Overview',  href: '/'         },
+  { icon: Search,     label: 'Logs',      href: '/logs'     },
   { icon: Shield,     label: 'Policies',  href: '/policies' },
   { icon: ScrollText, label: 'Audit Log', href: '/audit'    },
   { icon: Settings,   label: 'Settings',  href: '/settings' },
 ] as const;
 
 // Routes that are built and navigable (all others show "soon")
-const ACTIVE_ROUTES = new Set(['/', '/policies']);
+const ACTIVE_ROUTES = new Set(['/', '/policies', '/logs']);
 
 export function Sidebar() {
   return (
