@@ -39,6 +39,8 @@ export const HookRequestSchema = z.object({
   // Only present when hook fires inside a subagent
   agent_id:         z.string().min(1).max(256).optional(),
   agent_type:       z.string().max(64).optional(),
+  // Model name — not yet sent by Claude Code but reserved for future use
+  model:            z.string().max(128).optional(),
 });
 
 export type HookRequest = z.infer<typeof HookRequestSchema>;
@@ -77,6 +79,8 @@ export const HookEventSchema = z.object({
   agent_id:         z.string().min(1).max(256).optional(),
   agent_type:       z.string().max(64).optional(),
   cwd:              z.string().max(512).optional(),
+  // Model name — not yet sent by Claude Code but reserved for future use
+  model:            z.string().max(128).optional(),
   // SubagentStart
   prompt:           z.string().max(10_000).optional(),
   // SubagentStop
@@ -128,9 +132,15 @@ export function processHookEvent(req: HookEvent): ProcessedHookEvent {
 // Converts a Claude Code hook request into a ToolCallEvent and runs it through
 // the interceptor in evaluate-only mode. Returns a hook-compatible response.
 
+export interface HookEvalOptions {
+  /** Include actionable guidance in deny responses (additionalContext). Default: true. */
+  sendGuidance?: boolean;
+}
+
 export async function evaluateHook(
   req: HookRequest,
   interceptorOpts: InterceptorOptions,
+  hookOpts?: HookEvalOptions,
 ): Promise<HookResponse> {
   const event = hookRequestToToolCallEvent(req);
 
@@ -146,9 +156,9 @@ export async function evaluateHook(
   // Hook tool inputs are user-initiated (the user's coding agent writing code),
   // not attacker-controlled MCP inputs. Skip injection scanning to avoid false
   // positives on legitimate code patterns (template literals, shell substitutions).
-  const hookOpts = { ...interceptorOpts, skipRequestInspection: true };
+  const interceptOpts = { ...interceptorOpts, skipRequestInspection: true };
 
-  const { interceptorResult } = await intercept(event, evaluateOnlyForward, hookOpts);
+  const { interceptorResult } = await intercept(event, evaluateOnlyForward, interceptOpts);
 
   const action = interceptorResult.action;
 
@@ -157,9 +167,12 @@ export async function evaluateHook(
     return allow();
   }
 
-  // DENY / BLOCKED_* / REQUIRE_APPROVAL → deny hook
+  // DENY / BLOCKED_* / REQUIRE_APPROVAL → deny hook with optional actionable guidance
   const reason = interceptorResult.reason ?? `Blocked by Rind: ${action}`;
-  return deny(reason);
+  const guidance = (hookOpts?.sendGuidance ?? true)
+    ? deriveGuidance(action, event.toolName, reason)
+    : undefined;
+  return deny(reason, guidance);
 }
 
 // ─── Conversions ─────────────────────────────────────────────────────────────
@@ -195,10 +208,11 @@ export function deriveToolLabel(toolName: string, input: unknown): string {
     case 'Bash': {
       const cmd = typeof inp.command === 'string' ? inp.command.trim() : '';
       if (!cmd) return 'Bash';
-      // Extract the first word/binary from the command
-      const first = cmd.split(/[\s|;&]/)[0] || cmd;
-      // For short commands show full; for long ones just the binary
-      return cmd.length <= 60 ? `Bash: ${cmd}` : `Bash: ${first}`;
+      // Short, simple commands (no compound operators, no flags): show verbatim
+      if (cmd.length <= 40 && !(/[;&|]{1,2}/.test(cmd))) return `Bash: ${cmd}`;
+      // Extract sub-command summaries from compound or complex shell commands
+      const subs = extractSubCommands(cmd);
+      return subs.length > 0 ? `Bash: ${subs.join(', ')}` : 'Bash';
     }
     case 'Read': {
       const fp = typeof inp.file_path === 'string' ? inp.file_path : '';
@@ -237,6 +251,79 @@ export function deriveToolLabel(toolName: string, input: unknown): string {
   }
 }
 
+// Extract meaningful sub-command summaries from compound shell commands.
+// "git add f1 f2 && git commit -m 'msg'" → ["git add", "git commit"]
+// "cd /tmp && npm install && npm test"   → ["cd", "npm install", "npm test"]
+// "git -C /repo rev-parse --show-toplevel" → ["git rev-parse"]
+function extractSubCommands(cmd: string): string[] {
+  // Split on shell compound operators: &&, ||, ;, |
+  const parts = cmd.split(/\s*(?:&&|\|\||[;|])\s*/);
+  const subs: string[] = [];
+
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    subs.push(summarizeOneCommand(trimmed));
+  }
+
+  // Deduplicate adjacent identical labels (e.g., three "git status" become one)
+  return dedupeAdjacent(subs);
+}
+
+// Summarize a single (non-compound) command to its meaningful parts.
+// "git -C /repo rev-parse --show-toplevel" → "git rev-parse"
+// "npm install --save-dev vitest"          → "npm install"
+// "curl -s --max-time 2 http://..."        → "curl"
+// "lsof -i :3000 -t"                       → "lsof"
+function summarizeOneCommand(cmd: string): string {
+  const tokens = cmd.split(/\s+/);
+  if (tokens.length === 0) return cmd;
+
+  const binary = tokens[0]!;
+
+  // git sub-commands: skip flags/options to find the actual sub-command
+  if (binary === 'git') {
+    const sub = findSubCommand(tokens, 1);
+    return sub ? `git ${sub}` : 'git';
+  }
+
+  // npm/npx/pnpm sub-commands
+  if (binary === 'npm' || binary === 'npx' || binary === 'pnpm') {
+    const sub = findSubCommand(tokens, 1);
+    return sub ? `${binary} ${sub}` : binary;
+  }
+
+  // docker sub-commands
+  if (binary === 'docker') {
+    const sub = findSubCommand(tokens, 1);
+    return sub ? `docker ${sub}` : 'docker';
+  }
+
+  // Everything else: just the binary name
+  return binary;
+}
+
+// Walk tokens starting at `from`, skip flags (-x, --flag) and flag values (-C /path),
+// return the first non-flag token (the sub-command).
+function findSubCommand(tokens: string[], from: number): string | undefined {
+  let i = from;
+  while (i < tokens.length) {
+    const t = tokens[i]!;
+    // Skip long options (--flag, --flag=value)
+    if (t.startsWith('--')) { i++; continue; }
+    // Skip short options and their values (-C /path, -m "msg")
+    if (t.startsWith('-') && t.length <= 3) { i += 2; continue; }
+    // Skip paths and quoted strings
+    if (t.startsWith('/') || t.startsWith('"') || t.startsWith("'")) { i++; continue; }
+    return t;
+  }
+  return undefined;
+}
+
+function dedupeAdjacent(items: string[]): string[] {
+  return items.filter((item, i) => i === 0 || item !== items[i - 1]);
+}
+
 function basename(path: string): string {
   return path.split('/').pop() || path;
 }
@@ -263,7 +350,7 @@ function allow(context?: string): HookAllowResponse {
   };
 }
 
-function deny(reason: string): HookDenyResponse {
+function deny(reason: string, guidance?: string): HookDenyResponse {
   return {
     continue: false,
     stopReason: reason,
@@ -271,6 +358,57 @@ function deny(reason: string): HookDenyResponse {
       hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
       permissionDecisionReason: reason,
+      ...(guidance ? { additionalContext: guidance } : {}),
     },
   };
+}
+
+// Generate actionable guidance so Claude knows WHY the call was blocked
+// and WHAT to do instead — not just a raw error string.
+function deriveGuidance(
+  action: string,
+  toolName: string,
+  reason: string,
+): string {
+  if (action === 'BLOCKED_LOOP') {
+    return (
+      `This ${toolName} call was blocked because it appears to be repeating the same operation. ` +
+      `Try a different approach — change the command, use a different tool, or ask the user for guidance.`
+    );
+  }
+
+  if (action === 'BLOCKED_INJECTION') {
+    return (
+      `This ${toolName} call was blocked because the input contains patterns that look like prompt injection. ` +
+      `Review the input for suspicious content before retrying.`
+    );
+  }
+
+  if (action === 'BLOCKED_COST_LIMIT') {
+    return (
+      `This session has reached its cost or call limit. ` +
+      `Stop making tool calls and inform the user that the session limit has been reached.`
+    );
+  }
+
+  if (action === 'REQUIRE_APPROVAL') {
+    return (
+      `This ${toolName} call requires human approval before it can proceed. ` +
+      `Inform the user that this action needs their explicit approval.`
+    );
+  }
+
+  if (action === 'DENY') {
+    // Extract the policy rule name if present in the reason
+    const ruleMatch = reason.match(/policy rule "([^"]+)"/);
+    const ruleName = ruleMatch?.[1];
+    return (
+      `This ${toolName} call was denied by a Rind security policy` +
+      (ruleName ? ` ("${ruleName}")` : '') +
+      `. This tool or command is not permitted in this environment. ` +
+      `Try an alternative approach or ask the user if this action is necessary.`
+    );
+  }
+
+  return `This ${toolName} call was blocked by Rind. Try an alternative approach.`;
 }

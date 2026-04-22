@@ -110,6 +110,22 @@ export interface ParameterMatcher {
   in?: unknown[];
 }
 
+// ─── Loop detection (policy-driven) ──────────────────────────────────────────
+
+/** Loop detection condition on a policy rule. The rule's action fires only when
+ *  the loop condition is met AND the rule's match criteria apply. */
+export interface LoopCondition {
+  /** Detection type:
+   *  - exact: same tool + same input hash repeated
+   *  - consecutive: same tool name called in a row (any input)
+   *  - subcommand: same extracted sub-command repeated (Bash only) */
+  type: 'exact' | 'consecutive' | 'subcommand';
+  /** Number of occurrences that trigger the loop (e.g. 5 = block on 5th repeat) */
+  threshold: number;
+  /** Sliding window size — how many recent calls to consider (default 30) */
+  window?: number;
+}
+
 // ─── Policy ──────────────────────────────────────────────────────────────────
 
 export interface PolicyRule {
@@ -149,6 +165,8 @@ export interface PolicyRule {
   failMode?: 'closed' | 'open'; // default 'closed': if evaluation throws, DENY
   // D-036: evaluation priority — lower number = evaluated first (default 50 for custom, 100 for packs)
   priority?: number;
+  // Policy-driven loop detection — rule's action fires only when the loop condition is met
+  loop?: LoopCondition;
 }
 
 export interface PolicyConfig {
@@ -269,4 +287,6 @@ export interface ProxyConfig {
   auditIncludeOutput?: boolean; // include tool output in audit entries (default: false — privacy)
   // D-022: upstream timeout
   upstreamTimeoutMs?: number; // fetch timeout for upstream MCP server (default: 30_000)
+  // Hook: include actionable guidance in deny responses (default: true)
+  hookSendGuidance?: boolean;
 }

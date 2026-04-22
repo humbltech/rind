@@ -398,10 +398,34 @@ describe('deriveToolLabel', () => {
     expect(deriveToolLabel('Agent', { subagent_type: 'Explore' })).toBe('Agent: Explore');
   });
 
-  it('truncates long Bash commands to binary name', () => {
+  it('extracts sub-commands from compound && chains', () => {
+    const cmd = 'git add apps/proxy/src/server.ts && git commit -m "fix"';
+    expect(deriveToolLabel('Bash', { command: cmd })).toBe('Bash: git add, git commit');
+  });
+
+  it('extracts sub-commands from semicolon chains', () => {
+    const cmd = 'cd /tmp ; npm install ; npm test';
+    expect(deriveToolLabel('Bash', { command: cmd })).toBe('Bash: cd, npm install, npm test');
+  });
+
+  it('handles git with flags before sub-command', () => {
+    const cmd = 'git -C /Users/foo/repo rev-parse --show-toplevel';
+    expect(deriveToolLabel('Bash', { command: cmd })).toBe('Bash: git rev-parse');
+  });
+
+  it('deduplicates adjacent identical sub-commands', () => {
+    const cmd = 'git status && git status && git diff';
+    expect(deriveToolLabel('Bash', { command: cmd })).toBe('Bash: git status, git diff');
+  });
+
+  it('handles long single commands by extracting sub-command', () => {
     const longCmd = 'curl -s --max-time 5 -X POST https://api.example.com/very/long/path/that/exceeds/sixty/characters/easily';
-    const label = deriveToolLabel('Bash', { command: longCmd });
-    expect(label).toBe('Bash: curl');
+    expect(deriveToolLabel('Bash', { command: longCmd })).toBe('Bash: curl');
+  });
+
+  it('handles pipe chains', () => {
+    const cmd = 'lsof -i :3000 -t | xargs kill -9';
+    expect(deriveToolLabel('Bash', { command: cmd })).toBe('Bash: lsof, xargs');
   });
 
   it('returns bare tool name when input has no relevant fields', () => {

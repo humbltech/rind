@@ -1,94 +1,98 @@
-// Loop detection (D-015) — catches infinite agent tool-call loops before they reach upstream.
+// Loop detection (D-015) — policy-driven loop detection for AI agent tool calls.
 //
-// Two complementary checks:
-//   1. Exact-hash match  — same tool + same input repeated K times in a sliding window of N
-//   2. Consecutive cap   — same tool name called M times in a row (regardless of input)
+// The LoopDetector is a stateful service that tracks tool call history per session.
+// It provides two operations:
+//   1. record()         — records a call in the sliding window (called by interceptor)
+//   2. checkCondition() — checks whether a specific loop condition is met (called by policy engine)
 //
-// Both are configurable via policy YAML; sensible defaults apply with zero config.
+// Loop condition types (configured per-rule in policy YAML):
+//   - exact:       same tool + same input hash repeated ≥ threshold in window
+//   - consecutive: same tool name called ≥ threshold times in a row (any input)
+//   - subcommand:  same extracted sub-command (Bash only) repeated ≥ threshold in window
 
 import { createHash } from 'node:crypto';
-
-// ─── Config ───────────────────────────────────────────────────────────────────
-
-export interface LoopDetectorConfig {
-  maxIdenticalCalls: number; // trigger if same hash appears ≥ this many times in window (default 3)
-  windowSize: number; // sliding window of recent calls tracked per session (default 20)
-  maxConsecutiveSameTool: number; // trigger if same tool name called ≥ this many consecutive times (default 10)
-}
-
-const DEFAULT_CONFIG: LoopDetectorConfig = {
-  maxIdenticalCalls: 3,
-  windowSize: 20,
-  maxConsecutiveSameTool: 10,
-};
+import type { LoopCondition } from './types.js';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
+interface CallRecord {
+  toolName: string;
+  inputHash: string;
+  subCommands: string[]; // extracted from Bash commands; empty for other tools
+}
+
 interface SessionState {
-  hashes: string[]; // sliding window of recent call hashes (oldest at index 0)
-  consecutive: { toolName: string; count: number };
+  calls: CallRecord[]; // sliding window (oldest at index 0)
+  lastToolName: string;
+  consecutiveCount: number;
 }
 
 // ─── Detector ─────────────────────────────────────────────────────────────────
 
 export class LoopDetector {
   private sessions = new Map<string, SessionState>();
-  private cfg: LoopDetectorConfig;
+  /** Max calls to keep per session regardless of per-rule window size. Prevents unbounded memory. */
+  private maxWindowSize: number;
 
-  constructor(config?: Partial<LoopDetectorConfig>) {
-    this.cfg = { ...DEFAULT_CONFIG, ...config };
+  constructor(maxWindowSize = 100) {
+    this.maxWindowSize = maxWindowSize;
   }
 
   /**
-   * Record a tool call and check whether it constitutes a loop.
-   * Returns { loop: false } when fine, { loop: true, reason } when blocked.
+   * Record a tool call in the session's sliding window.
+   * Called by the interceptor on every tool call, before policy evaluation.
    */
-  check(
+  record(sessionId: string, toolName: string, input: unknown): void {
+    const state = this.getOrCreateState(sessionId);
+
+    // Update consecutive tracking
+    if (state.lastToolName === toolName) {
+      state.consecutiveCount++;
+    } else {
+      state.lastToolName = toolName;
+      state.consecutiveCount = 1;
+    }
+
+    // Record in sliding window
+    const record: CallRecord = {
+      toolName,
+      inputHash: callHash(toolName, input),
+      subCommands: toolName === 'Bash' ? extractSubCommands(input) : [],
+    };
+
+    if (state.calls.length >= this.maxWindowSize) {
+      state.calls.shift();
+    }
+    state.calls.push(record);
+  }
+
+  /**
+   * Check whether a loop condition is met for the current session state.
+   * Called by the policy engine when a matched rule has a `loop` field.
+   * Returns { loop: true, reason } if the condition is met.
+   */
+  checkCondition(
     sessionId: string,
     toolName: string,
     input: unknown,
+    condition: LoopCondition,
   ): { loop: boolean; reason?: string } {
-    if (!this.sessions.has(sessionId)) {
-      this.sessions.set(sessionId, {
-        hashes: [],
-        consecutive: { toolName: '', count: 0 },
-      });
+    const state = this.sessions.get(sessionId);
+    if (!state) return { loop: false };
+
+    const window = Math.min(condition.window ?? 30, this.maxWindowSize);
+    const threshold = condition.threshold;
+
+    switch (condition.type) {
+      case 'exact':
+        return this.checkExact(state, toolName, input, threshold, window);
+      case 'consecutive':
+        return this.checkConsecutive(state, toolName, threshold);
+      case 'subcommand':
+        return this.checkSubcommand(state, input, threshold, window);
+      default:
+        return { loop: false };
     }
-    const state = this.sessions.get(sessionId)!;
-
-    // 1. Consecutive same-tool check (fast path — no hashing needed)
-    if (state.consecutive.toolName === toolName) {
-      state.consecutive.count++;
-      if (state.consecutive.count >= this.cfg.maxConsecutiveSameTool) {
-        return {
-          loop: true,
-          reason: `Tool "${toolName}" called ${state.consecutive.count} consecutive times (limit: ${this.cfg.maxConsecutiveSameTool}).`,
-        };
-      }
-    } else {
-      state.consecutive = { toolName, count: 1 };
-    }
-
-    // 2. Sliding-window exact-hash check
-    const hash = callHash(toolName, input);
-
-    // Evict oldest entry if at capacity
-    if (state.hashes.length >= this.cfg.windowSize) {
-      state.hashes.shift();
-    }
-    state.hashes.push(hash);
-
-    const occurrences = state.hashes.reduce((n, h) => (h === hash ? n + 1 : n), 0);
-    if (occurrences >= this.cfg.maxIdenticalCalls) {
-      return {
-        loop: true,
-        reason:
-          `Identical tool call "${toolName}" repeated ${occurrences} times in the last ` +
-          `${state.hashes.length} calls (limit: ${this.cfg.maxIdenticalCalls}).`,
-      };
-    }
-
-    return { loop: false };
   }
 
   clearSession(sessionId: string): void {
@@ -98,14 +102,140 @@ export class LoopDetector {
   reset(): void {
     this.sessions.clear();
   }
+
+  // ── Private ────────────────────────────────────────────────────────────────
+
+  private getOrCreateState(sessionId: string): SessionState {
+    let state = this.sessions.get(sessionId);
+    if (!state) {
+      state = { calls: [], lastToolName: '', consecutiveCount: 0 };
+      this.sessions.set(sessionId, state);
+    }
+    return state;
+  }
+
+  /** Exact: same tool + same input hash repeated ≥ threshold in the last N calls. */
+  private checkExact(
+    state: SessionState,
+    toolName: string,
+    input: unknown,
+    threshold: number,
+    window: number,
+  ): { loop: boolean; reason?: string } {
+    const hash = callHash(toolName, input);
+    const recent = state.calls.slice(-window);
+    const count = recent.reduce((n, r) => (r.inputHash === hash ? n + 1 : n), 0);
+
+    if (count >= threshold) {
+      return {
+        loop: true,
+        reason: `Identical "${toolName}" call repeated ${count} times in the last ${recent.length} calls (threshold: ${threshold}).`,
+      };
+    }
+    return { loop: false };
+  }
+
+  /** Consecutive: same tool name called ≥ threshold times in a row. */
+  private checkConsecutive(
+    state: SessionState,
+    toolName: string,
+    threshold: number,
+  ): { loop: boolean; reason?: string } {
+    if (state.lastToolName === toolName && state.consecutiveCount >= threshold) {
+      return {
+        loop: true,
+        reason: `"${toolName}" called ${state.consecutiveCount} consecutive times (threshold: ${threshold}).`,
+      };
+    }
+    return { loop: false };
+  }
+
+  /** Subcommand: same extracted sub-command repeated ≥ threshold in the last N calls (Bash only). */
+  private checkSubcommand(
+    state: SessionState,
+    input: unknown,
+    threshold: number,
+    window: number,
+  ): { loop: boolean; reason?: string } {
+    const currentSubs = extractSubCommands(input);
+    if (currentSubs.length === 0) return { loop: false };
+
+    const recent = state.calls.slice(-window);
+
+    // Check each current sub-command against all recent sub-commands
+    for (const sub of currentSubs) {
+      let count = 0;
+      for (const record of recent) {
+        if (record.subCommands.includes(sub)) count++;
+      }
+      if (count >= threshold) {
+        return {
+          loop: true,
+          reason: `Sub-command "${sub}" repeated ${count} times in the last ${recent.length} calls (threshold: ${threshold}).`,
+        };
+      }
+    }
+    return { loop: false };
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function callHash(toolName: string, input: unknown): string {
-  // SHA-256 truncated to 16 hex chars — sufficient uniqueness for loop detection
   return createHash('sha256')
     .update(toolName + '\x00' + JSON.stringify(input))
     .digest('hex')
     .slice(0, 16);
+}
+
+/**
+ * Extract meaningful sub-command labels from Bash tool input.
+ * "git add f1 && npm test" → ["git add", "npm test"]
+ * Non-Bash tools or non-compound commands → extract the primary command.
+ */
+function extractSubCommands(input: unknown): string[] {
+  const inp = input as Record<string, unknown> | null | undefined;
+  if (!inp || typeof inp !== 'object') return [];
+  const cmd = typeof inp.command === 'string' ? inp.command.trim() : '';
+  if (!cmd) return [];
+
+  // Split on compound operators
+  const parts = cmd.split(/\s*(?:&&|\|\||[;|])\s*/);
+  const subs: string[] = [];
+
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    subs.push(summarizeCommand(trimmed));
+  }
+
+  return subs;
+}
+
+/** Reduce a single command to its meaningful parts: binary + sub-command. */
+function summarizeCommand(cmd: string): string {
+  const tokens = cmd.split(/\s+/);
+  if (tokens.length === 0) return cmd;
+  const binary = tokens[0]!;
+
+  // Commands with sub-commands: git, npm, npx, pnpm, docker
+  if (['git', 'npm', 'npx', 'pnpm', 'docker'].includes(binary)) {
+    const sub = findSubCommand(tokens, 1);
+    return sub ? `${binary} ${sub}` : binary;
+  }
+
+  return binary;
+}
+
+/** Walk tokens, skip flags and their values, return first non-flag token. */
+function findSubCommand(tokens: string[], from: number): string | undefined {
+  let i = from;
+  while (i < tokens.length) {
+    const t = tokens[i]!;
+    if (t.startsWith('--')) { i++; continue; }
+    if (t.startsWith('-') && t.length <= 3) { i += 2; continue; }
+    if (t.startsWith('/') || t.startsWith('"') || t.startsWith("'")) { i++; continue; }
+    return t;
+  }
+  return undefined;
 }

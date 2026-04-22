@@ -47,6 +47,13 @@ const LimitsSchema = z.object({
   maxCostPerHour: z.number().nonnegative().optional(),
 });
 
+// Policy-driven loop detection condition
+const LoopConditionSchema = z.object({
+  type: z.enum(['exact', 'consecutive', 'subcommand']),
+  threshold: z.number().int().min(2, 'threshold must be at least 2'),
+  window: z.number().int().min(2).default(30),
+});
+
 // D-036: rule metadata schema (authoring provenance, not used by engine)
 const PolicyRuleMetaSchema = z.object({
   source: z.string(), // 'manual' | 'yaml' | 'pack:sql-protection' | 'ai-assisted'
@@ -73,6 +80,8 @@ const PolicyRuleSchema = z.object({
   failMode: z.enum(['closed', 'open']).default('closed'), // D-022
   // D-036: priority — lower = evaluated first; custom rules default to 50, pack rules to 100
   priority: z.number().int().min(0).default(50),
+  // Policy-driven loop detection
+  loop: LoopConditionSchema.optional(),
   // D-036: authoring metadata — stripped before engine eval, preserved for API responses
   _meta: PolicyRuleMetaSchema.optional(),
 });

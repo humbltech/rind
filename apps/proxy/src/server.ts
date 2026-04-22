@@ -29,7 +29,7 @@ import { LoopDetector } from './loop-detector.js';
 import { RateLimiter } from './rate-limiter.js';
 import { listPacks, getPack, expandPackRules, rulesFromPack, recommendPacks } from './policy/packs.js';
 import { HookRequestSchema, HookEventSchema, evaluateHook, processHookEvent, deriveToolLabel } from './hooks/claude-code.js';
-import type { ProcessedHookEvent } from './hooks/claude-code.js';
+import type { ProcessedHookEvent, HookEvalOptions } from './hooks/claude-code.js';
 import { discoverClaudeCodeContext, discoverMcpServers, resolveSessionName } from './hooks/claude-code-context.js';
 import { UpstreamPool } from './transport/pool.js';
 import { createUpstreamClient } from './transport/upstream/factory.js';
@@ -80,6 +80,11 @@ const PolicyRuleSchema: z.ZodType<PolicyRule> = z.object({
   }).optional(),
   failMode: z.enum(['closed', 'open']).default('closed'),
   priority: z.number().int().min(0).default(50),
+  loop: z.object({
+    type: z.enum(['exact', 'consecutive', 'subcommand']),
+    threshold: z.number().int().min(2),
+    window: z.number().int().min(2).default(30),
+  }).optional(),
 }) as z.ZodType<PolicyRule>;
 
 const PolicyConfigSchema = z.object({
@@ -125,7 +130,9 @@ export function createProxyServer(config: ProxyConfig) {
   }
 
   const policyStore = new InMemoryPolicyStore(policyConfig);
-  const policyEngine = new PolicyEngine(policyStore);
+  // ── Runtime safety (D-015) — loop detector is shared between interceptor and policy engine
+  const loopDetector = new LoopDetector();
+  const policyEngine = new PolicyEngine(policyStore, loopDetector);
 
   // ── Event bus (D-019) ────────────────────────────────────────────────────────
   const bus = new RindEventBus((event, err) => {
@@ -165,8 +172,7 @@ export function createProxyServer(config: ProxyConfig) {
     bus.on('audit', (entry) => auditWriter.append(entry));
   }
 
-  // ── Runtime safety (D-015, D-017) ────────────────────────────────────────────
-  const loopDetector = new LoopDetector();
+  // ── Runtime safety (D-017) ────────────────────────────────────────────────────
   const rateLimiter = new RateLimiter();
 
   // ── Upstream pool (D-040 Phase A3) ───────────────────────────────────────────
@@ -393,10 +399,14 @@ export function createProxyServer(config: ProxyConfig) {
       createSession(agentId, sid);
     }
 
+    // Hook evaluate is advisory — don't pass loop detector or rate limiter.
+    // These are enforcement mechanisms for the MCP proxy path where Rind controls
+    // the forward. In hook mode, Claude Code executes the tool — if Rind incorrectly
+    // blocks, it breaks the user's workflow. Policy rules still apply (they're explicit
+    // user intent); loop/rate detection is Rind's own safety net for proxy-mode only.
+    const hookEvalOpts: HookEvalOptions = { sendGuidance: config.hookSendGuidance ?? true };
     const hookResponse = await evaluateHook(parsed.data, {
       policyEngine,
-      loopDetector,
-      rateLimiter,
       onToolCallEvent: (event, rule) => {
         // Don't push to ring buffer here — the enriched event (with outcome) is
         // pushed after evaluateHook returns. Only emit audit.
@@ -414,7 +424,7 @@ export function createProxyServer(config: ProxyConfig) {
         // Hook is evaluate-only — no upstream response to emit
       },
       blockOnCriticalResponseThreats: false,
-    });
+    }, hookEvalOpts);
 
     // Enrich the event with the policy decision before storing in the ring buffer
     const isDenied = 'continue' in hookResponse;

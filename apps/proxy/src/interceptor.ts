@@ -1,9 +1,9 @@
 // The core proxy interceptor. Every tool call and response passes through here.
 // Execution order for an outbound tool call:
 //   1. Check session is active (kill-switch)
-//   2. Loop detection (D-015)
+//   2. Record call in loop detector (feeds policy-driven loop rules)
 //   3. Run request-side inspection (prompt injection in args)
-//   4. Apply policy rules (allow / deny / require-approval / rate-limit)
+//   4. Apply policy rules — including loop conditions (allow / deny / require-approval / rate-limit)
 //   5. Cost/call limit check (D-014) — if the matching rule has limits
 //   6. Forward to upstream MCP server
 //   7. Record call for cost/hourly tracking (D-014)
@@ -75,17 +75,15 @@ export async function intercept(
     return blocked('BLOCKED_SESSION_KILLED', `Session ${event.sessionId} has been terminated.`);
   }
 
-  // ── 2. Loop detection (D-015) ───────────────────────────────────────────────
+  // ── 2. Record call in loop detector (feeds policy-driven loop rules) ────────
+  // The loop detector only records here — actual loop checking happens in step 4
+  // when the policy engine evaluates rules with `loop` conditions.
   if (opts.loopDetector) {
-    let loopResult: { loop: boolean; reason?: string } | undefined;
     try {
-      loopResult = opts.loopDetector.check(event.sessionId, event.toolName, event.input);
-    } catch (err) {
-      // Loop detection error → fail closed
-      return blocked('BLOCKED_LOOP', `Loop detection error: ${String(err)}`);
-    }
-    if (loopResult?.loop) {
-      return blocked('BLOCKED_LOOP', loopResult.reason ?? 'Loop detected.');
+      opts.loopDetector.record(event.sessionId, event.toolName, event.input);
+    } catch {
+      // Recording failure is non-fatal — loop rules may produce false negatives
+      // but the pipeline should not block on a recording error.
     }
   }
 
@@ -108,9 +106,18 @@ export async function intercept(
   }
 
   // ── 4. Policy evaluation ────────────────────────────────────────────────────
+  // For Bash compound commands (&&, ||, ;, |), evaluate the full command first,
+  // then split into sub-commands and evaluate each. If ANY sub-command is blocked,
+  // the entire call is blocked. This prevents "git status && rm -rf /" from
+  // slipping through when only "rm -rf" is denied.
   let evalResult: ReturnType<PolicyEngine['evaluate']> | undefined;
   try {
     evalResult = opts.policyEngine.evaluate(event);
+    // If the full-command evaluation didn't block, check sub-commands
+    if (evalResult.action === 'ALLOW' && event.toolName === 'Bash') {
+      const subResult = evaluateBashSubCommands(event, opts.policyEngine);
+      if (subResult) evalResult = subResult;
+    }
   } catch (err) {
     // Fail mode for a crashing evaluation defaults to closed (DENY)
     opts.onToolCallEvent(event);
@@ -119,14 +126,20 @@ export async function intercept(
 
   opts.onToolCallEvent(event, evalResult?.matchedRule);
 
-  const { action, matchedRule } = evalResult ?? { action: 'ALLOW' as PolicyAction };
+  const { action, matchedRule, reason: evalReason } = evalResult ?? { action: 'ALLOW' as PolicyAction };
   // effectiveAction starts as the policy action but is normalised to ALLOW after
   // a RATE_LIMIT check passes — the tool call proceeds but we don't leak RATE_LIMIT
   // in the final interceptor result when the caller was actually allowed through.
   let effectiveAction: InterceptedAction = action;
 
   if (action === 'DENY') {
-    return blocked('DENY', `Tool call "${event.toolName}" denied by policy rule "${matchedRule?.name ?? 'unknown'}".`);
+    // Loop-triggered rules use BLOCKED_LOOP for clearer downstream handling
+    const isLoopTriggered = matchedRule?.loop !== undefined;
+    const blockAction: InterceptedAction = isLoopTriggered ? 'BLOCKED_LOOP' : 'DENY';
+    const blockReason = isLoopTriggered
+      ? (evalReason ?? `Loop detected for "${event.toolName}" by policy rule "${matchedRule?.name ?? 'unknown'}".`)
+      : `Tool call "${event.toolName}" denied by policy rule "${matchedRule?.name ?? 'unknown'}".`;
+    return blocked(blockAction, blockReason);
   }
 
   if (action === 'REQUIRE_APPROVAL') {
@@ -311,6 +324,38 @@ function checkCostLimits(
   }
 
   return undefined; // no limit exceeded
+}
+
+// ─── Bash sub-command expansion ──────────────────────────────────────────────
+// Splits compound shell commands (&&, ||, ;, |) into individual commands and
+// evaluates each against the policy engine. Returns the first non-ALLOW result,
+// or undefined if all sub-commands pass.
+
+function evaluateBashSubCommands(
+  event: ToolCallEvent,
+  policyEngine: PolicyEngine,
+): ReturnType<PolicyEngine['evaluate']> | undefined {
+  const inp = event.input as Record<string, unknown> | null | undefined;
+  if (!inp || typeof inp !== 'object') return undefined;
+  const cmd = typeof inp.command === 'string' ? inp.command.trim() : '';
+  if (!cmd) return undefined;
+
+  // Only split if compound operators exist
+  if (!(/\s*(?:&&|\|\||[;|])\s*/).test(cmd)) return undefined;
+
+  const subCommands = cmd.split(/\s*(?:&&|\|\||[;|])\s*/).filter((s) => s.trim().length > 0);
+  if (subCommands.length <= 1) return undefined;
+
+  for (const sub of subCommands) {
+    const subEvent: ToolCallEvent = {
+      ...event,
+      input: { ...inp, command: sub.trim() },
+    };
+    const result = policyEngine.evaluate(subEvent);
+    if (result.action !== 'ALLOW') return result;
+  }
+
+  return undefined;
 }
 
 /** Short summary of tool input for REQUIRE_APPROVAL responses. */
