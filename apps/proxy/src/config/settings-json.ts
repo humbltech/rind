@@ -40,6 +40,10 @@ const WILDCARD_MATCHER = '*';
 
 /** Substring that identifies a Rind hook command — present in any variation of the URL. */
 const RIND_HOOK_SIGNATURE = '/hook/evaluate';
+const RIND_EVENT_SIGNATURE = '/hook/event';
+
+/** Observability hooks that fire non-blocking events to /hook/event. */
+const EVENT_HOOKS: readonly string[] = ['PostToolUse', 'SubagentStart', 'SubagentStop'] as const;
 
 // ─── Parsing ──────────────────────────────────────────────────────────────────
 
@@ -103,6 +107,39 @@ export function buildHookCommand(rindUrl: string): string {
   return `curl -s -X POST '${url}/hook/evaluate' -H 'Content-Type: application/json' -d @-`;
 }
 
+/**
+ * Builds the shell command for observability hooks (PostToolUse, SubagentStart/Stop).
+ * Fire-and-forget — redirects output to /dev/null so it never blocks the agent.
+ */
+export function buildEventHookCommand(rindUrl: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(rindUrl);
+  } catch {
+    throw new Error(`Invalid rindUrl: "${rindUrl}" is not a valid URL`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Invalid rindUrl: must be http:// or https://, got "${parsed.protocol}//"`);
+  }
+  const url = parsed.href.replace(/\/$/, '');
+  if (url.includes("'")) {
+    throw new Error(`Invalid rindUrl: URL must not contain single quotes`);
+  }
+  return `curl -s -X POST '${url}/hook/event' -H 'Content-Type: application/json' -d @- >/dev/null 2>&1`;
+}
+
+/**
+ * Returns true when settings already have observability hooks pointing at /hook/event.
+ */
+export function alreadyHasRindEventHooks(settings: ClaudeSettings): boolean {
+  return EVENT_HOOKS.every((hookName) => {
+    const matchers = settings.hooks?.[hookName] ?? [];
+    return matchers.some((m) =>
+      m.hooks.some((h) => h.type === 'command' && h.command.includes(RIND_EVENT_SIGNATURE)),
+    );
+  });
+}
+
 // ─── Merge ────────────────────────────────────────────────────────────────────
 
 /**
@@ -111,21 +148,44 @@ export function buildHookCommand(rindUrl: string): string {
  * Idempotent — if the hook is already present, returns settings unchanged.
  */
 export function mergeRindHook(settings: ClaudeSettings, rindUrl: string): ClaudeSettings {
-  if (alreadyHasRindHook(settings)) return settings;
+  let result = { ...settings };
 
-  const rindHookEntry: HookMatcher = {
-    matcher: WILDCARD_MATCHER,
-    hooks: [{ type: 'command', command: buildHookCommand(rindUrl) }],
-  };
+  // Add PreToolUse (policy enforcement)
+  if (!alreadyHasRindHook(result)) {
+    const rindHookEntry: HookMatcher = {
+      matcher: WILDCARD_MATCHER,
+      hooks: [{ type: 'command', command: buildHookCommand(rindUrl) }],
+    };
+    const existingPreToolUse = result.hooks?.PreToolUse ?? [];
+    result = {
+      ...result,
+      hooks: {
+        ...result.hooks,
+        PreToolUse: [rindHookEntry, ...existingPreToolUse],
+      },
+    };
+  }
 
-  const existingPreToolUse = settings.hooks?.PreToolUse ?? [];
+  // Add observability hooks (PostToolUse, SubagentStart, SubagentStop)
+  if (!alreadyHasRindEventHooks(result)) {
+    const eventCommand = buildEventHookCommand(rindUrl);
+    const eventEntry: HookMatcher = {
+      matcher: WILDCARD_MATCHER,
+      hooks: [{ type: 'command', command: eventCommand }],
+    };
 
-  return {
-    ...settings,
-    hooks: {
-      ...settings.hooks,
-      // Prepend Rind's hook so it runs first; existing hooks follow
-      PreToolUse: [rindHookEntry, ...existingPreToolUse],
-    },
-  };
+    const hooks = { ...result.hooks };
+    for (const hookName of EVENT_HOOKS) {
+      const existing = hooks[hookName] ?? [];
+      const alreadyPresent = existing.some((m) =>
+        m.hooks.some((h) => h.type === 'command' && h.command.includes(RIND_EVENT_SIGNATURE)),
+      );
+      if (!alreadyPresent) {
+        hooks[hookName] = [eventEntry, ...existing];
+      }
+    }
+    result = { ...result, hooks };
+  }
+
+  return result;
 }

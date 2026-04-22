@@ -325,3 +325,35 @@ interface SessionEvent {
   timestamp: number;
 }
 ```
+
+## Future: Structured Tool Sub-Commands
+
+**Status**: Deferred — `toolLabel` provides display-level extraction now. Structured field needed later for filtering/grouping/policy matching.
+
+**Problem**: `toolLabel` is a display string ("Bash: git status"). For filtering ("show me all git operations") or policy rules ("block all curl commands"), we need a structured field.
+
+**Proposed data model addition**:
+
+```typescript
+interface ToolCallEvent {
+  // ... existing fields
+  toolLabel?: string;      // "Bash: git status" — display only (shipping now)
+  toolSubCommand?: string; // "git" — structured, for filtering/policy (future)
+}
+```
+
+**Extraction rules by tool**:
+
+| Tool | SubCommand source | Example |
+|------|------------------|---------|
+| Bash | First token of `command` | `git`, `curl`, `npm`, `docker` |
+| WebFetch | URL domain | `github.com`, `api.stripe.com` |
+| WebSearch | — (no sub-command) | — |
+| Agent | `subagent_type` | `Explore`, `Plan`, `code-reviewer` |
+| Read/Write/Edit | File extension | `.ts`, `.md`, `.json` |
+| Grep/Glob | — (no sub-command) | — |
+
+**Use cases**:
+- Policy rules: `match: { tool: ["Bash"], subCommand: ["rm", "curl", "docker"] }` — block dangerous Bash sub-commands
+- Dashboard filtering: "show all git operations across sessions"
+- Analytics: "which CLI tools does this agent use most?"

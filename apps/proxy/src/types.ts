@@ -18,6 +18,8 @@ export interface ToolCallEvent {
   reason?: string;
   // Source classification: 'builtin' for Claude Code tools, 'mcp' for MCP server tools
   source?: 'builtin' | 'mcp';
+  // Human-readable label: "Bash: git status", "Read: server.ts", "Edit: types.ts"
+  toolLabel?: string;
   // Working directory where the agent is operating
   cwd?: string;
 }

@@ -8,7 +8,7 @@
 //   - serverIdFromToolName — builtin vs MCP tool naming
 
 import { describe, it, expect } from 'vitest';
-import { HookRequestSchema, evaluateHook } from '../hooks/claude-code.js';
+import { HookRequestSchema, HookEventSchema, evaluateHook, processHookEvent, deriveToolLabel } from '../hooks/claude-code.js';
 import type { InterceptorOptions } from '../interceptor.js';
 import { PolicyEngine } from '../policy/engine.js';
 import { InMemoryPolicyStore } from '../policy/store.js';
@@ -266,5 +266,152 @@ describe('evaluateHook — subagent context', () => {
     });
     const response = await evaluateHook(req, makeCliOpts());
     expect(response.hookSpecificOutput.permissionDecision).toBe('allow');
+  });
+});
+
+// ─── HookEventSchema (Phase 1: PostToolUse, SubagentStart/Stop) ──────────────
+
+describe('HookEventSchema', () => {
+  it('accepts a PostToolUse event', () => {
+    const result = HookEventSchema.safeParse({
+      session_id: 'sess-1',
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Bash',
+      tool_input: { command: 'git status' },
+      tool_response: { stdout: 'On branch main', exit_code: 0 },
+      agent_id: 'sub-1',
+      agent_type: 'Explore',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a SubagentStart event', () => {
+    const result = HookEventSchema.safeParse({
+      session_id: 'sess-1',
+      hook_event_name: 'SubagentStart',
+      agent_id: 'sub-abc',
+      agent_type: 'Explore',
+      prompt: 'Search the codebase for error handling patterns',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a SubagentStop event', () => {
+    const result = HookEventSchema.safeParse({
+      session_id: 'sess-1',
+      hook_event_name: 'SubagentStop',
+      agent_id: 'sub-abc',
+      agent_type: 'Explore',
+      stop_reason: 'done',
+      agent_transcript_path: '/tmp/transcripts/sub-abc.jsonl',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects missing hook_event_name', () => {
+    const result = HookEventSchema.safeParse({ session_id: 'sess-1' });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ─── processHookEvent ─────────────────────────────────────────────────────────
+
+describe('processHookEvent', () => {
+  it('processes PostToolUse with tool label', () => {
+    const event = processHookEvent({
+      session_id: 'sess-1',
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Bash',
+      tool_input: { command: 'git status' },
+      tool_response: { stdout: 'clean' },
+    });
+    expect(event.eventType).toBe('PostToolUse');
+    expect(event.toolLabel).toBe('Bash: git status');
+    expect(event.toolResponse).toEqual({ stdout: 'clean' });
+    expect(event.agentId).toBe('hook:sess-1');
+  });
+
+  it('processes SubagentStart with prompt', () => {
+    const event = processHookEvent({
+      session_id: 'sess-1',
+      hook_event_name: 'SubagentStart',
+      agent_id: 'sub-x',
+      agent_type: 'Plan',
+      prompt: 'Design the auth system',
+    });
+    expect(event.eventType).toBe('SubagentStart');
+    expect(event.agentId).toBe('sub-x');
+    expect(event.agentType).toBe('Plan');
+    expect(event.prompt).toBe('Design the auth system');
+  });
+
+  it('processes SubagentStop with stop reason', () => {
+    const event = processHookEvent({
+      session_id: 'sess-1',
+      hook_event_name: 'SubagentStop',
+      agent_id: 'sub-x',
+      agent_type: 'Explore',
+      stop_reason: 'done',
+      agent_transcript_path: '/tmp/t.jsonl',
+    });
+    expect(event.eventType).toBe('SubagentStop');
+    expect(event.stopReason).toBe('done');
+    expect(event.transcriptPath).toBe('/tmp/t.jsonl');
+  });
+
+  it('uses agent_id when provided, falls back to hook:session', () => {
+    const withAgent = processHookEvent({
+      session_id: 's1',
+      hook_event_name: 'PostToolUse',
+      agent_id: 'custom-agent',
+    });
+    expect(withAgent.agentId).toBe('custom-agent');
+
+    const withoutAgent = processHookEvent({
+      session_id: 's1',
+      hook_event_name: 'PostToolUse',
+    });
+    expect(withoutAgent.agentId).toBe('hook:s1');
+  });
+});
+
+// ─── deriveToolLabel ──────────────────────────────────────────────────────────
+
+describe('deriveToolLabel', () => {
+  it('extracts git status from Bash command', () => {
+    expect(deriveToolLabel('Bash', { command: 'git status' })).toBe('Bash: git status');
+  });
+
+  it('extracts basename from Read file_path', () => {
+    expect(deriveToolLabel('Read', { file_path: '/a/b/server.ts' })).toBe('Read: server.ts');
+  });
+
+  it('extracts basename from Edit file_path', () => {
+    expect(deriveToolLabel('Edit', { file_path: '/src/types.ts' })).toBe('Edit: types.ts');
+  });
+
+  it('extracts pattern from Grep', () => {
+    expect(deriveToolLabel('Grep', { pattern: 'TODO' })).toBe('Grep: TODO');
+  });
+
+  it('extracts subagent_type from Agent', () => {
+    expect(deriveToolLabel('Agent', { subagent_type: 'Explore' })).toBe('Agent: Explore');
+  });
+
+  it('truncates long Bash commands to binary name', () => {
+    const longCmd = 'curl -s --max-time 5 -X POST https://api.example.com/very/long/path/that/exceeds/sixty/characters/easily';
+    const label = deriveToolLabel('Bash', { command: longCmd });
+    expect(label).toBe('Bash: curl');
+  });
+
+  it('returns bare tool name when input has no relevant fields', () => {
+    expect(deriveToolLabel('Bash', {})).toBe('Bash');
+    expect(deriveToolLabel('Read', {})).toBe('Read');
+    expect(deriveToolLabel('Unknown', { foo: 'bar' })).toBe('Unknown');
+  });
+
+  it('returns bare tool name for null/undefined input', () => {
+    expect(deriveToolLabel('Bash', null)).toBe('Bash');
+    expect(deriveToolLabel('Bash', undefined)).toBe('Bash');
   });
 });

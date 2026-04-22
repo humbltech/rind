@@ -5,7 +5,9 @@ import { describe, it, expect } from 'vitest';
 import {
   parseClaudeSettings,
   alreadyHasRindHook,
+  alreadyHasRindEventHooks,
   buildHookCommand,
+  buildEventHookCommand,
   mergeRindHook,
 } from '../config/settings-json.js';
 import type { ClaudeSettings } from '../config/settings-json.js';
@@ -182,15 +184,19 @@ describe('mergeRindHook', () => {
     expect(matchers[1]!.hooks[0]!.command).toBe('my-hook');
   });
 
-  it('preserves other hooks keys (e.g. PostToolUse)', () => {
+  it('preserves existing PostToolUse hooks while prepending Rind event hook', () => {
     const existing: ClaudeSettings = {
       hooks: {
         PostToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'post-hook' }] }],
       },
     };
     const result = mergeRindHook(existing, DEFAULT_URL);
-    expect(result.hooks?.PostToolUse).toBeDefined();
-    expect(result.hooks?.PostToolUse?.[0]?.hooks[0]?.command).toBe('post-hook');
+    const postToolUse = result.hooks?.PostToolUse;
+    expect(postToolUse).toBeDefined();
+    // Rind event hook prepended, existing hook preserved after
+    expect(postToolUse!.length).toBeGreaterThanOrEqual(2);
+    expect(postToolUse![0]!.hooks[0]!.command).toContain('/hook/event');
+    expect(postToolUse![postToolUse!.length - 1]!.hooks[0]!.command).toBe('post-hook');
   });
 
   it('preserves top-level settings keys (permissions, env, etc.)', () => {
@@ -219,5 +225,70 @@ describe('mergeRindHook', () => {
     const original: ClaudeSettings = { hooks: { PreToolUse: [] } };
     mergeRindHook(original, DEFAULT_URL);
     expect(original.hooks!.PreToolUse).toHaveLength(0); // unchanged
+  });
+
+  it('adds event hooks for PostToolUse, SubagentStart, and SubagentStop', () => {
+    const result = mergeRindHook({}, DEFAULT_URL);
+    expect(result.hooks?.PostToolUse).toBeDefined();
+    expect(result.hooks?.SubagentStart).toBeDefined();
+    expect(result.hooks?.SubagentStop).toBeDefined();
+    // Each should have the event hook
+    expect(result.hooks!.PostToolUse![0]!.hooks[0]!.command).toContain('/hook/event');
+    expect(result.hooks!.SubagentStart![0]!.hooks[0]!.command).toContain('/hook/event');
+    expect(result.hooks!.SubagentStop![0]!.hooks[0]!.command).toContain('/hook/event');
+  });
+
+  it('is idempotent for event hooks — does not add duplicates', () => {
+    const first = mergeRindHook({}, DEFAULT_URL);
+    const second = mergeRindHook(first, DEFAULT_URL);
+    expect(second.hooks!.PostToolUse).toHaveLength(first.hooks!.PostToolUse!.length);
+    expect(second.hooks!.SubagentStart).toHaveLength(first.hooks!.SubagentStart!.length);
+  });
+});
+
+// ─── buildEventHookCommand ───────────────────────────────────────────────────
+
+describe('buildEventHookCommand', () => {
+  it('builds a curl command pointing to /hook/event', () => {
+    const cmd = buildEventHookCommand(DEFAULT_URL);
+    expect(cmd).toContain('/hook/event');
+    expect(cmd).toContain('>/dev/null');
+  });
+
+  it('rejects non-HTTP URLs', () => {
+    expect(() => buildEventHookCommand('ftp://evil.com')).toThrow();
+  });
+});
+
+// ─── alreadyHasRindEventHooks ────────────────────────────────────────────────
+
+describe('alreadyHasRindEventHooks', () => {
+  it('returns false for empty settings', () => {
+    expect(alreadyHasRindEventHooks({})).toBe(false);
+  });
+
+  it('returns true when all three event hooks are present', () => {
+    const cmd = buildEventHookCommand(DEFAULT_URL);
+    const entry = { matcher: '*', hooks: [{ type: 'command' as const, command: cmd }] };
+    const settings: ClaudeSettings = {
+      hooks: {
+        PostToolUse: [entry],
+        SubagentStart: [entry],
+        SubagentStop: [entry],
+      },
+    };
+    expect(alreadyHasRindEventHooks(settings)).toBe(true);
+  });
+
+  it('returns false when only some event hooks are present', () => {
+    const cmd = buildEventHookCommand(DEFAULT_URL);
+    const entry = { matcher: '*', hooks: [{ type: 'command' as const, command: cmd }] };
+    const settings: ClaudeSettings = {
+      hooks: {
+        PostToolUse: [entry],
+        // Missing SubagentStart and SubagentStop
+      },
+    };
+    expect(alreadyHasRindEventHooks(settings)).toBe(false);
   });
 });

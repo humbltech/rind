@@ -47,16 +47,18 @@ function LogoMark() {
               background: 'radial-gradient(ellipse 80% 60% at 50% 100%, color-mix(in srgb, var(--rind-accent) 14%, transparent), transparent)',
             }}
           />
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-label="Rind" className="relative">
+          <svg width="22" height="22" viewBox="-2 -2 68 68" fill="none" aria-label="Rind" className="relative">
             <defs>
-              <linearGradient id="rind-mark-grad" x1="10" y1="2" x2="10" y2="18" gradientUnits="userSpaceOnUse">
+              <linearGradient id="rind-mark-grad" x1="32" y1="0" x2="32" y2="64" gradientUnits="userSpaceOnUse">
                 <stop offset="0%"   stopColor="var(--rind-accent-light)" />
                 <stop offset="100%" stopColor="var(--rind-accent)" />
               </linearGradient>
             </defs>
-            <line x1="3"  y1="18" x2="10" y2="2"  stroke="url(#rind-mark-grad)" strokeWidth="1.8" strokeLinecap="round" />
-            <line x1="17" y1="18" x2="10" y2="2"  stroke="url(#rind-mark-grad)" strokeWidth="1.8" strokeLinecap="round" />
-            <line x1="5"  y1="12" x2="15" y2="12" stroke="url(#rind-mark-grad)" strokeWidth="1.8" strokeLinecap="round" />
+            <g transform="rotate(8 32 32)">
+              <circle cx="32" cy="32" r="32" stroke="url(#rind-mark-grad)" strokeWidth="3" />
+              <circle cx="32" cy="32" r="22" stroke="url(#rind-mark-grad)" strokeWidth="2" />
+              <line x1="32" y1="0" x2="32" y2="10" stroke="url(#rind-mark-grad)" strokeWidth="2.5" strokeLinecap="round" />
+            </g>
           </svg>
         </div>
         <div className="min-w-0">

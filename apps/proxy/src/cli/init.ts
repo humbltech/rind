@@ -26,7 +26,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseMcpJson, wrapWithRind, describeWrap } from '../config/mcp-json.js';
-import { parseClaudeSettings, mergeRindHook, alreadyHasRindHook } from '../config/settings-json.js';
+import { parseClaudeSettings, mergeRindHook, alreadyHasRindHook, alreadyHasRindEventHooks } from '../config/settings-json.js';
 import { generateStarterPolicyYaml } from '../config/policy-yaml.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -242,13 +242,26 @@ function applySettingsHook(settingsPath: string, rindUrl: string, dryRun: boolea
   const raw = readJsonFile(settingsPath);
   const settings = parseClaudeSettings(raw);
 
-  if (alreadyHasRindHook(settings)) {
-    process.stdout.write('  = skip  PreToolUse hook already present\n');
+  const hasPreToolUse = alreadyHasRindHook(settings);
+  const hasEventHooks = alreadyHasRindEventHooks(settings);
+
+  if (hasPreToolUse && hasEventHooks) {
+    process.stdout.write('  = skip  All Rind hooks already present\n');
     return;
   }
 
   const merged = mergeRindHook(settings, rindUrl);
-  process.stdout.write(`  + add   PreToolUse → ${rindUrl}/hook/evaluate\n`);
+
+  if (!hasPreToolUse) {
+    process.stdout.write(`  + add   PreToolUse     → ${rindUrl}/hook/evaluate\n`);
+  } else {
+    process.stdout.write('  = skip  PreToolUse hook already present\n');
+  }
+  if (!hasEventHooks) {
+    process.stdout.write(`  + add   PostToolUse    → ${rindUrl}/hook/event\n`);
+    process.stdout.write(`  + add   SubagentStart  → ${rindUrl}/hook/event\n`);
+    process.stdout.write(`  + add   SubagentStop   → ${rindUrl}/hook/event\n`);
+  }
 
   if (!dryRun) {
     writeFile(settingsPath, JSON.stringify(merged, null, 2) + '\n');

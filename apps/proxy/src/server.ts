@@ -28,7 +28,8 @@ import { AuditWriter } from './audit-writer.js';
 import { LoopDetector } from './loop-detector.js';
 import { RateLimiter } from './rate-limiter.js';
 import { listPacks, getPack, expandPackRules, rulesFromPack, recommendPacks } from './policy/packs.js';
-import { HookRequestSchema, evaluateHook } from './hooks/claude-code.js';
+import { HookRequestSchema, HookEventSchema, evaluateHook, processHookEvent, deriveToolLabel } from './hooks/claude-code.js';
+import type { ProcessedHookEvent } from './hooks/claude-code.js';
 import { discoverClaudeCodeContext, discoverMcpServers, resolveSessionName } from './hooks/claude-code-context.js';
 import { UpstreamPool } from './transport/pool.js';
 import { createUpstreamClient } from './transport/upstream/factory.js';
@@ -142,6 +143,14 @@ export function createProxyServer(config: ProxyConfig) {
     filePath: eventsLogPath,
     onError: (err) => logger.error({ err }, 'Event log write failed'),
   });
+  // Hook events buffer — stores PostToolUse, SubagentStart/Stop for observability
+  const hookEventsLogPath = eventsLogPath.replace(/\.jsonl$/, '-hook-events.jsonl');
+  const hookEventBuffer = new PersistentRingBuffer<ProcessedHookEvent>({
+    capacity: config.ringBufferSize ?? 10_000,
+    filePath: hookEventsLogPath,
+    onError: (err) => logger.error({ err }, 'Hook event log write failed'),
+  });
+
   const auditWriter = config.auditLogPath
     ? new AuditWriter(config.auditLogPath, (err) => {
         logger.error({ err }, 'Audit write failed');
@@ -418,6 +427,7 @@ export function createProxyServer(config: ProxyConfig) {
       agentId,
       serverId: parsed.data.tool_name.startsWith('mcp__') ? parsed.data.tool_name.split('__')[1] || 'mcp-unknown' : 'builtin',
       toolName: parsed.data.tool_name,
+      toolLabel: deriveToolLabel(parsed.data.tool_name, parsed.data.tool_input),
       input: parsed.data.tool_input,
       timestamp: Date.now(),
       outcome: (isDenied ? 'blocked' : 'allowed') as 'allowed' | 'blocked',
@@ -433,6 +443,51 @@ export function createProxyServer(config: ProxyConfig) {
     );
 
     return c.json(hookResponse);
+  });
+
+  // ─── Hook event ingestion (Phase 1: PostToolUse, SubagentStart/Stop) ────────
+  // Non-blocking observability endpoint. Accepts any hook event, stores it,
+  // returns 200 immediately. No policy decision — purely for audit/display.
+  app.post('/hook/event', async (c) => {
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid JSON' }, 400);
+    }
+    const parsed = HookEventSchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({ error: `Invalid hook event: ${parsed.error.message}` }, 400);
+    }
+
+    const event = processHookEvent(parsed.data);
+    hookEventBuffer.push(event);
+
+    // Auto-register session
+    const sid = parsed.data.session_id;
+    const agentId = parsed.data.agent_id ?? `hook:${sid}`;
+    if (!getSession(sid)) {
+      createSession(agentId, sid);
+    }
+
+    logger.info(
+      { eventType: event.eventType, agentId: event.agentId, toolName: event.toolName },
+      'Hook event received',
+    );
+
+    return c.json({ ok: true });
+  });
+
+  // Hook events query endpoint — dashboard reads subagent lifecycle + tool responses
+  app.get('/logs/hook-events', (c) => {
+    const { session_id, event_type, agent_id } = c.req.query();
+    let events = hookEventBuffer.toArray();
+
+    if (session_id) events = events.filter((e) => e.sessionId === session_id);
+    if (event_type) events = events.filter((e) => e.eventType === event_type);
+    if (agent_id) events = events.filter((e) => e.agentId === agent_id);
+
+    return c.json(events);
   });
 
   // ─── Claude Code context discovery ──────────────────────────────────────────
@@ -743,9 +798,15 @@ export function createProxyServer(config: ProxyConfig) {
   return {
     start: async () => {
       // Reload persisted events into the ring buffer before accepting requests
-      const loaded = await ringBuffer.load();
+      const [loaded, hookLoaded] = await Promise.all([
+        ringBuffer.load(),
+        hookEventBuffer.load(),
+      ]);
       if (loaded > 0) {
         logger.info({ events: loaded, file: eventsLogPath }, 'Reloaded persisted tool call events');
+      }
+      if (hookLoaded > 0) {
+        logger.info({ events: hookLoaded, file: hookEventsLogPath }, 'Reloaded persisted hook events');
       }
 
       const server = serve({ fetch: app.fetch, port: config.port });

@@ -66,6 +66,63 @@ export interface HookDenyResponse {
 
 export type HookResponse = HookAllowResponse | HookDenyResponse;
 
+// ─── Hook event schema (Phase 1: PostToolUse, SubagentStart, SubagentStop) ────
+
+export const HookEventSchema = z.object({
+  session_id:       z.string().min(1).max(256).default('hook-session'),
+  hook_event_name:  z.string().min(1).max(128),
+  tool_name:        z.string().max(256).optional(),
+  tool_input:       z.unknown().optional(),
+  tool_response:    z.unknown().optional(),          // PostToolUse
+  agent_id:         z.string().min(1).max(256).optional(),
+  agent_type:       z.string().max(64).optional(),
+  cwd:              z.string().max(512).optional(),
+  // SubagentStart
+  prompt:           z.string().max(10_000).optional(),
+  // SubagentStop
+  stop_reason:      z.string().max(256).optional(),
+  agent_transcript_path: z.string().max(512).optional(),
+});
+
+export type HookEvent = z.infer<typeof HookEventSchema>;
+
+// ─── Hook event types ─────────────────────────────────────────────────────────
+
+export type HookEventType = 'PostToolUse' | 'SubagentStart' | 'SubagentStop' | string;
+
+export interface ProcessedHookEvent {
+  eventType: HookEventType;
+  sessionId: string;
+  agentId: string;
+  agentType?: string;
+  toolName?: string;
+  toolLabel?: string;
+  toolResponse?: unknown;
+  prompt?: string;
+  stopReason?: string;
+  transcriptPath?: string;
+  cwd?: string;
+  timestamp: number;
+}
+
+// Process a general hook event into a structured format for storage
+export function processHookEvent(req: HookEvent): ProcessedHookEvent {
+  return {
+    eventType: req.hook_event_name,
+    sessionId: req.session_id,
+    agentId: req.agent_id ?? `hook:${req.session_id}`,
+    agentType: req.agent_type,
+    toolName: req.tool_name,
+    toolLabel: req.tool_name ? deriveToolLabel(req.tool_name, req.tool_input) : undefined,
+    toolResponse: req.tool_response,
+    prompt: req.prompt,
+    stopReason: req.stop_reason,
+    transcriptPath: req.agent_transcript_path,
+    cwd: req.cwd,
+    timestamp: Date.now(),
+  };
+}
+
 // ─── Evaluate hook request ────────────────────────────────────────────────────
 
 // Converts a Claude Code hook request into a ToolCallEvent and runs it through
@@ -122,6 +179,66 @@ function hookRequestToToolCallEvent(req: HookRequest): ToolCallEvent {
     source:    isMcp ? 'mcp' : 'builtin',
     cwd:       req.cwd,
   };
+}
+
+// Extract a human-readable label from tool name + input.
+// "Bash" + {command:"git status"} → "Bash: git status"
+// "Read" + {file_path:"/a/b/server.ts"} → "Read: server.ts"
+// "Edit" + {file_path:"/a/b/types.ts"} → "Edit: types.ts"
+// "Grep" + {pattern:"TODO"} → "Grep: TODO"
+// "Agent" + {subagent_type:"Explore"} → "Agent: Explore"
+export function deriveToolLabel(toolName: string, input: unknown): string {
+  const inp = input as Record<string, unknown> | null | undefined;
+  if (!inp || typeof inp !== 'object') return toolName;
+
+  switch (toolName) {
+    case 'Bash': {
+      const cmd = typeof inp.command === 'string' ? inp.command.trim() : '';
+      if (!cmd) return 'Bash';
+      // Extract the first word/binary from the command
+      const first = cmd.split(/[\s|;&]/)[0] || cmd;
+      // For short commands show full; for long ones just the binary
+      return cmd.length <= 60 ? `Bash: ${cmd}` : `Bash: ${first}`;
+    }
+    case 'Read': {
+      const fp = typeof inp.file_path === 'string' ? inp.file_path : '';
+      return fp ? `Read: ${basename(fp)}` : 'Read';
+    }
+    case 'Write': {
+      const fp = typeof inp.file_path === 'string' ? inp.file_path : '';
+      return fp ? `Write: ${basename(fp)}` : 'Write';
+    }
+    case 'Edit': {
+      const fp = typeof inp.file_path === 'string' ? inp.file_path : '';
+      return fp ? `Edit: ${basename(fp)}` : 'Edit';
+    }
+    case 'Grep': {
+      const pat = typeof inp.pattern === 'string' ? inp.pattern : '';
+      return pat ? `Grep: ${pat.slice(0, 40)}` : 'Grep';
+    }
+    case 'Glob': {
+      const pat = typeof inp.pattern === 'string' ? inp.pattern : '';
+      return pat ? `Glob: ${pat}` : 'Glob';
+    }
+    case 'Agent': {
+      const t = typeof inp.subagent_type === 'string' ? inp.subagent_type : '';
+      return t ? `Agent: ${t}` : 'Agent';
+    }
+    case 'WebFetch': {
+      const url = typeof inp.url === 'string' ? inp.url : '';
+      return url ? `WebFetch: ${url.slice(0, 50)}` : 'WebFetch';
+    }
+    case 'WebSearch': {
+      const q = typeof inp.query === 'string' ? inp.query : '';
+      return q ? `WebSearch: ${q.slice(0, 50)}` : 'WebSearch';
+    }
+    default:
+      return toolName;
+  }
+}
+
+function basename(path: string): string {
+  return path.split('/').pop() || path;
 }
 
 function serverIdFromToolName(toolName: string): string {

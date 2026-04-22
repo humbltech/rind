@@ -11,10 +11,10 @@
 
 /* ─── Dark mode (default) ───────────────────────────────────────────────────── */
 :root {
-  /* Backgrounds — three-layer dark depth system */
-  --rind-canvas:  #09090b;   /* Page background — deepest layer */
-  --rind-surface: #18181b;   /* Card and panel surfaces */
-  --rind-overlay: #27272a;   /* Hover states, dropdowns, selected rows */
+  /* Backgrounds — three-layer dark depth system (warm dark gray, not pure black) */
+  --rind-canvas:  #141418;   /* Page background — dark gray, not pure black */
+  --rind-surface: #1e1e24;   /* Card and panel surfaces */
+  --rind-overlay: #2a2a32;   /* Hover states, dropdowns, selected rows */
 
   /* Borders */
   --rind-border:        #3f3f46;
@@ -97,11 +97,11 @@
 
 /* Dark mode manual override — force dark even when system is light */
 :root[data-theme="dark"] {
-  --rind-canvas:  #09090b;
-  --rind-surface: #18181b;
-  --rind-overlay: #27272a;
+  --rind-canvas:  #141418;
+  --rind-surface: #1e1e24;
+  --rind-overlay: #2a2a32;
   --rind-border:        #3f3f46;
-  --rind-border-subtle: #27272a;
+  --rind-border-subtle: #2a2a32;
   --rind-foreground:       #fafafa;
   --rind-foreground-muted: #a1a1aa;
   --rind-foreground-dim:   #71717a;

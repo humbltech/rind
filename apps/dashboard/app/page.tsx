@@ -6,15 +6,16 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type React from 'react';
-import { Activity, AlertTriangle, Server, FolderOpen } from 'lucide-react';
+import { FolderOpen } from 'lucide-react';
 import { Sidebar } from './components/sidebar';
-import { StatCard } from './components/stat-card';
+import { VolumeCard, BreakdownCard, CountDeltaCard, CountScaleCard } from './components/stat-card';
 import { ToolCallTable, type ToolCallEntry } from './components/tool-call-table';
 import { ScanFindings, type ServerScanResult } from './components/scan-findings';
 import { HeaderBand, type BlockedIncident } from './components/header-band';
 import { McpServerList, type McpServerInfo } from './components/mcp-server-list';
+import { InsightsPanel } from './components/insights-panel';
 
 // ─── Data shapes from the proxy API ───────────────────────────────────────────
 
@@ -71,7 +72,8 @@ export default function DashboardPage() {
             connected={isConnected}
             incident={incident}
           />
-          <StatsGrid status={status} />
+          <StatsGrid status={status} toolCalls={toolCalls} mcpServerCount={hookContext?.mcpServers?.length ?? servers.total} />
+          <InsightsSection toolCalls={toolCalls} mcpServers={hookContext?.mcpServers} />
           <ActiveSessionsSection sessions={hookContext?.activeSessions ?? []} workDirs={activeWorkDirs} />
           <ToolCallSection entries={toolCalls} />
           <McpServerSection servers={hookContext?.mcpServers ?? []} />
@@ -93,39 +95,75 @@ function PageTitle() {
   );
 }
 
-function StatsGrid({ status }: { status: ProxyStatus | null }) {
+function StatsGrid({ status, toolCalls, mcpServerCount }: {
+  status: ProxyStatus | null;
+  toolCalls: ToolCallEntry[];
+  mcpServerCount: number;
+}) {
   const sessions  = status?.sessions  ?? { total: 0, active: 0 };
-  const toolCalls = status?.toolCalls ?? { total: 0 };
+  const calls     = status?.toolCalls ?? { total: 0 };
   const threats   = status?.threats   ?? { total: 0 };
-  const servers   = status?.servers   ?? { total: 0 };
+
+  // Derive sparkline from tool call timestamps — bucket into 12 intervals over the last 60s
+  const sparkline = deriveSparkline(toolCalls, 12);
+
+  // Derive threat breakdown by severity from blocked events
+  const blocked = toolCalls.filter((e) => e.outcome === 'blocked');
+  const threatBreakdown = [
+    { label: 'crit', value: blocked.filter((e) => e.reason?.includes('INJECTION') || e.reason?.includes('THREAT')).length, color: 'var(--rind-critical)' },
+    { label: 'high', value: blocked.filter((e) => e.reason?.includes('DENY')).length, color: 'var(--rind-high)' },
+    { label: 'med',  value: Math.max(0, blocked.length - blocked.filter((e) => e.reason?.includes('INJECTION') || e.reason?.includes('THREAT') || e.reason?.includes('DENY')).length), color: 'var(--rind-medium)' },
+  ];
+
+  // Delta: compare current session count vs previous poll (tracked via ref in parent)
+  const prevCallCount = usePrevious(calls.total);
+  const delta = prevCallCount != null ? calls.total - prevCallCount : 0;
 
   return (
     <section>
       <SectionLabel>At a glance</SectionLabel>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
-        <StatCard
-          label="Sessions"
-          value={sessions.total}
-          icon={Activity}
-          subLabel={sessions.active > 0 ? `${sessions.active} active` : undefined}
-        />
-        <StatCard
+        <VolumeCard
           label="Tool Calls"
-          value={toolCalls.total}
-          icon={Activity}
+          value={calls.total}
+          unit="/total"
+          badge="60s"
+          sparkline={sparkline}
         />
-        <StatCard
+        <BreakdownCard
           label="Threats"
           value={threats.total}
-          icon={AlertTriangle}
-          isAlert
+          badge="24h"
+          context={`of ${calls.total.toLocaleString()}`}
+          breakdown={threatBreakdown}
         />
-        <StatCard
+        <CountDeltaCard
+          label="Active Sessions"
+          value={sessions.active}
+          unit="agents"
+          badge="now"
+          delta={delta}
+          deltaLabel="vs last poll"
+        />
+        <CountScaleCard
           label="MCP Servers"
-          value={servers.total}
-          icon={Server}
+          value={mcpServerCount}
+          max={Math.max(mcpServerCount, 8)}
+          badge="connected"
         />
       </div>
+    </section>
+  );
+}
+
+function InsightsSection({ toolCalls, mcpServers }: {
+  toolCalls: ToolCallEntry[];
+  mcpServers?: McpServerInfo[];
+}) {
+  const mapped = mcpServers?.map((s) => ({ id: s.id, protectionState: s.protectionState }));
+  return (
+    <section>
+      <InsightsPanel toolCalls={toolCalls} mcpServers={mapped} />
     </section>
   );
 }
@@ -259,6 +297,33 @@ function shortenPath(path: string): string {
   // Replace /Users/username/ with ~/
   const homeMatch = path.match(/^\/Users\/[^/]+\/(.*)/);
   return homeMatch ? `~/${homeMatch[1]}` : path;
+}
+
+// ─── Sparkline derivation ────────────────────────────────────────────────────
+
+function deriveSparkline(events: ToolCallEntry[], buckets: number): number[] {
+  if (events.length === 0) return Array(buckets).fill(0);
+
+  const now = Date.now();
+  const windowMs = 60_000; // last 60 seconds
+  const bucketMs = windowMs / buckets;
+  const counts = Array(buckets).fill(0) as number[];
+
+  for (const e of events) {
+    const age = now - e.timestamp;
+    if (age < 0 || age > windowMs) continue;
+    const idx = Math.min(Math.floor((windowMs - age) / bucketMs), buckets - 1);
+    counts[idx]++;
+  }
+  return counts;
+}
+
+// ─── usePrevious hook ─────────────────────────────────────────────────────────
+
+function usePrevious(value: number): number | undefined {
+  const ref = useRef<number>(undefined);
+  useEffect(() => { ref.current = value; });
+  return ref.current;
 }
 
 // ─── Data polling hook ────────────────────────────────────────────────────────

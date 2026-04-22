@@ -732,6 +732,21 @@ What changed our thinking and why.
 | April 2026 | Standalone MCP scanner as first artifact (Activity 4) | Strategic council (D-009): scanner space has 8+ tools, Snyk owns the mindshare. Every standalone scanner is a dead end — no enforcement path. Rind's moat is enforcement, not scanning. | Activity 4 replaced: build MCP proxy MVP with scan-on-connect, not a standalone scanner CLI. |
 | April 2026 | MCP adoption is uncertain / too early | `@modelcontextprotocol/sdk`: 32.8M weekly npm downloads. `mcp` PyPI: 217M monthly. MCP is already infrastructure at scale. The question is not "will they adopt MCP?" but "who is securing the MCP they already have?" | Lead with security/safety for existing MCP users, not adoption enablement. |
 | April 2026 (March event) | LiteLLM is a gateway competitor to LLM calls only | LiteLLM PyPI supply chain attack (March 24, 2026): credential stealer in 1.82.7/1.82.8. 938 HN points, 500 comments. 171M monthly downloads affected. Mercor company breached. This is the canonical AI infrastructure supply chain incident. | Blog post #1 is the LiteLLM incident analysis. Positions Rind as the detection/prevention layer for AI supply chain attacks — not just runtime policy. |
+| April 21, 2026 | "Nobody occupies Layer 5 — we're the only execution-layer control plane" | **WRONG.** Deep research sprint found 6+ companies shipping execution-layer enforcement as of April 2026. Operant AI (MCP Gateway, shipping since June 2025), Straiker ($21M, runtime guardrails), Lasso Security ($21M, open-source MCP proxy), Microsoft Agent Governance Toolkit (April 2, 2026, MIT), Datadog AI Guard (February 2026), Cisco AI Defense (March 2026). See `docs/competitive-landscape-april-21.md`. | Revised positioning: "we do it differently and better" — not "we're the only ones." Rind's differentiators: cross-platform proxy (not K8s-only like Operant), developer-first self-serve (no competitor has this), transparent to agents (not bypassable SDK), deepest MCP protocol understanding. |
+| April 21, 2026 | Technology (proxy + policy engine) is the moat | The proxy technology is commoditized. The policy engine is a weekend engineering problem. Policy packs are copyable. | The moat builds through usage: behavioral baselines per agent (60+ days), workflow embedding (6-12 months), agent identity graph, brand trust through vendor evaluation. Technology is table stakes. The right reason to move fast is to start accumulating usage time, not to be "first" for brand reasons. See `docs/defensibility-analysis.md`. |
+| April 21, 2026 | Proxy latency is a meaningful objection | AI agent operations take 400ms-6,000ms total (LLM inference + tool execution). A well-built proxy adds 0.1-5ms — 0.002% to 0.8% of total operation time. Straiker's telemetry-first approach takes <300ms for agentic threats vs Rind's target <5ms. The latency objection is 100x weaker for AI agents than for traditional APIs. | The latency objection does not warrant a design tradeoff. Maintain <5ms target. The security property of in-path enforcement (can't be bypassed) is worth the negligible overhead. |
+| April 21, 2026 | MCP server reputation database as a moat | Value is highly uneven across server categories. Official first-party servers (Slack, Supabase) don't need reputation scoring — the value there is behavioral enforcement. Community/third-party servers: high reputation value, genuine network effect moat. Rogue agents on legitimate servers: behavioral baselines + policy enforcement, not reputation. | If building reputation database: target community/third-party servers only. First-party server intelligence = behavioral baselines per {agentId, mcpServer}. Don't conflate server reputation with agent behavior monitoring. |
+
+---
+
+## New Risks (April 21, 2026)
+
+Added to Risk Register:
+
+| R-012 | Operant AI has 10+ month head start on MCP proxy enforcement — they accumulate behavioral baselines while Rind is building | 8 | 6 | Operant closes enterprise deals with K8s-native customers before Rind launches | Rind's K8s-agnostic proxy is the differentiator — target non-K8s environments first (indie devs, startups not yet on K8s). |
+| R-013 | Microsoft Agent Governance Toolkit (free, MIT, April 2, 2026) becomes the de facto standard for policy enforcement | 8 | 5 | Enterprise architects say "we're using MSFT's toolkit" as reason not to evaluate Rind | Rind's proxy-based enforcement (can't be bypassed) vs Microsoft's SDK-based (in-process, bypassable). Security-conscious buyers understand this difference. |
+| R-014 | Technology moat is weak — well-funded competitor can replicate core proxy in 6-8 weeks | 7 | 7 | Straiker or Lasso deepens their MCP enforcement to match Rind's feature depth | Rind must be 6+ months ahead on MCP-specific features AND accumulating behavioral baselines that competitors can't instantly replicate. |
+| R-015 | Rind is "too developer-friendly" to sell to security teams, and "too security-focused" to get developer adoption | 6 | 4 | Neither persona adopts at meaningful rate | Maintain the dual-persona architecture (D-003, D-038). Developer View vs Security View from day 1. Don't optimize for one at the expense of the other. |
 
 ---
 
@@ -837,6 +852,64 @@ Documented gap      —                  File I/O in VS Code-based editors (no b
 **Revisit if**: A design partner has a tool call blocked but needs LLM-based reasoning about intent (not just transcript context) → evaluate LLM side-channel (non-blocking async only, per D-010). If multi-tenant is a deal-blocker before first customer → fast-track team scoping.
 
 **LLM proxy / prompt scanning note**: `transcript_path` covers conversation context for blocked calls (zero infrastructure). For broader prompt scanning, evaluate partnerships with Lakera/CalypsoAI rather than building. Do not build a competing prompt filter while MCP moat is not yet defensible with 2 engineers.
+
+---
+
+### Backlog: Hierarchical Policy Layers (Global → Group → Per-Agent)
+**Date**: April 22, 2026
+**Status**: BACKLOG — design needed before implementation. Run `/strategic-council quick mode` before building.
+
+**The idea**: Three-tier policy hierarchy with inheritance and override semantics:
+
+```
+Global policies          → apply to all agents, no scope filter
+  └─ Group policies      → apply to a named set of agents (by tag, pattern, or explicit group)
+       └─ Agent policies → apply to one specific agent ID
+```
+
+**Current state**: Rules support `agent: '*'` (all) or `agent: 'exact-id'` (one). No group/pattern matching exists. Priority number is the only way to order rules.
+
+**What's missing**:
+1. **Agent groups** — a way to say "this rule applies to all `code-agent-*` agents" or "all agents tagged `production`"
+2. **Inheritance semantics** — when global + group + per-agent rules all match, which wins? Options:
+   - Priority-number wins (current model, works but requires manual priority management)
+   - Explicit tier wins: per-agent overrides group overrides global (more intuitive for operators)
+   - Most-specific wins (computed from rule specificity)
+3. **Default-deny posture** — global default of `DENY *`, then groups/agents explicitly allow what they need. Currently the default is allow if no rule matches.
+
+**Why this matters**: Enterprise security teams think in groups and roles, not individual agents. "All production agents deny file writes" is a global policy. "The billing agent allows SQL reads on the billing schema" is a per-agent override. Without this, operators write duplicate rules for every agent — doesn't scale.
+
+**Proposed YAML syntax** (to validate with design partners before building):
+```yaml
+# Global — applies to everything
+- name: global-deny-destructive
+  agent: "*"
+  priority: 0
+  match: { tools: ["rm", "DROP*", "delete*"] }
+  action: DENY
+
+# Group — applies to all agents with tag "production"
+- name: prod-agents-no-file-writes
+  agentGroup: "production"   # NEW: group label
+  priority: 10
+  match: { tools: ["Write", "Edit"] }
+  action: DENY
+
+# Per-agent — overrides group for one agent
+- name: deploy-agent-allow-writes
+  agent: "deploy-agent-prod"  # exact agent ID
+  priority: 5                 # lower number = higher priority
+  match: { tools: ["Write"] }
+  action: ALLOW
+```
+
+**Agent group membership**: defined in agent registration (when API keys ship in Phase 2) or as a label on the `POST /sessions` request. Tags: `["production", "billing", "code"]`.
+
+**Kill criteria**: If priority number management gets complex as users add more agents → implement explicit tier semantics. If < 5% of users create more than one agent → defer indefinitely.
+
+**Dependency**: Requires agent identity (D-011, API keys Phase 2) before per-agent and group policies are safe. Global policies (`agent: '*'`) are safe today.
+
+**When to implement**: After first 10 design partners use the system and express need for multi-agent policy management.
 
 ---
 

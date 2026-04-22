@@ -13,6 +13,7 @@ export interface ToolCallEntry {
   agentId: string;
   serverId: string;
   toolName: string;
+  toolLabel?: string;
   timestamp: number;
   // Present when the proxy returns a decision alongside the call
   outcome?: 'allowed' | 'blocked' | 'require-approval';
@@ -100,8 +101,8 @@ function TableRow({ entry, isNew }: { entry: ToolCallEntry; isNew: boolean }) {
           {entry.serverId}
         </td>
         <td className="px-4 py-3">
-          <span className="font-mono text-[12px] text-accent bg-[color-mix(in_srgb,var(--rind-accent)_8%,transparent)] px-2 py-0.5 rounded">
-            {entry.toolName}
+          <span className="font-mono text-[12px] text-accent bg-[color-mix(in_srgb,var(--rind-accent)_8%,transparent)] px-2 py-0.5 rounded" title={entry.toolName}>
+            {entry.toolLabel ?? clientDeriveToolLabel(entry.toolName, entry.input)}
           </span>
         </td>
         <td className="px-4 py-3">
@@ -289,6 +290,44 @@ function deriveSessionLabel(agentId: string): string {
     return uuid.slice(0, 8);
   }
   return agentId.slice(0, 8);
+}
+
+// Client-side fallback for old persisted events that lack toolLabel
+function clientDeriveToolLabel(toolName: string, input: unknown): string {
+  const inp = input as Record<string, unknown> | null | undefined;
+  if (!inp || typeof inp !== 'object') return toolName;
+  switch (toolName) {
+    case 'Bash': {
+      const cmd = typeof inp.command === 'string' ? inp.command.trim() : '';
+      if (!cmd) return 'Bash';
+      return cmd.length <= 60 ? `Bash: ${cmd}` : `Bash: ${cmd.split(/[\s|;&]/)[0] || cmd}`;
+    }
+    case 'Read': case 'Write': case 'Edit': {
+      const fp = typeof inp.file_path === 'string' ? inp.file_path : '';
+      return fp ? `${toolName}: ${fp.split('/').pop() || fp}` : toolName;
+    }
+    case 'Grep': {
+      const p = typeof inp.pattern === 'string' ? inp.pattern : '';
+      return p ? `Grep: ${p.slice(0, 40)}` : 'Grep';
+    }
+    case 'Glob': {
+      const p = typeof inp.pattern === 'string' ? inp.pattern : '';
+      return p ? `Glob: ${p}` : 'Glob';
+    }
+    case 'Agent': {
+      const t = typeof inp.subagent_type === 'string' ? inp.subagent_type : '';
+      return t ? `Agent: ${t}` : 'Agent';
+    }
+    case 'WebFetch': {
+      const u = typeof inp.url === 'string' ? inp.url : '';
+      return u ? `WebFetch: ${u.slice(0, 50)}` : 'WebFetch';
+    }
+    case 'WebSearch': {
+      const q = typeof inp.query === 'string' ? inp.query : '';
+      return q ? `WebSearch: ${q.slice(0, 50)}` : 'WebSearch';
+    }
+    default: return toolName;
+  }
 }
 
 function formatTimestamp(ts: number): string {
