@@ -459,7 +459,9 @@ function deriveGuidance(
   if (action === 'REQUIRE_APPROVAL') {
     return (
       `This ${toolName} call requires human approval before it can proceed. ` +
-      `Inform the user that this action needs their explicit approval.`
+      `A notification has been sent to the security team for review. ` +
+      `Please inform the user that this action is pending approval, then wait 10 seconds and retry the exact same tool call. ` +
+      `If approved, the retry will succeed. If denied or timed out, you will be informed.`
     );
   }
 
