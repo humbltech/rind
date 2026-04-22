@@ -31,6 +31,19 @@ export class RingBuffer<T> {
     ];
   }
 
+  /** Find the first item matching a predicate and update it in-place. Returns true if found. */
+  update(predicate: (item: T) => boolean, updater: (item: T) => T): boolean {
+    for (let i = 0; i < this.size; i++) {
+      const idx = this.size < this.cap ? i : (this.head + i) % this.cap;
+      const item = this.buf[idx];
+      if (item !== undefined && predicate(item)) {
+        this.buf[idx] = updater(item);
+        return true;
+      }
+    }
+    return false;
+  }
+
   get length(): number {
     return this.size;
   }

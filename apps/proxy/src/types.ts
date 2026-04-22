@@ -26,6 +26,15 @@ export interface ToolCallEvent {
   cwd?: string;
   // Deterministic correlation ID linking PreToolUse → PostToolUse for the same call
   correlationId?: string;
+  // PostToolUse response data — enriched server-side when PostToolUse arrives
+  response?: {
+    outputPreview?: string;
+    outputTruncated?: boolean;
+    outputSizeBytes?: number;
+    outputHash?: string;
+    threats?: ResponseThreat[];
+    timestamp: number;
+  };
 }
 
 export interface ToolResponseEvent {

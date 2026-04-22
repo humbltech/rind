@@ -60,6 +60,12 @@ export class PersistentRingBuffer<T> {
     });
   }
 
+  /** Find and update an item in the in-memory buffer. Does NOT rewrite the file
+   *  — the enriched version lives in memory until the next compact() or restart reload. */
+  update(predicate: (item: T) => boolean, updater: (item: T) => T): boolean {
+    return this.buffer.update(predicate, updater);
+  }
+
   toArray(): T[] {
     return this.buffer.toArray();
   }

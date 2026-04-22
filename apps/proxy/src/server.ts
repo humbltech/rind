@@ -498,13 +498,33 @@ export function createProxyServer(config: ProxyConfig) {
 
     const event = processHookEvent(parsed.data);
 
-    // Match PostToolUse to its PreToolUse via correlation tracker
+    // Match PostToolUse to its PreToolUse via correlation tracker and enrich the
+    // original ToolCallEvent in the ring buffer with response data (server-side join).
     if (event.eventType === 'PostToolUse' && parsed.data.tool_name) {
-      event.correlationId = correlator.matchPostToolUse(
+      const correlationId = correlator.matchPostToolUse(
         parsed.data.session_id,
         parsed.data.tool_name,
         parsed.data.tool_input,
       );
+      event.correlationId = correlationId;
+
+      // Enrich the matching PreToolUse event in the ring buffer
+      if (correlationId) {
+        ringBuffer.update(
+          (e) => e.correlationId === correlationId,
+          (e) => ({
+            ...e,
+            response: {
+              outputPreview: event.outputPreview,
+              outputTruncated: event.outputTruncated,
+              outputSizeBytes: event.outputSizeBytes,
+              outputHash: event.outputHash,
+              threats: event.threats,
+              timestamp: event.timestamp,
+            },
+          }),
+        );
+      }
     }
 
     hookEventBuffer.push(event);

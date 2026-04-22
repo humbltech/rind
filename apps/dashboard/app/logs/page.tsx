@@ -884,21 +884,6 @@ function clientToolLabel(toolName: string, input: unknown): string {
 
 // ─── Data polling ────────────────────────────────────────────────────────────
 
-interface HookEvent {
-  eventType: string;
-  sessionId: string;
-  agentId: string;
-  correlationId?: string;
-  toolName?: string;
-  toolResponse?: unknown;
-  outputPreview?: string;
-  outputTruncated?: boolean;
-  outputSizeBytes?: number;
-  outputHash?: string;
-  threats?: Array<{ type: string; severity: string; pattern: string }>;
-  timestamp: number;
-}
-
 function useLogData() {
   const [toolCalls, setToolCalls] = useState<ToolCallEntry[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -908,42 +893,11 @@ function useLogData() {
 
     async function poll() {
       try {
-        // Fetch PreToolUse + PostToolUse in parallel
-        const [callsRes, eventsRes] = await Promise.all([
-          fetch('/api/proxy/logs/tool-calls'),
-          fetch('/api/proxy/logs/hook-events?event_type=PostToolUse'),
-        ]);
+        const callsRes = await fetch('/api/proxy/logs/tool-calls');
         if (!active) return;
 
         if (callsRes.ok) {
           const calls: ToolCallEntry[] = await callsRes.json();
-
-          // Join PostToolUse events by correlationId with time proximity check
-          if (eventsRes.ok) {
-            const hookEvents: HookEvent[] = await eventsRes.json();
-            const eventMap = new Map<string, HookEvent>();
-            for (const he of hookEvents) {
-              if (he.correlationId) eventMap.set(he.correlationId, he);
-            }
-            const MAX_CORRELATION_GAP_MS = 5 * 60 * 1000; // 5 minutes
-            for (const call of calls) {
-              if (call.correlationId && eventMap.has(call.correlationId)) {
-                const he = eventMap.get(call.correlationId)!;
-                // Only match if PostToolUse arrived within 5 minutes of PreToolUse
-                const gap = Math.abs(he.timestamp - call.timestamp);
-                if (gap > MAX_CORRELATION_GAP_MS) continue;
-                call.response = {
-                  outputPreview: he.outputPreview,
-                  outputTruncated: he.outputTruncated,
-                  outputSizeBytes: he.outputSizeBytes,
-                  outputHash: he.outputHash,
-                  threats: he.threats,
-                  timestamp: he.timestamp,
-                };
-              }
-            }
-          }
-
           setToolCalls(calls);
           setIsConnected(true);
         } else {
