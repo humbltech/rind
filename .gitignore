@@ -22,3 +22,9 @@ supabase/.temp
 # Logs
 *.log
 pino-*.log
+
+# Rind runtime data (audit logs, events, persisted policies)
+.rind/
+
+# IDE / tool config
+.claude/

@@ -9,6 +9,8 @@
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { createRequire } from 'node:module';
+import { mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import pino from 'pino';
 import { randomUUID } from 'node:crypto';
 
@@ -133,11 +135,29 @@ export function createProxyServer(config: ProxyConfig) {
     throw err;
   }
 
-  // Persist API-created rules to a JSON file alongside the audit log.
-  // On restart, persisted rules are merged with the YAML base config.
+  // ── Runtime data directory ─────────────────────────────────────────────────
+  // All runtime artifacts (audit logs, event logs, persisted policies) live in
+  // .rind/ by default — keeping the project root clean. RIND_AUDIT_LOG overrides
+  // the base path; all other paths derive from it.
+  const RIND_DATA_DIR = '.rind';
+  const auditLogPath = config.auditLogPath ?? join(RIND_DATA_DIR, 'audit.jsonl');
+  const eventsLogPath = config.auditLogPath
+    ? config.auditLogPath.replace(/\.jsonl$/, '-events.jsonl')
+    : join(RIND_DATA_DIR, 'events.jsonl');
+  const hookEventsLogPath = config.auditLogPath
+    ? config.auditLogPath.replace(/\.jsonl$/, '-hook-events.jsonl')
+    : join(RIND_DATA_DIR, 'hook-events.jsonl');
   const policyPersistPath = config.auditLogPath
     ? config.auditLogPath.replace(/\.jsonl$/, '-policies.json')
-    : 'rind-policies.json';
+    : join(RIND_DATA_DIR, 'policies.json');
+
+  // Ensure data directories exist for all output paths
+  for (const p of [auditLogPath, eventsLogPath, hookEventsLogPath, policyPersistPath]) {
+    mkdirSync(dirname(p), { recursive: true });
+  }
+
+  // Persist API-created rules to a JSON file alongside the audit log.
+  // On restart, persisted rules are merged with the YAML base config.
   const policyStore = new InMemoryPolicyStore(policyConfig, policyPersistPath);
   // ── Runtime safety (D-015) — loop detector is shared between interceptor and policy engine
   const loopDetector = new LoopDetector();
@@ -154,36 +174,27 @@ export function createProxyServer(config: ProxyConfig) {
 
   // ── Observability pipeline (D-018) ───────────────────────────────────────────
   // Tool call events are persisted to a JSONL file and reloaded on startup.
-  // The audit log path defaults to rind-audit.jsonl; tool calls go to rind-events.jsonl.
-  const eventsLogPath = config.auditLogPath
-    ? config.auditLogPath.replace(/\.jsonl$/, '-events.jsonl')
-    : 'rind-events.jsonl';
   const ringBuffer = new PersistentRingBuffer<ToolCallEvent>({
     capacity: config.ringBufferSize ?? 10_000,
     filePath: eventsLogPath,
     onError: (err) => logger.error({ err }, 'Event log write failed'),
   });
   // Hook events buffer — stores PostToolUse, SubagentStart/Stop for observability
-  const hookEventsLogPath = eventsLogPath.replace(/\.jsonl$/, '-hook-events.jsonl');
   const hookEventBuffer = new PersistentRingBuffer<ProcessedHookEvent>({
     capacity: config.ringBufferSize ?? 10_000,
     filePath: hookEventsLogPath,
     onError: (err) => logger.error({ err }, 'Hook event log write failed'),
   });
 
-  const auditWriter = config.auditLogPath
-    ? new AuditWriter(config.auditLogPath, (err) => {
-        logger.error({ err }, 'Audit write failed');
-      })
-    : null;
+  const auditWriter = new AuditWriter(auditLogPath, (err) => {
+    logger.error({ err }, 'Audit write failed');
+  });
 
   // Ring buffer subscriber (for MCP proxy path — hook path pushes directly with enrichment)
   bus.on('tool:call', (event) => ringBuffer.push(event));
 
-  // Audit subscriber — writes every policy decision
-  if (auditWriter) {
-    bus.on('audit', (entry) => auditWriter.append(entry));
-  }
+  // Audit subscriber — writes every policy decision to .rind/audit.jsonl
+  bus.on('audit', (entry) => auditWriter.append(entry));
 
   // ── Runtime safety (D-017) ────────────────────────────────────────────────────
   const rateLimiter = new RateLimiter();

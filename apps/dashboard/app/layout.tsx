@@ -22,7 +22,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: 'Rind — Control Plane',
   description: 'Observability, safety, and security for AI agents.',
-  icons: { icon: '/favicon.svg' },
+  icons: { icon: '/favicon.ico' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

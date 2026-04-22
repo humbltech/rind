@@ -299,7 +299,7 @@ export interface ProxyConfig {
   // Optional DI override for the forward function — used in tests and simulation
   forwardFn?: ForwardFn;
   // D-018: observability pipeline
-  auditLogPath?: string; // path to JSONL audit log (default: ./rind-audit.jsonl)
+  auditLogPath?: string; // path to JSONL audit log (default: .rind/audit.jsonl)
   ringBufferSize?: number; // max events in in-memory ring buffer (default: 10_000)
   // D-020: audit configuration
   auditIncludeOutput?: boolean; // include tool output in audit entries (default: false — privacy)

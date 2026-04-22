@@ -85,7 +85,7 @@ export function printStartupSummary(config: ProxyConfig): void {
   row('Upstream',   config.upstreamMcpUrl);
   row('Policy',     config.policyFile ? config.policyFile : `${c.dim}default rules${c.reset}`);
   row('Log level',  config.logLevel ?? 'info');
-  if (config.auditLogPath) row('Audit log', config.auditLogPath);
+  row('Data dir',   config.auditLogPath ? `${c.dim}(custom)${c.reset} ${config.auditLogPath}` : `${c.dim}.rind/${c.reset}`);
 
   line();
   line(`  ${c.green}✓${c.reset}  Ready. Intercepting all tool calls on port ${c.bold}${config.port}${c.reset}.`);
