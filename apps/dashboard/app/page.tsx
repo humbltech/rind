@@ -354,17 +354,45 @@ function useProxyData() {
 
     async function poll() {
       try {
-        const [statusRes, logsRes, scanRes, ctxRes] = await Promise.all([
+        const [statusRes, logsRes, scanRes, ctxRes, eventsRes] = await Promise.all([
           fetch('/api/proxy/status'),
           fetch('/api/proxy/logs/tool-calls'),
           fetch('/api/proxy/scan/results'),
           fetch('/api/proxy/hook/context'),
+          fetch('/api/proxy/logs/hook-events?event_type=PostToolUse'),
         ]);
 
         if (!active) return;
 
         if (statusRes.ok) setStatus(await statusRes.json());
-        if (logsRes.ok)   setToolCalls(await logsRes.json());
+        if (logsRes.ok) {
+          const calls: ToolCallEntry[] = await logsRes.json();
+          // Join PostToolUse responses by correlationId
+          if (eventsRes.ok) {
+            const hookEvents: Array<{ correlationId?: string; timestamp: number; outputPreview?: string; outputTruncated?: boolean; outputSizeBytes?: number; outputHash?: string; threats?: Array<{ type: string; severity: string; pattern: string }> }> = await eventsRes.json();
+            const eventMap = new Map<string, (typeof hookEvents)[0]>();
+            for (const he of hookEvents) {
+              if (he.correlationId) eventMap.set(he.correlationId, he);
+            }
+            const MAX_GAP = 5 * 60 * 1000;
+            for (const call of calls) {
+              if (call.correlationId && eventMap.has(call.correlationId)) {
+                const he = eventMap.get(call.correlationId)!;
+                if (Math.abs(he.timestamp - call.timestamp) <= MAX_GAP) {
+                  call.response = {
+                    outputPreview: he.outputPreview,
+                    outputTruncated: he.outputTruncated,
+                    outputSizeBytes: he.outputSizeBytes,
+                    outputHash: he.outputHash,
+                    threats: he.threats,
+                    timestamp: he.timestamp,
+                  };
+                }
+              }
+            }
+          }
+          setToolCalls(calls);
+        }
         if (scanRes.ok)   setScanResults(await scanRes.json());
         if (ctxRes.ok)    setHookContext(await ctxRes.json());
 
