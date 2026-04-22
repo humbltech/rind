@@ -38,6 +38,22 @@ Every AI coding tool has the same split:
 
 ---
 
+### Gemini CLI
+
+| Surface | Coverage | How |
+|---------|----------|-----|
+| MCP tools | **100%** | Stdio wrapper (`rind-proxy wrap`) applied to Gemini MCP config |
+| Built-in tools | **100%** (expected) | Gemini CLI supports hooks (`preToolCall`, `postToolCall`) — same pattern as Claude Code `PreToolUse`/`PostToolUse`. Rind's `/hook/evaluate` and `/hook/event` endpoints are agent-agnostic. |
+
+**Status**: Not yet tested. Gemini CLI hook protocol is structurally similar to Claude Code hooks (JSON payload on stdin, blocking for pre-tool, non-blocking for post-tool). Integration requires:
+1. Mapping Gemini CLI hook payload fields to Rind's `HookRequestSchema` (field names may differ)
+2. Adding a `rind-hook-gemini.sh` script (or making the existing script detect the caller)
+3. Testing with `gemini` CLI to confirm hook behavior matches expectations
+
+**Estimated effort**: 1-2 days once Gemini CLI hook docs are verified.
+
+---
+
 ### Cursor
 
 | Surface | Coverage | How |
@@ -90,6 +106,8 @@ Every AI coding tool has the same split:
                      MCP tools             Built-in + CLI
                      ───────────────────   ──────────────────────────
 Claude Code          100% ✓               100% ✓  (PreToolUse hook)
+
+Gemini CLI           100% ✓ (expected)    100% ✓  (preToolCall hook — untested)
 
 Cursor               100% ✓               ~80% ⚠  (shell guard, Phase B)
                                           File I/O: GAP

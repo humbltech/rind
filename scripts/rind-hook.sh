@@ -23,12 +23,19 @@
 
 RIND_PROXY_URL="${RIND_PROXY_URL:-http://localhost:7777}"
 RIND_FAIL_OPEN="${RIND_FAIL_OPEN:-true}"
+# Max time to wait for the proxy response. Must be long enough for approval
+# holds (REQUIRE_APPROVAL blocks until approved/denied/timed out). Claude Code
+# hooks have a 600s timeout, so 300s gives plenty of room for approvals while
+# still failing before Claude Code kills the hook.
+RIND_MAX_TIME="${RIND_MAX_TIME:-300}"
 
 # Read the full hook payload from stdin
 payload=$(cat)
 
-# Forward to Rind and capture response
-response=$(curl -s --max-time 2 \
+# Forward to Rind and capture response.
+# --connect-timeout 2: fail fast if proxy isn't running at all
+# --max-time $RIND_MAX_TIME: allow time for approval holds
+response=$(curl -s --connect-timeout 2 --max-time "$RIND_MAX_TIME" \
   -X POST "${RIND_PROXY_URL}/hook/evaluate" \
   -H 'Content-Type: application/json' \
   -d "$payload" 2>/dev/null)

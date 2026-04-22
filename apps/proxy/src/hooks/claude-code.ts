@@ -23,7 +23,7 @@
 
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import type { ToolCallEvent, ResponseThreat } from '../types.js';
+import type { ToolCallEvent, ResponseThreat, PolicyRule } from '../types.js';
 import { intercept } from '../interceptor.js';
 import type { InterceptorOptions } from '../interceptor.js';
 import { inspectResponse } from '../inspector/response.js';
@@ -198,11 +198,19 @@ export interface HookEvalOptions {
   sendGuidance?: boolean;
 }
 
+export interface HookEvalResult {
+  response: HookResponse;
+  /** The raw interceptor result — callers can check for REQUIRE_APPROVAL to trigger approval flow. */
+  interceptorAction: string;
+  /** The matched policy rule (if any) — used for approval metadata. */
+  matchedRule?: PolicyRule;
+}
+
 export async function evaluateHook(
   req: HookRequest,
   interceptorOpts: InterceptorOptions,
   hookOpts?: HookEvalOptions,
-): Promise<HookResponse> {
+): Promise<HookEvalResult> {
   const event = hookRequestToToolCallEvent(req);
 
   // evaluate-only forward: never called — returns immediately with a dummy result
@@ -224,8 +232,7 @@ export async function evaluateHook(
   const action = interceptorResult.action;
 
   if (action === 'ALLOW' || action === 'RATE_LIMIT') {
-    // RATE_LIMIT that passed the limiter check normalises to ALLOW inside interceptor
-    return allow();
+    return { response: allow(), interceptorAction: action };
   }
 
   // DENY / BLOCKED_* / REQUIRE_APPROVAL → deny hook with optional actionable guidance
@@ -233,7 +240,7 @@ export async function evaluateHook(
   const guidance = (hookOpts?.sendGuidance ?? true)
     ? deriveGuidance(action, event.toolName, reason)
     : undefined;
-  return deny(reason, guidance);
+  return { response: deny(reason, guidance), interceptorAction: action };
 }
 
 // ─── Conversions ─────────────────────────────────────────────────────────────

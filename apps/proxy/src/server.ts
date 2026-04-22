@@ -29,8 +29,9 @@ import { LoopDetector } from './loop-detector.js';
 import { RateLimiter } from './rate-limiter.js';
 import { listPacks, getPack, expandPackRules, rulesFromPack, recommendPacks } from './policy/packs.js';
 import { HookRequestSchema, HookEventSchema, evaluateHook, processHookEvent, deriveToolLabel } from './hooks/claude-code.js';
-import type { ProcessedHookEvent, HookEvalOptions } from './hooks/claude-code.js';
+import type { ProcessedHookEvent, HookEvalOptions, HookEvalResult } from './hooks/claude-code.js';
 import { CorrelationTracker } from './hooks/correlator.js';
+import { ApprovalQueue } from './approval-queue.js';
 import { discoverClaudeCodeContext, discoverMcpServers, resolveSessionName } from './hooks/claude-code-context.js';
 import { UpstreamPool } from './transport/pool.js';
 import { createUpstreamClient } from './transport/upstream/factory.js';
@@ -142,6 +143,8 @@ export function createProxyServer(config: ProxyConfig) {
   const loopDetector = new LoopDetector();
   // ── PreToolUse ↔ PostToolUse correlation tracker
   const correlator = new CorrelationTracker();
+  // ── Approval queue (D-013: REQUIRE_APPROVAL blocking flow)
+  const approvalQueue = new ApprovalQueue();
   const policyEngine = new PolicyEngine(policyStore, loopDetector);
 
   // ── Event bus (D-019) ────────────────────────────────────────────────────────
@@ -428,7 +431,7 @@ export function createProxyServer(config: ProxyConfig) {
     // user intent); loop/rate detection is Rind's own safety net for proxy-mode only.
     const hookEvalOpts: HookEvalOptions = { sendGuidance: config.hookSendGuidance ?? true };
     let matchedRuleName: string | undefined;
-    const hookResponse = await evaluateHook(parsed.data, {
+    const evalResult: HookEvalResult = await evaluateHook(parsed.data, {
       policyEngine,
       onToolCallEvent: (event, rule) => {
         matchedRuleName = rule?.name;
@@ -448,20 +451,117 @@ export function createProxyServer(config: ProxyConfig) {
       blockOnCriticalResponseThreats: false,
     }, hookEvalOpts);
 
-    // Enrich the event with the policy decision before storing in the ring buffer
+    const toolLabel = deriveToolLabel(parsed.data.tool_name, parsed.data.tool_input);
+
+    // ── REQUIRE_APPROVAL: hold the HTTP response until human decides ────────
+    if (evalResult.interceptorAction === 'REQUIRE_APPROVAL') {
+      // Parse timeout from the matched policy rule's approval config
+      const matchedRule = policyStore.get().policies.find((r) => r.name === matchedRuleName);
+      const timeoutMs = parseApprovalTimeout(matchedRule?.approval?.timeout) ?? 120_000;
+      const onTimeout = matchedRule?.approval?.onTimeout ?? 'DENY';
+
+      const { approval, wait } = approvalQueue.enqueue({
+        sessionId: sid,
+        agentId,
+        toolName: parsed.data.tool_name,
+        toolLabel,
+        input: parsed.data.tool_input,
+        reason: `Tool call "${parsed.data.tool_name}" requires human approval.`,
+        ruleName: matchedRuleName,
+        timeoutMs,
+        onTimeout,
+      });
+
+      logger.info(
+        { approvalId: approval.id, toolName: parsed.data.tool_name, timeoutMs },
+        'Approval requested — holding hook response',
+      );
+
+      // Store event as pending while we wait
+      const correlationId = correlator.recordPreToolUse(sid, parsed.data.tool_name, parsed.data.tool_input);
+      const sessionName = resolveSessionName(sid);
+      const enrichedEvent: ToolCallEvent = {
+        sessionId: sid,
+        sessionName,
+        agentId,
+        serverId: parsed.data.tool_name.startsWith('mcp__') ? parsed.data.tool_name.split('__')[1] || 'mcp-unknown' : 'builtin',
+        toolName: parsed.data.tool_name,
+        toolLabel,
+        input: parsed.data.tool_input,
+        timestamp: Date.now(),
+        outcome: 'require-approval',
+        reason: `Pending approval (${approval.id})`,
+        matchedRule: matchedRuleName,
+        source: (parsed.data.tool_name.startsWith('mcp__') ? 'mcp' : 'builtin') as 'builtin' | 'mcp',
+        cwd: parsed.data.cwd,
+        correlationId,
+      };
+      ringBuffer.push(enrichedEvent);
+
+      // Block here until approved, denied, or timed out
+      const result = await wait;
+
+      // Update the event in the ring buffer with the final decision
+      const finalOutcome = result.decision === 'approve' ? 'allowed' : 'blocked';
+      ringBuffer.update(
+        (e) => e.correlationId === correlationId,
+        (e) => ({
+          ...e,
+          outcome: finalOutcome as 'allowed' | 'blocked',
+          reason: result.decision === 'approve'
+            ? `Approved by ${result.decidedBy ?? 'dashboard'}`
+            : result.decision === 'timeout'
+              ? `Approval timed out (${onTimeout})`
+              : `Denied by ${result.decidedBy ?? 'dashboard'}`,
+        }),
+      );
+
+      logger.info(
+        { approvalId: approval.id, decision: result.decision, toolName: parsed.data.tool_name },
+        'Approval resolved',
+      );
+
+      // Translate decision to hook response
+      const shouldAllow = result.decision === 'approve'
+        || (result.decision === 'timeout' && onTimeout === 'ALLOW');
+
+      if (shouldAllow) {
+        return c.json({
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'allow',
+            additionalContext: `Approved by ${result.decidedBy ?? 'dashboard'}.`,
+          },
+        });
+      }
+
+      const denyReason = result.decision === 'timeout'
+        ? `Approval timed out after ${Math.round(timeoutMs / 1000)}s — action denied.`
+        : `Action denied by ${result.decidedBy ?? 'dashboard'}.`;
+      return c.json({
+        continue: false,
+        stopReason: denyReason,
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: denyReason,
+        },
+      });
+    }
+
+    // ── Normal allow/deny flow ────────────────────────────────────────────────
+    const hookResponse = evalResult.response;
     const isDenied = 'continue' in hookResponse;
     const decision = isDenied ? 'deny' : 'allow';
-    // Generate correlation ID for Pre↔Post matching
     const correlationId = correlator.recordPreToolUse(sid, parsed.data.tool_name, parsed.data.tool_input);
-    // Resolve session name from Claude Code runtime files (cached per-request, not per-event)
     const sessionName = resolveSessionName(sid);
-    const enrichedEvent = {
+    const enrichedEvent: ToolCallEvent = {
       sessionId: sid,
       sessionName,
       agentId,
       serverId: parsed.data.tool_name.startsWith('mcp__') ? parsed.data.tool_name.split('__')[1] || 'mcp-unknown' : 'builtin',
       toolName: parsed.data.tool_name,
-      toolLabel: deriveToolLabel(parsed.data.tool_name, parsed.data.tool_input),
+      toolLabel,
       input: parsed.data.tool_input,
       timestamp: Date.now(),
       outcome: (isDenied ? 'blocked' : 'allowed') as 'allowed' | 'blocked',
@@ -554,6 +654,29 @@ export function createProxyServer(config: ProxyConfig) {
     if (agent_id) events = events.filter((e) => e.agentId === agent_id);
 
     return c.json(events);
+  });
+
+  // ─── Approval management (D-013) ──────────────────────────────────────────
+  // Dashboard polls this to show pending approvals and resolve them.
+
+  app.get('/approvals', (c) => {
+    return c.json(approvalQueue.list());
+  });
+
+  app.post('/approvals/:id/approve', (c) => {
+    const { id } = c.req.param();
+    const found = approvalQueue.approve(id, 'dashboard');
+    if (!found) return c.json({ error: `Approval "${id}" not found or already resolved` }, 404);
+    logger.info({ approvalId: id }, 'Approval granted via dashboard');
+    return c.json({ approved: true, id });
+  });
+
+  app.post('/approvals/:id/deny', (c) => {
+    const { id } = c.req.param();
+    const found = approvalQueue.deny(id, 'dashboard');
+    if (!found) return c.json({ error: `Approval "${id}" not found or already resolved` }, 404);
+    logger.info({ approvalId: id }, 'Approval denied via dashboard');
+    return c.json({ denied: true, id });
   });
 
   // ─── Claude Code context discovery ──────────────────────────────────────────
@@ -879,8 +1002,11 @@ export function createProxyServer(config: ProxyConfig) {
       const correlatorCleanup = setInterval(() => correlator.cleanup(), 60_000);
 
       const server = serve({ fetch: app.fetch, port: config.port });
-      // Clean up interval when server closes to prevent leaks in tests
-      server.on('close', () => clearInterval(correlatorCleanup));
+      // Clean up intervals and queues when server closes to prevent leaks in tests
+      server.on('close', () => {
+        clearInterval(correlatorCleanup);
+        approvalQueue.destroy();
+      });
       logger.info(
         { port: config.port, upstreamMcpUrl: config.upstreamMcpUrl },
         'Rind proxy started',
@@ -904,6 +1030,20 @@ function emitAudit(
     timestamp: new Date().toISOString(),
     ...fields,
   } as AuditEntry);
+}
+
+/** Parse a human-readable duration string (e.g. "30s", "2m", "5m") into milliseconds. */
+function parseApprovalTimeout(timeout?: string): number | undefined {
+  if (!timeout) return undefined;
+  const m = timeout.match(/^(\d+)(s|m|h)$/);
+  if (!m) return undefined;
+  const val = parseInt(m[1]!, 10);
+  switch (m[2]) {
+    case 's': return val * 1000;
+    case 'm': return val * 60_000;
+    case 'h': return val * 3_600_000;
+    default: return undefined;
+  }
 }
 
 // Records every policy mutation in the audit trail with its own distinct eventType.

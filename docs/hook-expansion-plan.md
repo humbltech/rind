@@ -283,6 +283,47 @@ When the hook detects an unproxied MCP server, Rind could offer to auto-configur
 
 This closes the loop: hook detects → proxy protects → dashboard confirms.
 
+## Gemini CLI Integration
+
+### Status: Planned — Not Yet Tested
+
+Gemini CLI supports hooks with the same structural pattern as Claude Code: a shell command receives a JSON payload on stdin, and for blocking hooks (pre-tool), the command's exit code and stdout determine allow/deny.
+
+### What We Know
+
+- Gemini CLI hooks are configured in `~/.gemini/settings.json` (similar to Claude Code's `~/.claude/settings.json`)
+- Hook types include `preToolCall` and `postToolCall` (equivalent to Claude Code's `PreToolUse`/`PostToolUse`)
+- Payload format is JSON on stdin with fields for tool name, input, session, agent context
+- Blocking behavior: exit 0 + JSON `{ "continue": true }` = allow; exit 0 + JSON `{ "continue": false, "stopReason": "..." }` = deny
+
+### Integration Approach
+
+Rind's `/hook/evaluate` and `/hook/event` endpoints are agent-agnostic — they accept a normalized schema. The integration work is:
+
+1. **Payload normalization script** (`rind-hook-gemini.sh`): reads Gemini CLI's payload format, maps field names to Rind's `HookRequestSchema`, forwards to `/hook/evaluate`. May be unnecessary if Gemini CLI uses the same field names.
+2. **Hook configuration**: add to `~/.gemini/settings.json` following Gemini CLI's hook registration format.
+3. **`rind-proxy init --gemini-cli`**: auto-configures hooks + MCP server wrapping for Gemini CLI.
+
+### Field Mapping (To Verify)
+
+| Rind field | Claude Code | Gemini CLI (expected) |
+|------------|-------------|----------------------|
+| `session_id` | `session_id` | TBD — verify field name |
+| `tool_name` | `tool_name` | TBD |
+| `tool_input` | `tool_input` | TBD |
+| `agent_id` | `agent_id` | TBD |
+| `cwd` | `cwd` | TBD |
+
+### Next Steps
+
+- [ ] Verify Gemini CLI hook documentation and payload field names
+- [ ] Test with a simple hook script to confirm blocking behavior
+- [ ] Build or adapt hook script for field normalization
+- [ ] Add `--gemini-cli` flag to `rind-proxy init`
+- [ ] Update coverage matrix with tested results
+
+---
+
 ## Data Model Changes
 
 ### ToolCallEvent (extend)

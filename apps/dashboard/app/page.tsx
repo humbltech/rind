@@ -17,6 +17,7 @@ import { ScanFindings, type ServerScanResult } from './components/scan-findings'
 import { HeaderBand, type BlockedIncident } from './components/header-band';
 import { McpServerList, type McpServerInfo } from './components/mcp-server-list';
 import { InsightsPanel } from './components/insights-panel';
+import { ApprovalBanner } from './components/approval-banner';
 
 // ─── Data shapes from the proxy API ───────────────────────────────────────────
 
@@ -73,6 +74,7 @@ export default function DashboardPage() {
             connected={isConnected}
             incident={incident}
           />
+          <ApprovalBanner />
           <StatsGrid status={status} toolCalls={toolCalls} mcpServerCount={hookContext?.mcpServers?.length ?? servers.total} />
           <InsightsSection toolCalls={toolCalls} mcpServers={hookContext?.mcpServers} />
           <ActiveSessionsSection sessions={hookContext?.activeSessions ?? []} workDirs={activeWorkDirs} />
