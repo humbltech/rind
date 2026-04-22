@@ -58,6 +58,9 @@ export interface InterceptorOptions {
   onToolCallEvent: (event: ToolCallEvent, matchedRule?: PolicyRule) => void;
   onToolResponseEvent: (event: ToolResponseEvent) => void;
   blockOnCriticalResponseThreats: boolean;
+  // Skip request-side injection scanning. Set true for hook evaluate-only mode
+  // where tool inputs are user-initiated (not attacker-controlled MCP inputs).
+  skipRequestInspection?: boolean;
 }
 
 // ─── Interceptor ─────────────────────────────────────────────────────────────
@@ -87,17 +90,21 @@ export async function intercept(
   }
 
   // ── 3. Request-side inspection ──────────────────────────────────────────────
-  let requestResult: { allowed: boolean; reason?: string } | undefined;
-  try {
-    requestResult = inspectRequest(event);
-  } catch (err) {
-    opts.onToolCallEvent(event);
-    return blocked('BLOCKED_INJECTION', `Request inspection error: ${String(err)}`);
-  }
+  // Skipped for hook evaluate-only mode: tool inputs come from the user's own
+  // coding agent, not from untrusted MCP tool definitions.
+  if (!opts.skipRequestInspection) {
+    let requestResult: { allowed: boolean; reason?: string } | undefined;
+    try {
+      requestResult = inspectRequest(event);
+    } catch (err) {
+      opts.onToolCallEvent(event);
+      return blocked('BLOCKED_INJECTION', `Request inspection error: ${String(err)}`);
+    }
 
-  if (!requestResult.allowed) {
-    opts.onToolCallEvent(event);
-    return blocked('BLOCKED_INJECTION', requestResult.reason);
+    if (!requestResult.allowed) {
+      opts.onToolCallEvent(event);
+      return blocked('BLOCKED_INJECTION', requestResult.reason);
+    }
   }
 
   // ── 4. Policy evaluation ────────────────────────────────────────────────────

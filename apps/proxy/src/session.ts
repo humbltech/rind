@@ -16,17 +16,18 @@ const sessionCallLog = new Map<string, CallRecord[]>();
 
 // ─── Session lifecycle ────────────────────────────────────────────────────────
 
-export function createSession(agentId: string): Session {
+export function createSession(agentId: string, sessionId?: string): Session {
+  const id = sessionId ?? randomUUID();
   const session: Session = {
-    sessionId: randomUUID(),
+    sessionId: id,
     agentId,
     startedAt: Date.now(),
     active: true,
     toolCallCount: 0,
     estimatedCostUsd: 0,
   };
-  sessions.set(session.sessionId, session);
-  sessionCallLog.set(session.sessionId, []);
+  sessions.set(id, session);
+  sessionCallLog.set(id, []);
   return session;
 }
 

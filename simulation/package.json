@@ -8,6 +8,7 @@
     "sim:record": "tsx src/cli.ts --mode record",
     "sim:replay": "tsx src/cli.ts --mode replay",
     "sim:live": "tsx src/cli.ts --mode live",
+    "sim:demo": "tsx src/cli.ts --http http://localhost:7777",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

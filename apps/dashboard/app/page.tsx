@@ -8,12 +8,13 @@
 
 import { useEffect, useState } from 'react';
 import type React from 'react';
-import { Activity, AlertTriangle, Server } from 'lucide-react';
+import { Activity, AlertTriangle, Server, FolderOpen } from 'lucide-react';
 import { Sidebar } from './components/sidebar';
 import { StatCard } from './components/stat-card';
 import { ToolCallTable, type ToolCallEntry } from './components/tool-call-table';
 import { ScanFindings, type ServerScanResult } from './components/scan-findings';
 import { HeaderBand, type BlockedIncident } from './components/header-band';
+import { McpServerList, type McpServerInfo } from './components/mcp-server-list';
 
 // ─── Data shapes from the proxy API ───────────────────────────────────────────
 
@@ -24,10 +25,23 @@ interface ProxyStatus {
   servers:   { total: number };
 }
 
+interface ClaudeSession {
+  sessionId: string;
+  name?: string;
+  cwd?: string;
+  pid?: number;
+  startedAt?: number;
+}
+
+interface HookContext {
+  mcpServers: McpServerInfo[];
+  activeSessions: ClaudeSession[];
+}
+
 // ─── Dashboard page ───────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const { status, toolCalls, scanResults, isConnected } = useProxyData();
+  const { status, toolCalls, scanResults, hookContext, isConnected } = useProxyData();
 
   const sessions  = status?.sessions  ?? { total: 0, active: 0 };
   const calls     = status?.toolCalls ?? { total: 0 };
@@ -39,6 +53,9 @@ export default function DashboardPage() {
   const incident: BlockedIncident | null = lastBlocked
     ? { toolName: lastBlocked.toolName, agentId: lastBlocked.agentId, reason: lastBlocked.reason ?? 'POLICY_VIOLATION', timestamp: lastBlocked.timestamp }
     : null;
+
+  // Derive active working directories from sessions + tool calls
+  const activeWorkDirs = deriveWorkingDirs(hookContext?.activeSessions ?? [], toolCalls);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -55,7 +72,9 @@ export default function DashboardPage() {
             incident={incident}
           />
           <StatsGrid status={status} />
+          <ActiveSessionsSection sessions={hookContext?.activeSessions ?? []} workDirs={activeWorkDirs} />
           <ToolCallSection entries={toolCalls} />
+          <McpServerSection servers={hookContext?.mcpServers ?? []} />
           <ScanSection servers={scanResults} />
         </div>
       </main>
@@ -75,8 +94,6 @@ function PageTitle() {
 }
 
 function StatsGrid({ status }: { status: ProxyStatus | null }) {
-  // Destructure each field with its own fallback so a partial response
-  // (e.g. an older proxy build missing `servers`) doesn't throw.
   const sessions  = status?.sessions  ?? { total: 0, active: 0 };
   const toolCalls = status?.toolCalls ?? { total: 0 };
   const threats   = status?.threats   ?? { total: 0 };
@@ -113,6 +130,47 @@ function StatsGrid({ status }: { status: ProxyStatus | null }) {
   );
 }
 
+function ActiveSessionsSection({ sessions, workDirs }: { sessions: ClaudeSession[]; workDirs: WorkDir[] }) {
+  if (sessions.length === 0 && workDirs.length === 0) return null;
+
+  return (
+    <section>
+      <SectionLabel>Active sessions</SectionLabel>
+      <div className="mt-3 space-y-2">
+        {sessions.map((s) => {
+          const dir = workDirs.find((w) => w.sessionId === s.sessionId);
+          return (
+            <div
+              key={s.sessionId}
+              className="flex items-center gap-4 px-4 py-3 rounded-lg border border-border hover:bg-overlay transition-colors duration-100"
+            >
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+                <span className="font-mono text-[13px] font-medium text-foreground truncate">
+                  {s.name ?? `session:${s.sessionId.slice(0, 8)}`}
+                </span>
+              </div>
+              {(s.cwd || dir?.cwd) && (
+                <div className="flex items-center gap-1.5 min-w-0 shrink">
+                  <FolderOpen size={12} className="text-dim shrink-0" />
+                  <span className="font-mono text-[11px] text-muted truncate max-w-[400px]">
+                    {shortenPath(s.cwd ?? dir?.cwd ?? '')}
+                  </span>
+                </div>
+              )}
+              {dir && dir.toolCallCount > 0 && (
+                <span className="font-mono text-[10px] text-dim whitespace-nowrap">
+                  {dir.toolCallCount} calls
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function ToolCallSection({ entries }: { entries: ToolCallEntry[] }) {
   return (
     <section>
@@ -127,12 +185,26 @@ function ToolCallSection({ entries }: { entries: ToolCallEntry[] }) {
   );
 }
 
+function McpServerSection({ servers }: { servers: McpServerInfo[] }) {
+  return (
+    <section>
+      <SectionLabel>
+        MCP servers
+        <span className="ml-2 text-dim font-normal normal-case">({servers.length} registered)</span>
+      </SectionLabel>
+      <div className="mt-3">
+        <McpServerList servers={servers} />
+      </div>
+    </section>
+  );
+}
+
 function ScanSection({ servers }: { servers: ServerScanResult[] }) {
   return (
     <section>
       <SectionLabel>
         MCP server scans
-        <span className="ml-2 text-dim font-normal normal-case">({servers.length} registered)</span>
+        <span className="ml-2 text-dim font-normal normal-case">({servers.length} scanned)</span>
       </SectionLabel>
       <div className="mt-3">
         <ScanFindings servers={servers} />
@@ -151,12 +223,51 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ─── Working directory derivation ────────────────────────────────────────────
+
+interface WorkDir {
+  sessionId: string;
+  cwd: string;
+  toolCallCount: number;
+}
+
+function deriveWorkingDirs(sessions: ClaudeSession[], toolCalls: ToolCallEntry[]): WorkDir[] {
+  const map = new Map<string, WorkDir>();
+
+  // Initialize from sessions
+  for (const s of sessions) {
+    if (s.cwd) {
+      map.set(s.sessionId, { sessionId: s.sessionId, cwd: s.cwd, toolCallCount: 0 });
+    }
+  }
+
+  // Count tool calls per session and pick up CWD from events
+  for (const call of toolCalls) {
+    const existing = map.get(call.sessionId);
+    if (existing) {
+      existing.toolCallCount += 1;
+      if (call.cwd) existing.cwd = call.cwd; // latest CWD wins
+    } else if (call.cwd) {
+      map.set(call.sessionId, { sessionId: call.sessionId, cwd: call.cwd, toolCallCount: 1 });
+    }
+  }
+
+  return [...map.values()];
+}
+
+function shortenPath(path: string): string {
+  // Replace /Users/username/ with ~/
+  const homeMatch = path.match(/^\/Users\/[^/]+\/(.*)/);
+  return homeMatch ? `~/${homeMatch[1]}` : path;
+}
+
 // ─── Data polling hook ────────────────────────────────────────────────────────
 
 function useProxyData() {
   const [status, setStatus]           = useState<ProxyStatus | null>(null);
   const [toolCalls, setToolCalls]     = useState<ToolCallEntry[]>([]);
   const [scanResults, setScanResults] = useState<ServerScanResult[]>([]);
+  const [hookContext, setHookContext]  = useState<HookContext | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
@@ -164,10 +275,11 @@ function useProxyData() {
 
     async function poll() {
       try {
-        const [statusRes, logsRes, scanRes] = await Promise.all([
+        const [statusRes, logsRes, scanRes, ctxRes] = await Promise.all([
           fetch('/api/proxy/status'),
           fetch('/api/proxy/logs/tool-calls'),
           fetch('/api/proxy/scan/results'),
+          fetch('/api/proxy/hook/context'),
         ]);
 
         if (!active) return;
@@ -175,10 +287,10 @@ function useProxyData() {
         if (statusRes.ok) setStatus(await statusRes.json());
         if (logsRes.ok)   setToolCalls(await logsRes.json());
         if (scanRes.ok)   setScanResults(await scanRes.json());
+        if (ctxRes.ok)    setHookContext(await ctxRes.json());
 
         setIsConnected(statusRes.ok);
       } catch {
-        // Proxy not running — show disconnected state rather than throwing
         if (active) setIsConnected(false);
       }
     }
@@ -188,5 +300,5 @@ function useProxyData() {
     return () => { active = false; clearInterval(interval); };
   }, []);
 
-  return { status, toolCalls, scanResults, isConnected };
+  return { status, toolCalls, scanResults, hookContext, isConnected };
 }

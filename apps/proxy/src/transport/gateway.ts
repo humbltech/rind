@@ -11,7 +11,6 @@
 
 import { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
-import { createRequire } from 'node:module';
 import type { UpstreamPool } from './pool.js';
 import type { UpstreamClient } from './upstream/interface.js';
 import type { InterceptorOptions } from '../interceptor.js';
@@ -33,16 +32,20 @@ import {
   buildError,
 } from './mcp-message.js';
 
-const _require = createRequire(import.meta.url);
-const PROXY_VERSION: string = (_require('../../package.json') as { version: string }).version;
-
 // ─── Gateway factory ─────────────────────────────────────────────────────────
 
 /**
  * Creates a Hono sub-app that handles MCP JSON-RPC routing.
- * Mount it on the parent app: `app.route('/', mcpGateway(pool, opts))`
+ * Mount it on the parent app: `app.route('/', mcpGateway(pool, opts, version))`
+ *
+ * @param version - proxy version string, injected by the caller from package.json
+ *                  to avoid a createRequire path that breaks when bundled
  */
-export function mcpGateway(pool: UpstreamPool, interceptorOpts: InterceptorOptions): Hono {
+export function mcpGateway(
+  pool: UpstreamPool,
+  interceptorOpts: InterceptorOptions,
+  version: string,
+): Hono {
   const app = new Hono();
 
   // List all registered server IDs — useful for discovery and config validation
@@ -87,6 +90,7 @@ export function mcpGateway(pool: UpstreamPool, interceptorOpts: InterceptorOptio
       c.req.header('mcp-session-id'),
       c.req.header('x-agent-id'),
       interceptorOpts,
+      version,
     );
 
     // MCP notifications must not receive a JSON-RPC response body (protocol requirement)
@@ -109,11 +113,12 @@ export async function dispatchRequest(
   mcpSessionId:   string | undefined,
   agentIdHeader:  string | undefined,
   interceptorOpts: InterceptorOptions,
+  version:        string,
 ): Promise<McpResponseMessage> {
   const { id } = request;
 
   if (isInitialize(request)) {
-    return buildInitializeResponse(id, PROXY_VERSION);
+    return buildInitializeResponse(id, version);
   }
 
   // MCP notifications are fire-and-forget — the protocol forbids sending a response.

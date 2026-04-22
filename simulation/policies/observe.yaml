@@ -1,0 +1,11 @@
+# Rind Observe Policy — pure observability, no blocking
+#
+# Use this when you first set up Rind to understand what your agents are doing
+# before writing any enforcement rules. Everything is allowed.
+# Switch to demo.yaml or a custom policy once you've mapped your tool call patterns.
+
+policies:
+  - name: observe-all
+    match: {}
+    action: ALLOW
+    priority: 0

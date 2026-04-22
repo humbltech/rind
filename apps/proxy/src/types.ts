@@ -7,11 +7,19 @@ export type PolicyAction = 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL' | 'RATE_LIMIT';
 
 export interface ToolCallEvent {
   sessionId: string;
+  sessionName?: string; // Human-readable name from Claude Code /rename
   agentId: string; // identity-aware from day 1
   serverId: string;
   toolName: string;
   input: unknown;
   timestamp: number;
+  // Enriched after policy evaluation — not present on the initial event
+  outcome?: 'allowed' | 'blocked' | 'require-approval';
+  reason?: string;
+  // Source classification: 'builtin' for Claude Code tools, 'mcp' for MCP server tools
+  source?: 'builtin' | 'mcp';
+  // Working directory where the agent is operating
+  cwd?: string;
 }
 
 export interface ToolResponseEvent {

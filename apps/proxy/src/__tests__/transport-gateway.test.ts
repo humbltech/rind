@@ -68,22 +68,21 @@ function req(method: string, params?: unknown): McpRequestMessage {
 
 describe('dispatchRequest — initialize', () => {
   it('returns a valid MCP initialize response', async () => {
-    const res = await dispatchRequest(req('initialize'), makeUpstream(), 'srv', undefined, undefined, makeAllowOpts());
+    const res = await dispatchRequest(req('initialize'), makeUpstream(), 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
     expect(res.error).toBeUndefined();
     const result = res.result as Record<string, unknown>;
     expect((result.serverInfo as { name: string }).name).toBe('rind-gateway');
     expect(result.protocolVersion).toBe('2024-11-05');
-    // Version must be a valid semver string read from package.json (not a placeholder like 'unknown')
+    // Version is injected by the caller — verify it's passed through correctly
     const version = (result.serverInfo as { version: string }).version;
-    expect(typeof version).toBe('string');
-    expect(version).toMatch(/^\d+\.\d+\.\d+/);
+    expect(version).toBe('0.0.0-test');
   });
 });
 
 describe('dispatchRequest — tools/list', () => {
   it('returns tools from upstream', async () => {
     const upstream = makeUpstream();
-    const res = await dispatchRequest(req('tools/list'), upstream, 'srv', undefined, undefined, makeAllowOpts());
+    const res = await dispatchRequest(req('tools/list'), upstream, 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
     expect(res.error).toBeUndefined();
     const result = res.result as { tools: ToolInfo[] };
     expect(result.tools).toEqual(TOOLS);
@@ -94,7 +93,7 @@ describe('dispatchRequest — tools/list', () => {
     const upstream = makeUpstream({
       listTools: vi.fn().mockRejectedValue(new Error('connection refused')),
     });
-    const res = await dispatchRequest(req('tools/list'), upstream, 'srv', undefined, undefined, makeAllowOpts());
+    const res = await dispatchRequest(req('tools/list'), upstream, 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
     expect(res.error?.code).toBe(JSON_RPC.INTERNAL_ERROR);
     // Generic message — underlying error must not leak to callers
     expect(res.error?.message).toBe('Internal proxy error — check Rind logs');
@@ -103,7 +102,7 @@ describe('dispatchRequest — tools/list', () => {
 
 describe('dispatchRequest — unknown method', () => {
   it('returns method-not-found', async () => {
-    const res = await dispatchRequest(req('prompts/list'), makeUpstream(), 'srv', undefined, undefined, makeAllowOpts());
+    const res = await dispatchRequest(req('prompts/list'), makeUpstream(), 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
     expect(res.error?.code).toBe(JSON_RPC.METHOD_NOT_FOUND);
   });
 });
@@ -121,6 +120,7 @@ describe('dispatchRequest — notifications', () => {
       undefined,
       undefined,
       makeAllowOpts(),
+      '0.0.0-test',
     );
     expect(res.result).toBe('__notification__');
     expect(res.error).toBeUndefined();
@@ -128,13 +128,13 @@ describe('dispatchRequest — notifications', () => {
 
   it('returns the sentinel for any notifications/* method', async () => {
     for (const method of ['notifications/progress', 'notifications/cancelled', 'notifications/roots/list_changed']) {
-      const res = await dispatchRequest(req(method), makeUpstream(), 'srv', undefined, undefined, makeAllowOpts());
+      const res = await dispatchRequest(req(method), makeUpstream(), 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
       expect(res.result).toBe('__notification__');
     }
   });
 
   it('does NOT return the sentinel for non-notification methods', async () => {
-    const res = await dispatchRequest(req('tools/list'), makeUpstream(), 'srv', undefined, undefined, makeAllowOpts());
+    const res = await dispatchRequest(req('tools/list'), makeUpstream(), 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
     expect(res.result).not.toBe('__notification__');
   });
 });
@@ -146,7 +146,7 @@ describe('dispatchToolCall — ALLOW', () => {
     const upstream = makeUpstream();
     const toolCallReq = req('tools/call', { name: 'sql_query', arguments: { sql: 'SELECT 1' } });
 
-    const res = await dispatchToolCall(toolCallReq, upstream, 'srv', undefined, undefined, makeAllowOpts());
+    const res = await dispatchToolCall(toolCallReq, upstream, 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
     expect(res.error).toBeUndefined();
     expect(upstream.callTool).toHaveBeenCalledWith('sql_query', { sql: 'SELECT 1' });
   });
@@ -155,7 +155,7 @@ describe('dispatchToolCall — ALLOW', () => {
     const upstream = makeUpstream();
     const toolCallReq = req('tools/call', { name: 'do_thing', arguments: { x: 42 } });
 
-    await dispatchToolCall(toolCallReq, upstream, 'srv', undefined, undefined, makeAllowOpts());
+    await dispatchToolCall(toolCallReq, upstream, 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
     expect(upstream.callTool).toHaveBeenCalledWith('do_thing', { x: 42 });
   });
 
@@ -163,7 +163,7 @@ describe('dispatchToolCall — ALLOW', () => {
     const upstream = makeUpstream();
     const toolCallReq = req('tools/call', { name: 'no_args' });
 
-    await dispatchToolCall(toolCallReq, upstream, 'srv', undefined, undefined, makeAllowOpts());
+    await dispatchToolCall(toolCallReq, upstream, 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
     expect(upstream.callTool).toHaveBeenCalledWith('no_args', {});
   });
 });
@@ -259,13 +259,13 @@ describe('dispatchToolCall — DENY / block', () => {
 describe('dispatchToolCall — invalid params', () => {
   it('returns invalid-request when params are missing', async () => {
     const toolCallReq = req('tools/call'); // no params
-    const res = await dispatchToolCall(toolCallReq, makeUpstream(), 'srv', undefined, undefined, makeAllowOpts());
+    const res = await dispatchToolCall(toolCallReq, makeUpstream(), 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
     expect(res.error?.code).toBe(JSON_RPC.INVALID_REQUEST);
   });
 
   it('returns invalid-request when name is absent from params', async () => {
     const toolCallReq = req('tools/call', { arguments: {} }); // missing name
-    const res = await dispatchToolCall(toolCallReq, makeUpstream(), 'srv', undefined, undefined, makeAllowOpts());
+    const res = await dispatchToolCall(toolCallReq, makeUpstream(), 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
     expect(res.error?.code).toBe(JSON_RPC.INVALID_REQUEST);
   });
 });

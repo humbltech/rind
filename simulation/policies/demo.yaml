@@ -1,0 +1,49 @@
+# Rind Demo Policy
+# Blocks the attack patterns used in simulation scenarios
+# and destructive Claude Code tool calls.
+
+policies:
+  # ── Claude Code hook: destructive shell commands ───────────────────────────
+  - name: bash-rm-rf-block
+    match:
+      tool: ["Bash", "bash", "shell"]
+      parameters:
+        command:
+          regex: "rm\\s+-[rf]"
+    action: DENY
+    priority: 0
+
+  - name: bash-drop-table-block
+    match:
+      tool: ["Bash", "bash", "shell"]
+      parameters:
+        command:
+          regex: "(?i)DROP\\s+TABLE"
+    action: DENY
+    priority: 0
+
+  # ── Claude Code hook: writes to sensitive paths ────────────────────────────
+  - name: write-sensitive-path-block
+    match:
+      tool: ["Write", "Edit"]
+      parameters:
+        file_path:
+          regex: "(\\.env$|\\.ssh/|credentials|secrets)"
+    action: DENY
+    priority: 0
+
+  # ── SQL / Database attack scenarios ───────────────────────────────────────
+  - name: sql-destructive-block
+    match:
+      tool: ["sql_execute", "db_execute", "database_query"]
+      parameters:
+        query:
+          regex: "(?i)(DROP|TRUNCATE)\\s+(TABLE|DATABASE|SCHEMA)"
+    action: DENY
+    priority: 0
+
+  # ── Catch-all allow ────────────────────────────────────────────────────────
+  - name: allow-all
+    match: {}
+    action: ALLOW
+    priority: 99

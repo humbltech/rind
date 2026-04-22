@@ -11,7 +11,8 @@
     "typecheck": "turbo typecheck",
     "sim": "pnpm --filter @rind/simulation sim",
     "sim:record": "pnpm --filter @rind/simulation sim:record",
-    "sim:live": "pnpm --filter @rind/simulation sim:live"
+    "sim:live": "pnpm --filter @rind/simulation sim:live",
+    "sim:demo": "pnpm --filter @rind/simulation sim:demo"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",

@@ -1,15 +1,21 @@
 // Scenario runner — orchestrates a full scenario run against the Rind proxy.
 //
-// Creates the proxy in-process (no port binding), injects a cassette-backed
-// ForwardFn, runs each step as an HTTP call to the proxy, and asserts
-// expected outcomes.
+// Two execution modes:
+//   In-process: creates the proxy with no port binding, uses app.request() directly.
+//               Fast, deterministic, no network — used for CI and cassette replay.
+//   HTTP:       sends real fetch() requests to a running proxy instance.
+//               Slower, requires the proxy to be running — used for live demos
+//               where dashboard visibility matters.
 
 import { createProxyServer, resetSessions, clearSchemaStore } from '@rind/proxy';
 import type { Scenario, ScenarioResult, ScenarioStep, StepResult, SimMode } from './scenarios/types.js';
 import { createForwardFn } from './cassette.js';
 
+// A transport abstracts in-process vs HTTP dispatch so runStep stays unchanged.
+type Transport = (endpoint: string, init: RequestInit) => Promise<Response>;
+
 async function runStep(
-  app: ReturnType<typeof createProxyServer>['app'],
+  transport: Transport,
   step: ScenarioStep,
   resolvedSessionId?: string,
 ): Promise<StepResult> {
@@ -30,7 +36,7 @@ async function runStep(
     body = { sessionId: resolvedSessionId, ...(body as Record<string, unknown>) };
   }
 
-  const response = await app.request(endpoint, {
+  const response = await transport(endpoint, {
     method: step.method,
     headers: { 'Content-Type': 'application/json' },
     body: body != null ? JSON.stringify(body) : undefined,
@@ -108,31 +114,48 @@ async function runStep(
   };
 }
 
-export async function runScenario(scenario: Scenario, mode: SimMode): Promise<ScenarioResult> {
-  // Reset shared singleton state to prevent bleed between scenarios in the same process
-  resetSessions();
-  clearSchemaStore();
+export async function runScenario(
+  scenario: Scenario,
+  mode: SimMode,
+  // When set, sends real HTTP requests to the running proxy instead of running in-process.
+  // The proxy must be started separately with appropriate policies loaded.
+  proxyUrl?: string,
+): Promise<ScenarioResult> {
+  // Reset shared singleton state to prevent bleed between scenarios in the same process.
+  // Only needed for in-process mode — HTTP mode talks to an external process.
+  if (!proxyUrl) {
+    resetSessions();
+    clearSchemaStore();
+  }
 
   const start = Date.now();
 
-  // Create cassette-backed forward function
-  const forwardFn = createForwardFn(scenario.slug, mode, scenario.toolHandlers);
+  let transport: Transport;
 
-  // Create proxy in-process — no port binding, no network
-  const { app } = createProxyServer({
-    port: 0, // unused — we call app.request() directly
-    agentId: scenario.agentId,
-    upstreamMcpUrl: 'http://mock-mcp-unused', // unused when forwardFn is set
-    policy: scenario.policy,
-    forwardFn,
-    logLevel: 'error', // suppress logs during scenario runs
-  });
+  if (proxyUrl) {
+    // HTTP transport — forward requests to the running proxy over the network.
+    // Note: cassette replay is not used in HTTP mode; the proxy's own policy determines outcomes.
+    const base = proxyUrl.replace(/\/$/, '');
+    transport = (endpoint, init) => fetch(`${base}${endpoint}`, init);
+  } else {
+    // In-process transport — call the Hono app directly, no network round-trip.
+    const forwardFn = createForwardFn(scenario.slug, mode, scenario.toolHandlers);
+    const { app } = createProxyServer({
+      port: 0, // unused — we call the app directly
+      agentId: scenario.agentId,
+      upstreamMcpUrl: 'http://mock-mcp-unused', // unused when forwardFn is injected
+      policy: scenario.policy,
+      forwardFn,
+      logLevel: 'error', // suppress logs during scenario runs
+    });
+    transport = (endpoint, init) => app.request(endpoint, init);
+  }
 
   const stepResults: StepResult[] = [];
   let resolvedSessionId: string | undefined;
 
   for (const step of scenario.steps) {
-    const result = await runStep(app, step, resolvedSessionId);
+    const result = await runStep(transport, step, resolvedSessionId);
     stepResults.push(result);
 
     // If this step created a session, capture the session ID for subsequent steps

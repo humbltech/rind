@@ -1,11 +1,13 @@
 // CLI entry point for `pnpm sim`
 //
 // Usage:
-//   pnpm sim                              # replay all scenarios
-//   pnpm sim replit-db-deletion           # replay one scenario
-//   pnpm sim --mode record                # record all scenarios (requires real tool handlers)
-//   pnpm sim --mode live                  # live mode (no cassette save, verifies drift)
-//   pnpm sim --mode record tool-poisoning # record one scenario
+//   pnpm sim                                    # replay all scenarios (in-process)
+//   pnpm sim replit-db-deletion                 # replay one scenario
+//   pnpm sim --mode record                      # record all scenarios (requires real tool handlers)
+//   pnpm sim --mode live                        # live mode (no cassette save, verifies drift)
+//   pnpm sim --mode record tool-poisoning       # record one scenario
+//   pnpm sim --http http://localhost:7777        # demo mode: send real HTTP to running proxy
+//   pnpm sim --http http://localhost:7777 replit-db-deletion  # demo one scenario via HTTP
 
 import { scenarios, scenariosBySlug } from './scenarios/index.js';
 import { runScenario } from './scenario-runner.js';
@@ -20,9 +22,10 @@ import {
 } from './reporter.js';
 import type { SimMode } from './scenarios/types.js';
 
-function parseArgs(args: string[]): { mode: SimMode; slugs: string[] } {
+function parseArgs(args: string[]): { mode: SimMode; slugs: string[]; proxyUrl?: string } {
   let mode: SimMode = 'replay';
   const slugs: string[] = [];
+  let proxyUrl: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -33,16 +36,18 @@ function parseArgs(args: string[]): { mode: SimMode; slugs: string[] } {
         process.exit(1);
       }
       mode = m as SimMode;
+    } else if (arg === '--http' && args[i + 1]) {
+      proxyUrl = args[++i]!;
     } else if (!arg.startsWith('--')) {
       slugs.push(arg);
     }
   }
 
-  return { mode, slugs };
+  return { mode, slugs, proxyUrl };
 }
 
 async function main() {
-  const { mode, slugs } = parseArgs(process.argv.slice(2));
+  const { mode, slugs, proxyUrl } = parseArgs(process.argv.slice(2));
 
   const toRun =
     slugs.length > 0
@@ -57,7 +62,8 @@ async function main() {
         })
       : scenarios;
 
-  console.log(`\nRind Simulation — mode: ${mode.toUpperCase()}`);
+  const modeLabel = proxyUrl ? `HTTP demo → ${proxyUrl}` : `mode: ${mode.toUpperCase()}`;
+  console.log(`\nRind Simulation — ${modeLabel}`);
   console.log(`Running ${toRun.length} scenario${toRun.length !== 1 ? 's' : ''}\n`);
 
   const simStart = Date.now();
@@ -68,7 +74,7 @@ async function main() {
     printWithoutRind(scenario);
     printWithRindHeader();
 
-    const result = await runScenario(scenario, mode);
+    const result = await runScenario(scenario, mode, proxyUrl);
 
     for (const step of result.steps) {
       printStep(step.label, step.status, step.error);

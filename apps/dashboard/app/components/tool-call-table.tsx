@@ -4,11 +4,12 @@
 
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type React from 'react';
 
 export interface ToolCallEntry {
   sessionId: string;
+  sessionName?: string;
   agentId: string;
   serverId: string;
   toolName: string;
@@ -16,6 +17,12 @@ export interface ToolCallEntry {
   // Present when the proxy returns a decision alongside the call
   outcome?: 'allowed' | 'blocked' | 'require-approval';
   reason?: string;
+  // Tool source classification
+  source?: 'builtin' | 'mcp';
+  // Tool input arguments (for display in expandable row)
+  input?: unknown;
+  // Working directory
+  cwd?: string;
 }
 
 interface ToolCallTableProps {
@@ -35,9 +42,9 @@ export function ToolCallTable({ entries }: ToolCallTableProps) {
       <table className="w-full text-sm border-collapse">
         <TableHeader />
         <tbody>
-          {sorted.map((entry) => (
+          {sorted.map((entry, idx) => (
             <TableRow
-              key={entry.timestamp}
+              key={`${entry.timestamp}-${idx}`}
               entry={entry}
               isNew={entry.timestamp === mostRecentTimestamp && entries.length > 1}
             />
@@ -52,7 +59,7 @@ function TableHeader() {
   return (
     <thead className="sticky top-0 bg-surface border-b border-border z-10">
       <tr>
-        {['Time', 'Agent', 'Server', 'Tool', 'Outcome'].map((h) => (
+        {['Time', 'Agent', 'Server', 'Tool', 'Source', 'Outcome'].map((h) => (
           <th
             key={h}
             className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-muted"
@@ -67,6 +74,7 @@ function TableHeader() {
 
 function TableRow({ entry, isNew }: { entry: ToolCallEntry; isNew: boolean }) {
   const rowRef = useRef<HTMLTableRowElement>(null);
+  const [expanded, setExpanded] = useState(false);
 
   // Slide-in animation on first mount — motion only on data arrival (D-033 discipline)
   useEffect(() => {
@@ -75,28 +83,49 @@ function TableRow({ entry, isNew }: { entry: ToolCallEntry; isNew: boolean }) {
   }, [isNew]);
 
   return (
-    <tr
-      ref={rowRef}
-      className="border-b border-border-subtle last:border-0 hover:bg-overlay transition-colors duration-100"
-    >
-      <td className="px-4 py-3 font-mono text-[12px] text-muted whitespace-nowrap">
-        {formatTimestamp(entry.timestamp)}
-      </td>
-      <td className="px-4 py-3 font-mono text-[12px] text-muted max-w-[120px] truncate">
-        {entry.agentId}
-      </td>
-      <td className="px-4 py-3 font-mono text-[12px] text-muted max-w-[120px] truncate">
-        {entry.serverId}
-      </td>
-      <td className="px-4 py-3">
-        <span className="font-mono text-[12px] text-accent bg-[color-mix(in_srgb,var(--rind-accent)_8%,transparent)] px-2 py-0.5 rounded">
-          {entry.toolName}
-        </span>
-      </td>
-      <td className="px-4 py-3">
-        {entry.outcome && <OutcomeBadge outcome={entry.outcome} />}
-      </td>
-    </tr>
+    <>
+      <tr
+        ref={rowRef}
+        className="border-b border-border-subtle last:border-0 hover:bg-overlay transition-colors duration-100 cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <td className="px-4 py-3 font-mono text-[12px] text-muted whitespace-nowrap">
+          <span className="mr-1 text-dim">{expanded ? '\u25BC' : '\u25B6'}</span>
+          {formatTimestamp(entry.timestamp)}
+        </td>
+        <td className="px-4 py-3 max-w-[200px]" title={`${entry.agentId}\n${entry.sessionId}`}>
+          <AgentSessionLabel agentId={entry.agentId} sessionName={entry.sessionName} />
+        </td>
+        <td className="px-4 py-3 font-mono text-[12px] text-muted max-w-[120px] truncate">
+          {entry.serverId}
+        </td>
+        <td className="px-4 py-3">
+          <span className="font-mono text-[12px] text-accent bg-[color-mix(in_srgb,var(--rind-accent)_8%,transparent)] px-2 py-0.5 rounded">
+            {entry.toolName}
+          </span>
+        </td>
+        <td className="px-4 py-3">
+          <SourceBadge source={entry.source} />
+        </td>
+        <td className="px-4 py-3">
+          {entry.outcome && <OutcomeBadge outcome={entry.outcome} />}
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="border-b border-border-subtle">
+          <td colSpan={6} className="px-4 py-3 bg-[var(--rind-overlay)]">
+            <InputDetail
+              input={entry.input}
+              cwd={entry.cwd}
+              reason={entry.reason}
+              agentId={entry.agentId}
+              sessionId={entry.sessionId}
+              sessionName={entry.sessionName}
+            />
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -149,6 +178,117 @@ function EmptyState() {
       <p className="text-xs text-dim">Tool calls appear here as agents make requests through the proxy</p>
     </div>
   );
+}
+
+// Source badge — BUILTIN vs MCP
+function SourceBadge({ source }: { source?: 'builtin' | 'mcp' }) {
+  if (!source) return null;
+  const isMcp = source === 'mcp';
+  return (
+    <span
+      className="font-mono text-[10px] tracking-[0.04em] px-2 py-0.5 rounded border"
+      style={{
+        color: isMcp ? 'var(--rind-accent)' : 'var(--rind-foreground-muted)',
+        background: isMcp
+          ? 'color-mix(in srgb, var(--rind-accent) 10%, transparent)'
+          : 'var(--rind-overlay)',
+        borderColor: isMcp
+          ? 'color-mix(in srgb, var(--rind-accent) 24%, transparent)'
+          : 'var(--rind-border-subtle)',
+      }}
+    >
+      {isMcp ? 'MCP' : 'BUILTIN'}
+    </span>
+  );
+}
+
+// Expandable input detail panel
+function InputDetail({ input, cwd, reason, agentId, sessionId, sessionName }: {
+  input: unknown;
+  cwd?: string;
+  reason?: string;
+  agentId: string;
+  sessionId: string;
+  sessionName?: string;
+}) {
+  const inputStr = formatInput(input);
+  const hasInput = input != null && JSON.stringify(input) !== '{}';
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+        <DetailRow label="Agent ID" value={agentId} />
+        <DetailRow label="Session ID" value={sessionId} />
+        {sessionName && <DetailRow label="Session Name" value={sessionName} />}
+        {cwd && <DetailRow label="Working Dir" value={cwd} />}
+      </div>
+      {reason && (
+        <div className="flex gap-2 text-[11px]">
+          <span className="text-dim font-medium w-20 shrink-0">Reason</span>
+          <span className="font-mono text-critical">{reason}</span>
+        </div>
+      )}
+      {hasInput && (
+        <pre className="font-mono text-[11px] text-muted whitespace-pre-wrap break-all max-h-[200px] overflow-auto mt-1 p-2 rounded bg-[var(--rind-canvas)]">
+          {inputStr}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-2 text-[11px]">
+      <span className="text-dim font-medium w-20 shrink-0">{label}</span>
+      <span className="font-mono text-muted truncate" title={value}>{value}</span>
+    </div>
+  );
+}
+
+function formatInput(input: unknown): string {
+  if (input == null) return '';
+  try {
+    const str = JSON.stringify(input, null, 2);
+    // Truncate very long inputs for display
+    return str.length > 2000 ? str.slice(0, 2000) + '\n... (truncated)' : str;
+  } catch {
+    return String(input);
+  }
+}
+
+// Agent + Session label — two-line display: agent type on top, session name below
+function AgentSessionLabel({ agentId, sessionName }: { agentId: string; sessionName?: string }) {
+  const agentLabel = deriveAgentLabel(agentId);
+  const sessionLabel = sessionName ?? deriveSessionLabel(agentId);
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="font-mono text-[11px] text-foreground font-medium truncate">
+        {agentLabel}
+      </span>
+      <span className="font-mono text-[10px] text-dim truncate">
+        {sessionLabel}
+      </span>
+    </div>
+  );
+}
+
+// Derive a human-readable agent label from the agentId
+function deriveAgentLabel(agentId: string): string {
+  // hook:{session-uuid} → "claude-code"
+  if (agentId.startsWith('hook:')) return 'claude-code';
+  // Subagent IDs from Claude Code include agent_type
+  // For now, just return the ID
+  return agentId.length > 20 ? agentId.slice(0, 20) + '\u2026' : agentId;
+}
+
+// Derive a session label from the agentId when no session name is available
+function deriveSessionLabel(agentId: string): string {
+  if (agentId.startsWith('hook:')) {
+    const uuid = agentId.slice(5);
+    return uuid.slice(0, 8);
+  }
+  return agentId.slice(0, 8);
 }
 
 function formatTimestamp(ts: number): string {

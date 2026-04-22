@@ -86,7 +86,12 @@ export async function evaluateHook(
     durationMs: 0,
   });
 
-  const { interceptorResult } = await intercept(event, evaluateOnlyForward, interceptorOpts);
+  // Hook tool inputs are user-initiated (the user's coding agent writing code),
+  // not attacker-controlled MCP inputs. Skip injection scanning to avoid false
+  // positives on legitimate code patterns (template literals, shell substitutions).
+  const hookOpts = { ...interceptorOpts, skipRequestInspection: true };
+
+  const { interceptorResult } = await intercept(event, evaluateOnlyForward, hookOpts);
 
   const action = interceptorResult.action;
 
@@ -103,6 +108,7 @@ export async function evaluateHook(
 // ─── Conversions ─────────────────────────────────────────────────────────────
 
 function hookRequestToToolCallEvent(req: HookRequest): ToolCallEvent {
+  const isMcp = req.tool_name.startsWith('mcp__');
   return {
     // Use agent_id from subagent context if present, otherwise derive from session
     agentId:   req.agent_id ?? `hook:${req.session_id}`,
@@ -113,6 +119,8 @@ function hookRequestToToolCallEvent(req: HookRequest): ToolCallEvent {
     toolName:  req.tool_name,
     input:     req.tool_input,
     timestamp: Date.now(),
+    source:    isMcp ? 'mcp' : 'builtin',
+    cwd:       req.cwd,
   };
 }
 

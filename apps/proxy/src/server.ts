@@ -20,14 +20,16 @@ import { intercept } from './interceptor.js';
 import { PolicyEngine } from './policy/engine.js';
 import { InMemoryPolicyStore } from './policy/store.js';
 import { loadPolicyFile, emptyPolicyConfig } from './policy/loader.js';
-import { createSession, killSession, listSessions } from './session.js';
+import { createSession, getSession, killSession, listSessions } from './session.js';
 import { RindEventBus } from './event-bus.js';
 import { RingBuffer } from './ring-buffer.js';
+import { PersistentRingBuffer } from './persistent-ring-buffer.js';
 import { AuditWriter } from './audit-writer.js';
 import { LoopDetector } from './loop-detector.js';
 import { RateLimiter } from './rate-limiter.js';
 import { listPacks, getPack, expandPackRules, rulesFromPack, recommendPacks } from './policy/packs.js';
 import { HookRequestSchema, evaluateHook } from './hooks/claude-code.js';
+import { discoverClaudeCodeContext, discoverMcpServers, resolveSessionName } from './hooks/claude-code-context.js';
 import { UpstreamPool } from './transport/pool.js';
 import { createUpstreamClient } from './transport/upstream/factory.js';
 import { mcpGateway } from './transport/gateway.js';
@@ -130,14 +132,23 @@ export function createProxyServer(config: ProxyConfig) {
   });
 
   // ── Observability pipeline (D-018) ───────────────────────────────────────────
-  const ringBuffer = new RingBuffer<ToolCallEvent>(config.ringBufferSize ?? 10_000);
+  // Tool call events are persisted to a JSONL file and reloaded on startup.
+  // The audit log path defaults to rind-audit.jsonl; tool calls go to rind-events.jsonl.
+  const eventsLogPath = config.auditLogPath
+    ? config.auditLogPath.replace(/\.jsonl$/, '-events.jsonl')
+    : 'rind-events.jsonl';
+  const ringBuffer = new PersistentRingBuffer<ToolCallEvent>({
+    capacity: config.ringBufferSize ?? 10_000,
+    filePath: eventsLogPath,
+    onError: (err) => logger.error({ err }, 'Event log write failed'),
+  });
   const auditWriter = config.auditLogPath
     ? new AuditWriter(config.auditLogPath, (err) => {
         logger.error({ err }, 'Audit write failed');
       })
     : null;
 
-  // Ring buffer subscriber
+  // Ring buffer subscriber (for MCP proxy path — hook path pushes directly with enrichment)
   bus.on('tool:call', (event) => ringBuffer.push(event));
 
   // Audit subscriber — writes every policy decision
@@ -168,7 +179,7 @@ export function createProxyServer(config: ProxyConfig) {
       loopDetector,
       rateLimiter,
       onToolCallEvent: (event: ToolCallEvent, rule?: import('./types.js').PolicyRule) => {
-        ringBuffer.push(event);
+        // bus.emit triggers the ring buffer subscriber — no direct push needed
         bus.emit('tool:call', event);
         emitAudit(bus, {
           eventType: 'tool:call',
@@ -183,7 +194,7 @@ export function createProxyServer(config: ProxyConfig) {
       onToolResponseEvent: () => {},
       blockOnCriticalResponseThreats: false,
     };
-    app.route('/', mcpGateway(upstreamPool, gatewayInterceptorOpts));
+    app.route('/', mcpGateway(upstreamPool, gatewayInterceptorOpts, PROXY_VERSION));
     logger.info({ servers: Object.keys(config.servers ?? {}) }, 'MCP gateway mounted');
   }
 
@@ -197,12 +208,14 @@ export function createProxyServer(config: ProxyConfig) {
       (n, s) => n + s.findings.filter((f) => f.severity === 'critical' || f.severity === 'high').length,
       0,
     );
+    // Include MCP servers discovered from Claude Code config (not just proxied servers)
+    const discoveredServers = discoverMcpServers();
     return c.json({
       status: 'ok',
       sessions: { total: sessions.length, active: sessions.filter((s) => s.active).length },
       toolCalls: { total: events.length },
       threats: { total: threatCount },
-      servers: { total: schemas.length },
+      servers: { total: Math.max(schemas.length, discoveredServers.length) },
     });
   });
 
@@ -364,13 +377,20 @@ export function createProxyServer(config: ProxyConfig) {
       return c.json({ continue: false, stopReason: `Rind: invalid hook payload — ${parsed.error.message}` }, 400);
     }
 
+    // Auto-register session on first hook call from a session ID
+    const sid = parsed.data.session_id;
+    const agentId = parsed.data.agent_id ?? `hook:${sid}`;
+    if (!getSession(sid)) {
+      createSession(agentId, sid);
+    }
+
     const hookResponse = await evaluateHook(parsed.data, {
       policyEngine,
       loopDetector,
       rateLimiter,
       onToolCallEvent: (event, rule) => {
-        ringBuffer.push(event);
-        bus.emit('tool:call', event);
+        // Don't push to ring buffer here — the enriched event (with outcome) is
+        // pushed after evaluateHook returns. Only emit audit.
         emitAudit(bus, {
           eventType: 'tool:call',
           sessionId: event.sessionId,
@@ -387,12 +407,76 @@ export function createProxyServer(config: ProxyConfig) {
       blockOnCriticalResponseThreats: false,
     });
 
+    // Enrich the event with the policy decision before storing in the ring buffer
+    const isDenied = 'continue' in hookResponse;
+    const decision = isDenied ? 'deny' : 'allow';
+    // Resolve session name from Claude Code runtime files (cached per-request, not per-event)
+    const sessionName = resolveSessionName(sid);
+    const enrichedEvent = {
+      sessionId: sid,
+      sessionName,
+      agentId,
+      serverId: parsed.data.tool_name.startsWith('mcp__') ? parsed.data.tool_name.split('__')[1] || 'mcp-unknown' : 'builtin',
+      toolName: parsed.data.tool_name,
+      input: parsed.data.tool_input,
+      timestamp: Date.now(),
+      outcome: (isDenied ? 'blocked' : 'allowed') as 'allowed' | 'blocked',
+      reason: isDenied ? (hookResponse as { stopReason: string }).stopReason : undefined,
+      source: (parsed.data.tool_name.startsWith('mcp__') ? 'mcp' : 'builtin') as 'builtin' | 'mcp',
+      cwd: parsed.data.cwd,
+    };
+    ringBuffer.push(enrichedEvent);
+
     logger.info(
-      { toolName: parsed.data.tool_name, decision: 'continue' in hookResponse ? 'deny' : 'allow' },
+      { toolName: parsed.data.tool_name, decision },
       'Hook evaluation complete',
     );
 
     return c.json(hookResponse);
+  });
+
+  // ─── Claude Code context discovery ──────────────────────────────────────────
+  // Returns MCP servers registered in Claude Code and active session metadata.
+  // Dashboard polls this to show server protection states and session names.
+  app.get('/hook/context', (c) => {
+    const context = discoverClaudeCodeContext();
+
+    // Enrich with protection state: which MCP servers are also going through the proxy?
+    const proxiedServerIds = new Set(Object.keys(config.servers ?? {}));
+    // Which MCP servers have been seen via hooks (mcp__server__tool pattern)?
+    const observedServerIds = new Set<string>();
+    for (const event of ringBuffer.toArray()) {
+      if (event.source === 'mcp' && event.serverId !== 'builtin') {
+        observedServerIds.add(event.serverId);
+      }
+    }
+
+    const enrichedServers = context.mcpServers.map((server) => {
+      // Protection state: proxied > observed > registered
+      const protectionState = proxiedServerIds.has(server.id)
+        ? 'proxied' as const
+        : observedServerIds.has(server.id)
+          ? 'observed' as const
+          : 'registered' as const;
+
+      // Connection status upgrade: if we've seen tool calls, it's connected
+      const connectionStatus = observedServerIds.has(server.id)
+        ? 'connected' as const
+        : server.connectionStatus;
+
+      return { ...server, protectionState, connectionStatus };
+    });
+
+    return c.json({
+      mcpServers: enrichedServers,
+      activeSessions: context.activeSessions,
+    });
+  });
+
+  // Session name lookup — returns the human-readable name for a session ID
+  app.get('/hook/session-name/:sessionId', (c) => {
+    const name = resolveSessionName(c.req.param('sessionId'));
+    return c.json({ name: name ?? null });
   });
 
   // ─── Session management ────────────────────────────────────────────────────────
@@ -657,7 +741,13 @@ export function createProxyServer(config: ProxyConfig) {
   });
 
   return {
-    start: () => {
+    start: async () => {
+      // Reload persisted events into the ring buffer before accepting requests
+      const loaded = await ringBuffer.load();
+      if (loaded > 0) {
+        logger.info({ events: loaded, file: eventsLogPath }, 'Reloaded persisted tool call events');
+      }
+
       const server = serve({ fetch: app.fetch, port: config.port });
       logger.info(
         { port: config.port, upstreamMcpUrl: config.upstreamMcpUrl },

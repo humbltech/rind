@@ -44,5 +44,8 @@ if (subcommand === 'wrap') {
   }
 
   const { start } = createProxyServer(config);
-  start();
+  start().catch((err) => {
+    console.error('Failed to start Rind proxy:', err);
+    process.exit(1);
+  });
 }
