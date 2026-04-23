@@ -145,13 +145,21 @@ export async function runScenario(
     const base = proxyUrl.replace(/\/$/, '');
     transport = (endpoint, init) => fetch(`${base}${endpoint}`, init);
 
-    // Load the scenario's policy into the running proxy before executing steps.
-    // This ensures the proxy has the right rules to match the scenario's tool names.
-    await fetch(`${base}/policies`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(scenario.policy),
-    });
+    // Merge scenario rules into the live proxy without wiping existing rules
+    // (pack rules, custom rules). PUT /policies would nuke them — use rule-level
+    // POST instead, skipping any rule whose name already exists in the proxy.
+    const existingRes = await fetch(`${base}/policies`);
+    const existingData = existingRes.ok ? (await existingRes.json() as { policies?: { name: string }[] }) : { policies: [] };
+    const existingNames = new Set((existingData.policies ?? []).map((r: { name: string }) => r.name));
+    for (const rule of scenario.policy.policies) {
+      if (!existingNames.has(rule.name)) {
+        await fetch(`${base}/policies/rules`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rule),
+        });
+      }
+    }
   } else {
     // In-process transport — call the Hono app directly, no network round-trip.
     const forwardFn = createForwardFn(scenario.slug, mode, scenario.toolHandlers);

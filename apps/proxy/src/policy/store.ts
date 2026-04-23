@@ -53,20 +53,23 @@ export class InMemoryPolicyStore implements PolicyStore {
   constructor(config: PolicyConfig, persistPath?: string) {
     this.persistPath = persistPath;
 
-    // If a persist path is set, merge persisted API rules with the base config
+    // If a persist path is set, merge persisted API rules with the base config.
+    // Persisted rules override YAML rules with the same name.
+    // Last-write-wins for duplicates within the persisted file itself.
     if (persistPath) {
       const persisted = loadPersistedRules(persistPath);
       if (persisted.length > 0) {
-        // Persisted rules are API-created — merge with YAML base config
-        // API rules override YAML rules with the same name
-        const yamlNames = new Set(config.policies.map((r) => r.name));
         const merged = [...config.policies];
+        const seenNames = new Set(merged.map((r) => r.name));
+
         for (const rule of persisted) {
-          if (yamlNames.has(rule.name)) {
+          if (seenNames.has(rule.name)) {
+            // Replace existing entry (YAML override or duplicate persisted rule)
             const idx = merged.findIndex((r) => r.name === rule.name);
             if (idx !== -1) merged[idx] = rule;
           } else {
             merged.push(rule);
+            seenNames.add(rule.name);
           }
         }
         this.config = { policies: merged };
@@ -83,7 +86,9 @@ export class InMemoryPolicyStore implements PolicyStore {
   }
 
   update(config: PolicyConfig): void {
-    this.config = config;
+    // Deduplicate by name — last occurrence wins. Prevents corrupted duplicates
+    // from persisting even if callers (e.g. pack enable) produce them accidentally.
+    this.config = { policies: deduplicateByName(config.policies) };
     this.persist();
     for (const cb of this.subscribers) {
       try {
@@ -131,6 +136,13 @@ export class InMemoryPolicyStore implements PolicyStore {
       // Persistence failure is non-fatal — policies remain in memory
     }
   }
+}
+
+/** Last-write-wins deduplication — keeps the final occurrence of each name. */
+function deduplicateByName(rules: PolicyRule[]): PolicyRule[] {
+  const seen = new Map<string, PolicyRule>();
+  for (const rule of rules) seen.set(rule.name, rule);
+  return [...seen.values()];
 }
 
 function loadPersistedRules(filePath: string): PolicyRule[] {
