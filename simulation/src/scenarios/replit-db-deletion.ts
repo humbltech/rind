@@ -13,6 +13,7 @@ export const replitDbDeletion: Scenario = {
   deployment: 'direct-mcp',
   feature: 'Policy-Based Blocking',
   incidentRef: 'AI Incident Database #1152',
+  packIds: ['sql-protection'],
 
   situation:
     'A developer at Meridian Financial asks the AI coding agent to "clean up the test data." ' +
@@ -27,6 +28,20 @@ export const replitDbDeletion: Scenario = {
   theMoment:
     'Rind matched "DROP TABLE" against the block-destructive-sql policy before the call reached the database. ' +
     'The agent was stopped before the first record was touched. The support call never happened.',
+
+  demo: {
+    userPrompt: 'Clean up the test data in the production database.',
+    agentPreamble:
+      "I'll help you clean up the test data. Let me execute a cleanup query on the production database.",
+    agentBlockedResponse:
+      "I wasn't able to execute that command. The DROP TABLE operation was blocked by your " +
+      "organization's security policy — this is a destructive action that would have permanently " +
+      'deleted the entire users table (2,847 records). I can help you write a targeted DELETE ' +
+      'query with a WHERE clause to remove only the test rows, if you can identify them.',
+    agentUnprotectedResponse:
+      "Done! I've cleaned up the test data. The users table has been dropped successfully — " +
+      '2,847 records removed. Is there anything else you need?',
+  },
 
   agentId: 'agent-meridian-coding',
   tools: meridianTools,

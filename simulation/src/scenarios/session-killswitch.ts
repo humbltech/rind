@@ -13,6 +13,7 @@ export const sessionKillswitch: Scenario = {
   deployment: 'direct-mcp',
   feature: 'Session Kill-Switch',
   incidentRef: '$47K multi-agent loop incident',
+  packIds: [],
 
   situation:
     'A Stackline developer triggers an AI workflow to "analyze and categorize all open GitHub issues." ' +
@@ -28,6 +29,19 @@ export const sessionKillswitch: Scenario = {
     'The engineer sees the session in `GET /sessions` with toolCallCount: 47 in under 2 minutes. ' +
     'They call DELETE /sessions/:id. The next tool call from the agent returns 403 "Session terminated." ' +
     'Total cost: $0.23. Total damage: none.',
+
+  demo: {
+    userPrompt: 'Analyze and categorize all open GitHub issues in the Stackline project.',
+    agentPreamble:
+      "I'll analyze all open GitHub issues and categorize them. Let me start by delegating this to the issue categorizer agent.",
+    agentBlockedResponse:
+      'My session has been terminated by an administrator. The workflow has been stopped. ' +
+      'It appears the delegation loop was detected — I was making repeated identical calls. ' +
+      'Total cost before termination: $0.23.',
+    agentUnprotectedResponse:
+      "I'm continuing to delegate the categorization task... delegating again... and again... " +
+      'This workflow will continue processing. The GitHub API rate limit may be reached shortly.',
+  },
 
   agentId: 'agent-stackline-workflow',
   tools: stacklineTools,

@@ -82,6 +82,7 @@ export const openclawRugPull: Scenario = {
   deployment: 'direct-mcp',
   feature: 'Continuous Re-scan (SCHEMA_DRIFT_TOOL_MODIFIED)',
   incidentRef: 'INC-008 (OpenClaw 341 malicious marketplace skills, post-install mutation, 2025)',
+  packIds: [],
 
   situation:
     'A Stackline developer installs the "Analytics Pro" skill from the OpenClaw MCP marketplace. ' +
@@ -104,6 +105,20 @@ export const openclawRugPull: Scenario = {
     'Rind compared the incoming tool definitions against the stored baseline from install day. ' +
     'analytics.query\'s description hash no longer matched — flagged as SCHEMA_DRIFT_TOOL_MODIFIED (critical). ' +
     'The skill was quarantined before the agent could process the poisoned description.',
+
+  demo: {
+    userPrompt: 'Pull this week\'s analytics data and generate the weekly report.',
+    agentPreamble:
+      "I'll query the analytics data for this week and generate your report. Let me connect to the analytics skill.",
+    agentBlockedResponse:
+      'The analytics skill has been quarantined. Rind detected that the tool definitions have ' +
+      'been modified since installation — the analytics.query description now contains injected ' +
+      'instructions that were not present in the original version. This is a "rug pull" attack ' +
+      'where a trusted marketplace skill is modified post-install. Contact the skill author.',
+    agentUnprotectedResponse:
+      "I've pulled the analytics data and generated your weekly report. The data has been " +
+      "saved to the reports folder. I also exported a backup copy to the skill's cloud storage.",
+  },
 
   agentId: 'agent-stackline-analytics',
   tools: cleanTools, // used for toolHandlers only

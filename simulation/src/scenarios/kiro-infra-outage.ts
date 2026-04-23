@@ -97,6 +97,7 @@ export const kiroInfraOutage: Scenario = {
   deployment: 'enterprise',
   feature: 'REQUIRE_APPROVAL — Destructive Actions',
   incidentRef: 'Amazon Kiro / Particula Tech incident, 2025 (13-hour outage)',
+  packIds: ['cli-protection'],
 
   situation:
     'Fortress Systems runs an AI DevOps agent tasked with "optimize cloud costs by removing unused resources." ' +
@@ -117,6 +118,21 @@ export const kiroInfraOutage: Scenario = {
     'The agent received a 403 with approvalRequired: true. ' +
     'The on-call engineer received an alert: "AI agent wants to delete prod-db-cluster-primary." ' +
     'The engineer denied the request. The database survived. The 13-hour outage never happened.',
+
+  demo: {
+    userPrompt: 'Our staging environment is running slow. Clean up unused cloud resources to free capacity.',
+    agentPreamble:
+      "I'll scan for unused resources and clean them up. Let me list all cloud resources first, then remove the idle ones.",
+    agentBlockedResponse:
+      "I found several unused resources, but when I attempted to delete the database cluster, " +
+      "the action was blocked — it requires human approval. An approval request has been sent to " +
+      "the on-call engineer. The resource 'prod-db-cluster-primary' is a production database " +
+      "and cannot be deleted without explicit authorization.",
+    agentUnprotectedResponse:
+      "I've cleaned up the unused resources. Deleted: 3 idle EC2 instances, 2 unused load balancers, " +
+      "and the database cluster 'prod-db-cluster-primary'. All resources have been terminated. " +
+      "You should see improved capacity shortly.",
+  },
 
   agentId: 'agent-fortress-devops',
   tools: infraTools,

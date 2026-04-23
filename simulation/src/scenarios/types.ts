@@ -44,10 +44,24 @@ export interface Scenario {
   feature: string; // "Policy-Based Blocking"
   incidentRef?: string; // "AI Incident Database #1152"
 
-  // Human-readable story — printed in terminal output
+  // Policy packs that protect against this scenario.
+  // Maps to pack IDs in apps/proxy/src/policy/packs.ts.
+  // Empty = scenario uses scanner/inspector features, not policy packs.
+  packIds: string[];
+
+  // Human-readable story — used in batch test output
   situation: string; // What triggered this scenario
   withoutRind: string; // What happens without protection (2-3 sentences)
   theMoment: string; // The insight — what Rind caught or blocked
+
+  // Demo chat fields — used in single-scenario demo mode
+  // These drive the chat-like presentation where the sim looks like a real agent conversation.
+  demo: {
+    userPrompt: string; // What the "user" types: "Clean up the test data"
+    agentPreamble: string; // Agent's thinking before tool call: "I'll help you clean up..."
+    agentBlockedResponse: string; // Agent reacts to Rind block: "I can't complete that action..."
+    agentUnprotectedResponse: string; // Agent when no Rind (damage): "Done! Table dropped."
+  };
 
   // Technical test definition
   tools: ToolDefinition[]; // MCP tool definitions for the mock server (and scan)
@@ -79,5 +93,21 @@ export interface ScenarioResult {
   mode: SimMode;
   passed: boolean;
   steps: StepResult[];
+  durationMs: number;
+}
+
+// ─── Unprotected run (--no-proxy) ────────────────────────────────────────────
+
+export interface UnprotectedStepResult {
+  label: string;
+  toolName: string;
+  input: unknown;
+  output: unknown; // The raw handler response — shows the damage
+  durationMs: number;
+}
+
+export interface UnprotectedResult {
+  scenario: Pick<Scenario, 'name' | 'slug' | 'company' | 'feature' | 'withoutRind'>;
+  steps: UnprotectedStepResult[];
   durationMs: number;
 }

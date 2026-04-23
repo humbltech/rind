@@ -8,7 +8,15 @@
 //               where dashboard visibility matters.
 
 import { createProxyServer, resetSessions, clearSchemaStore } from '@rind/proxy';
-import type { Scenario, ScenarioResult, ScenarioStep, StepResult, SimMode } from './scenarios/types.js';
+import type {
+  Scenario,
+  ScenarioResult,
+  ScenarioStep,
+  StepResult,
+  SimMode,
+  UnprotectedResult,
+  UnprotectedStepResult,
+} from './scenarios/types.js';
 import { createForwardFn } from './cassette.js';
 
 // A transport abstracts in-process vs HTTP dispatch so runStep stays unchanged.
@@ -134,9 +142,16 @@ export async function runScenario(
 
   if (proxyUrl) {
     // HTTP transport — forward requests to the running proxy over the network.
-    // Note: cassette replay is not used in HTTP mode; the proxy's own policy determines outcomes.
     const base = proxyUrl.replace(/\/$/, '');
     transport = (endpoint, init) => fetch(`${base}${endpoint}`, init);
+
+    // Load the scenario's policy into the running proxy before executing steps.
+    // This ensures the proxy has the right rules to match the scenario's tool names.
+    await fetch(`${base}/policies`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(scenario.policy),
+    });
   } else {
     // In-process transport — call the Hono app directly, no network round-trip.
     const forwardFn = createForwardFn(scenario.slug, mode, scenario.toolHandlers);
@@ -178,6 +193,54 @@ export async function runScenario(
     },
     mode,
     passed,
+    steps: stepResults,
+    durationMs: Date.now() - start,
+  };
+}
+
+// ─── Unprotected run (--no-proxy) ───────────��────────────────────────────────
+// Runs tool-call steps directly through mock handlers, bypassing the proxy.
+// Shows the raw damage that would occur without Rind protection.
+
+export async function runScenarioWithoutProxy(
+  scenario: Scenario,
+): Promise<UnprotectedResult> {
+  const start = Date.now();
+  const stepResults: UnprotectedStepResult[] = [];
+
+  for (const step of scenario.steps) {
+    // Only run tool-call steps — skip scan, session, audit log endpoints
+    if (step.endpoint !== '/proxy/tool-call' || step.method !== 'POST') continue;
+
+    const body = step.body as Record<string, unknown> | undefined;
+    if (!body) continue;
+
+    const toolName = body['toolName'] as string;
+    const input = body['input'] as unknown;
+    const handler = scenario.toolHandlers[toolName];
+
+    if (!handler) continue;
+
+    const stepStart = Date.now();
+    const result = await handler(input);
+
+    stepResults.push({
+      label: step.label,
+      toolName,
+      input,
+      output: result.output,
+      durationMs: Date.now() - stepStart,
+    });
+  }
+
+  return {
+    scenario: {
+      name: scenario.name,
+      slug: scenario.slug,
+      company: scenario.company,
+      feature: scenario.feature,
+      withoutRind: scenario.withoutRind,
+    },
     steps: stepResults,
     durationMs: Date.now() - start,
   };

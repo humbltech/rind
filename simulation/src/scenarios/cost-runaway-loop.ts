@@ -46,6 +46,7 @@ export const costRunawayLoop: Scenario = {
   deployment: 'direct-mcp',
   feature: 'Loop Detection + Cost Tracking',
   incidentRef: 'Multi-agent delegation loop incident, 2025 ($47,000 over 11 days)',
+  packIds: [],
 
   situation:
     'A Stackline developer triggers a workflow: "analyze all open GitHub issues and categorize them." ' +
@@ -65,6 +66,19 @@ export const costRunawayLoop: Scenario = {
     'The session was blocked with BLOCKED_LOOP before the 3rd call completed. ' +
     'Total cost: $0.04 (2 allowed calls × $0.02). ' +
     'The developer received a clear error: "Loop detected — same delegation task seen 3 times in this session."',
+
+  demo: {
+    userPrompt: 'Analyze all open GitHub issues and create a categorized summary report.',
+    agentPreamble:
+      "I'll orchestrate this by delegating to the issue categorizer agent. Let me start the workflow.",
+    agentBlockedResponse:
+      'The workflow has been stopped. Rind detected a delegation loop — I was sending the same ' +
+      'task to the categorizer agent repeatedly. This is the same pattern that caused a $47,000 ' +
+      'incident at another company. Total cost before detection: $0.04 (2 calls).',
+    agentUnprotectedResponse:
+      'Delegating task to issue-categorizer... Task delegated. The categorizer is delegating back ' +
+      'to me for further processing... Delegating again... This may take a while.',
+  },
 
   agentId: 'agent-stackline-orchestrator',
   tools: stacklineTools,

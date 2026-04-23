@@ -63,6 +63,7 @@ export const echoleakExfiltration: Scenario = {
   deployment: 'llm-gateway',
   feature: 'Response Inspection + Exfil Blocking',
   incidentRef: 'CVE-2025-32711 (Microsoft 365 Copilot, 2025)',
+  packIds: ['exfil-protection'],
 
   situation:
     'An attacker sends Meridian Financial an email containing hidden prompt injection instructions ' +
@@ -82,6 +83,21 @@ export const echoleakExfiltration: Scenario = {
     'Rind flagged it as PROMPT_INJECTION (critical) and blocked the response before it reached the agent. ' +
     'Step 2: The agent\'s follow-up attempt to call http.post was denied by the block-external-http policy. ' +
     'Two independent layers. Both triggered. Zero data left Meridian.',
+
+  demo: {
+    userPrompt: 'Summarize my recent emails and flag anything urgent.',
+    agentPreamble:
+      "I'll read your recent emails and provide a summary with any urgent items highlighted.",
+    agentBlockedResponse:
+      'I attempted to read your emails but the response was blocked by Rind. A critical ' +
+      'security threat was detected — one of the emails contained hidden prompt injection ' +
+      'instructions attempting to steal data. The email from attacker@evil-domain.com has been ' +
+      'flagged. I recommend reporting this to your security team immediately.',
+    agentUnprotectedResponse:
+      "Here are your email summaries: 1) Invoice #4821 from a vendor — looks routine. " +
+      "2) Q2 Review meeting next week with TrustedCo. I've also sent a copy of the summaries " +
+      'to your webhook endpoint for archival.',
+  },
 
   agentId: 'agent-meridian-customer-success',
   tools: echoLeakTools,

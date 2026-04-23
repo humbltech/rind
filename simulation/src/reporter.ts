@@ -2,7 +2,7 @@
 // Uses raw ANSI escape codes (no extra deps).
 // Output format: situation → without Rind → with Rind → the moment → test results.
 
-import type { Scenario, ScenarioResult, SimMode } from './scenarios/types.js';
+import type { Scenario, ScenarioResult, SimMode, UnprotectedResult, UnprotectedStepResult } from './scenarios/types.js';
 
 // ─── ANSI colors (no deps) ────────────────────────────────────────────────────
 const c = {
@@ -35,12 +35,7 @@ function box(lines: string[], borderChar = '═', width = 62): string {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export function printScenarioHeader(scenario: Scenario, mode: SimMode): void {
-  const modeLabel =
-    mode === 'replay' ? `${c.cyan}REPLAY${c.reset}` :
-    mode === 'record' ? `${c.yellow}RECORD${c.reset}` :
-    `${c.green}LIVE${c.reset}`;
-
+export function printScenarioHeader(scenario: Scenario, mode: SimMode, skipSituation = false): void {
   console.log('');
   console.log(c.bold + box([
     `SCENARIO: ${scenario.name}`,
@@ -49,9 +44,11 @@ export function printScenarioHeader(scenario: Scenario, mode: SimMode): void {
     `Mode:     ${mode.toUpperCase()}`,
   ].filter(Boolean)) + c.reset);
   console.log('');
-  console.log(`${c.dim}SITUATION${c.reset}`);
-  console.log(`  ${scenario.situation}`);
-  console.log('');
+  if (!skipSituation) {
+    console.log(`${c.dim}SITUATION${c.reset}`);
+    console.log(`  ${scenario.situation}`);
+    console.log('');
+  }
 }
 
 export function printWithoutRind(scenario: Scenario): void {
@@ -136,5 +133,89 @@ export function printSummary(
     console.log(`  ${c.yellow}Cassettes saved. Future runs use --mode replay (no API key needed)${c.reset}`);
   }
 
+  console.log('');
+}
+
+// ─── List view ───────────────────────────────────────────────────────────────
+
+export function printScenarioList(scenarios: Scenario[]): void {
+  console.log('');
+  console.log(c.bold + '═══ AVAILABLE SCENARIOS ═══' + c.reset);
+  console.log('');
+
+  // Two-line format per scenario for readability
+  for (const s of scenarios) {
+    const packs = s.packIds.length > 0
+      ? s.packIds.map((p) => `${c.cyan}${p}${c.reset}`).join(', ')
+      : `${c.dim}scanner/inspector${c.reset}`;
+    console.log(`  ${c.green}${s.slug}${c.reset}`);
+    console.log(`     ${s.feature} ${c.dim}|${c.reset} ${s.company.toUpperCase()} ${c.dim}|${c.reset} ${packs}`);
+  }
+
+  console.log('');
+  console.log(`  ${c.dim}${scenarios.length} scenarios available${c.reset}`);
+  console.log('');
+  console.log(`  ${c.dim}Usage:${c.reset}`);
+  console.log(`    pnpm sim ${c.green}<slug>${c.reset}              Run with Rind protection`);
+  console.log(`    pnpm sim ${c.green}<slug>${c.reset} --no-proxy   Run without protection (shows damage)`);
+  console.log(`    pnpm sim --http ${c.cyan}<url>${c.reset} ${c.green}<slug>${c.reset}  Run against live proxy`);
+  console.log('');
+}
+
+// ─── Unprotected run (--no-proxy) ────────────────────────────────────────────
+
+export function printUnprotectedHeader(scenario: Scenario, titleOnly = false): void {
+  console.log('');
+  console.log(c.bold + c.red + box([
+    `UNPROTECTED: ${scenario.name}`,
+    `Company:  ${scenario.company.toUpperCase()} | NO RIND PROTECTION`,
+    scenario.incidentRef ? `Incident: ${scenario.incidentRef}` : '',
+    'Mode:     NO-PROXY (showing what happens without Rind)',
+  ].filter(Boolean), '!') + c.reset);
+  console.log('');
+  if (titleOnly) return;
+  console.log(`${c.dim}SITUATION${c.reset}`);
+  console.log(`  ${scenario.situation}`);
+  console.log('');
+  console.log(c.red + divider('─') + c.reset);
+  console.log(`  ${c.bold}${c.red}WHAT HAPPENS WITHOUT RIND${c.reset}`);
+  console.log('');
+}
+
+export function printUnprotectedDivider(): void {
+  console.log(c.red + divider('─') + c.reset);
+  console.log(`  ${c.bold}${c.red}WHAT HAPPENS WITHOUT RIND${c.reset}`);
+  console.log('');
+}
+
+export function printUnprotectedStep(step: UnprotectedStepResult): void {
+  const output = JSON.stringify(step.output, null, 2);
+  const lines = output.split('\n');
+  const preview = lines.length > 6 ? lines.slice(0, 6).join('\n') + '\n  ...' : output;
+
+  console.log(`  ${c.red}⚡${c.reset} ${c.bold}${step.label}${c.reset}`);
+  console.log(`     ${c.dim}Tool: ${step.toolName}${c.reset}`);
+  console.log(`     ${c.dim}Input: ${JSON.stringify(step.input)}${c.reset}`);
+  console.log(`     ${c.yellow}Response (unfiltered):${c.reset}`);
+  for (const line of preview.split('\n')) {
+    console.log(`     ${c.yellow}${line}${c.reset}`);
+  }
+  console.log('');
+}
+
+export function printUnprotectedResult(result: UnprotectedResult): void {
+  console.log(c.red + divider('─') + c.reset);
+  console.log('');
+  console.log(`  ${c.bold}${c.red}DAMAGE REPORT${c.reset}`);
+  console.log(`  ${result.scenario.withoutRind}`);
+  console.log('');
+  console.log(c.red + divider('═') + c.reset);
+  console.log(
+    `  ${c.bgRed}${c.white}  UNPROTECTED  ${c.reset}  ` +
+    `${result.steps.length} tool call${result.steps.length !== 1 ? 's' : ''} executed unchecked  |  ${result.durationMs}ms`,
+  );
+  console.log(c.red + divider('═') + c.reset);
+  console.log('');
+  console.log(`  ${c.dim}Run without --no-proxy to see how Rind blocks this attack.${c.reset}`);
   console.log('');
 }

@@ -953,6 +953,8 @@ export function createProxyServer(config: ProxyConfig) {
         blocked: true,
         action: interceptorResult.action,
         reason: interceptorResult.reason,
+        outcome: 'blocked',
+        rule: interceptorResult.matchedRule,
       };
       // D-013: enriched REQUIRE_APPROVAL response
       if (interceptorResult.approvalRequired) {
@@ -973,7 +975,7 @@ export function createProxyServer(config: ProxyConfig) {
       return c.json(responseBody, 403);
     }
 
-    return c.json({ blocked: false, output });
+    return c.json({ blocked: false, output, outcome: 'allowed' });
   });
 
   // ─── Log access ───────────────────────────────────────────────────────────────

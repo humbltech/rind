@@ -36,6 +36,7 @@ export type InterceptedAction =
 export interface InterceptorResult {
   action: InterceptedAction;
   reason?: string;
+  matchedRule?: string; // name of the policy rule that triggered this action
   // REQUIRE_APPROVAL metadata (D-013)
   approvalRequired?: boolean;
   callbackUrl?: null;
@@ -139,7 +140,7 @@ export async function intercept(
     const blockReason = isLoopTriggered
       ? (evalReason ?? `Loop detected for "${event.toolName}" by policy rule "${matchedRule?.name ?? 'unknown'}".`)
       : `Tool call "${event.toolName}" denied by policy rule "${matchedRule?.name ?? 'unknown'}".`;
-    return blocked(blockAction, blockReason);
+    return blocked(blockAction, blockReason, matchedRule?.name);
   }
 
   if (action === 'REQUIRE_APPROVAL') {
@@ -261,8 +262,9 @@ export async function intercept(
 function blocked(
   action: InterceptedAction,
   reason?: string,
+  matchedRuleName?: string,
 ): { output: null; interceptorResult: InterceptorResult } {
-  return { output: null, interceptorResult: { action, reason } };
+  return { output: null, interceptorResult: { action, reason, matchedRule: matchedRuleName } };
 }
 
 function checkCostLimits(
