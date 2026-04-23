@@ -938,6 +938,20 @@ export function createProxyServer(config: ProxyConfig) {
         action: interceptorResult.action,
         reason: interceptorResult.reason,
       });
+      // Enrich the event already in the ring buffer with block details.
+      // The raw event was pushed by the onToolCallEvent callback before policy evaluation;
+      // now we backfill outcome/rule/reason so the dashboard shows the block.
+      const updated = ringBuffer.update(
+        (e) => e.sessionId === event.sessionId && e.toolName === event.toolName && e.timestamp === event.timestamp,
+        (e) => ({
+          ...e,
+          outcome: 'blocked' as const,
+          matchedRule: interceptorResult.matchedRule,
+          reason: interceptorResult.reason,
+          source: 'mcp' as const,
+        }),
+      );
+      logger.debug({ updated, bufferLen: ringBuffer.length }, 'Ring buffer enrichment for blocked call');
       emitAudit(bus, {
         eventType: 'tool:blocked',
         sessionId: event.sessionId,
@@ -974,6 +988,12 @@ export function createProxyServer(config: ProxyConfig) {
 
       return c.json(responseBody, 403);
     }
+
+    // Enrich the ring buffer event with allowed outcome so dashboard shows status
+    ringBuffer.update(
+      (e) => e.sessionId === event.sessionId && e.toolName === event.toolName && e.timestamp === event.timestamp,
+      (e) => ({ ...e, outcome: 'allowed' as const, source: 'mcp' as const }),
+    );
 
     return c.json({ blocked: false, output, outcome: 'allowed' });
   });
