@@ -832,6 +832,7 @@ export function createProxyServer(config: ProxyConfig) {
   app.post('/proxy/tool-call', async (c) => {
     const body = await c.req.json<Omit<ToolCallEvent, 'timestamp'> & { sessionId?: string }>();
 
+    const callId = randomUUID();
     const event: ToolCallEvent = {
       sessionId: body.sessionId ?? randomUUID(),
       agentId: body.agentId ?? config.agentId,
@@ -839,6 +840,7 @@ export function createProxyServer(config: ProxyConfig) {
       toolName: body.toolName,
       input: body.input,
       timestamp: Date.now(),
+      correlationId: callId,
     };
 
     // D-022: upstream timeout support
@@ -942,7 +944,7 @@ export function createProxyServer(config: ProxyConfig) {
       // The raw event was pushed by the onToolCallEvent callback before policy evaluation;
       // now we backfill outcome/rule/reason so the dashboard shows the block.
       const updated = ringBuffer.update(
-        (e) => e.sessionId === event.sessionId && e.toolName === event.toolName && e.timestamp === event.timestamp,
+        (e) => e.correlationId === callId,
         (e) => ({
           ...e,
           outcome: 'blocked' as const,
@@ -991,7 +993,7 @@ export function createProxyServer(config: ProxyConfig) {
 
     // Enrich the ring buffer event with allowed outcome so dashboard shows status
     ringBuffer.update(
-      (e) => e.sessionId === event.sessionId && e.toolName === event.toolName && e.timestamp === event.timestamp,
+      (e) => e.correlationId === callId,
       (e) => ({ ...e, outcome: 'allowed' as const, source: 'mcp' as const }),
     );
 
