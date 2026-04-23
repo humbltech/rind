@@ -11,6 +11,15 @@ const costRunawayPolicy: PolicyConfig = {
   policies: [
     ...stacklinePolicy.policies,
     {
+      // Loop guard: block the 3rd identical delegation — same tool + same input hash = loop
+      name: 'block-delegation-loop',
+      agent: '*',
+      match: { tool: ['agent.delegate'] },
+      action: 'DENY',
+      loop: { type: 'exact', threshold: 3, window: 10 },
+      failMode: 'closed',
+    },
+    {
       // Cost limit: max 10 agent.delegate calls per session — catches delegation loops
       name: 'delegation-rate-limit',
       agent: '*',
