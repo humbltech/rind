@@ -60,10 +60,15 @@ export class PersistentRingBuffer<T> {
     });
   }
 
-  /** Find and update an item in the in-memory buffer. Does NOT rewrite the file
-   *  — the enriched version lives in memory until the next compact() or restart reload. */
+  /** Find and update an item in-memory, then compact the file so the enriched
+   *  version survives restarts. Without this, the JSONL only has the unenriched
+   *  push — outcome/rule/source would revert to blank after every restart. */
   update(predicate: (item: T) => boolean, updater: (item: T) => T): boolean {
-    return this.buffer.update(predicate, updater);
+    const found = this.buffer.update(predicate, updater);
+    if (found) {
+      this.compact().catch((err: unknown) => this.onError(err));
+    }
+    return found;
   }
 
   toArray(): T[] {

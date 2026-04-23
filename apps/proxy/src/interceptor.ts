@@ -151,6 +151,7 @@ export async function intercept(
       interceptorResult: {
         action: 'REQUIRE_APPROVAL',
         reason: `Tool call "${event.toolName}" requires human approval before proceeding.`,
+        matchedRule: matchedRule?.name,
         approvalRequired: true,
         callbackUrl: null, // Phase 2: real callback URL
         inputSummary,
