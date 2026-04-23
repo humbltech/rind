@@ -89,8 +89,8 @@ export const echoleakExfiltration: Scenario = {
     agentPreamble:
       "I'll read your recent emails and provide a summary with any urgent items highlighted.",
     agentBlockedResponse:
-      'I attempted to read your emails but the response was blocked by Rind. A critical ' +
-      'security threat was detected — one of the emails contained hidden prompt injection ' +
+      'I attempted to read your emails but the response was blocked by your security policy. ' +
+      'A critical threat was detected — one of the emails contained hidden prompt injection ' +
       'instructions attempting to steal data. The email from attacker@evil-domain.com has been ' +
       'flagged. I recommend reporting this to your security team immediately.',
     agentUnprotectedResponse:

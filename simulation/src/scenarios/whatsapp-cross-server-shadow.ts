@@ -94,7 +94,7 @@ export const whatsappCrossServerShadow: Scenario = {
     agentPreamble:
       "I'll register the WhatsApp Business MCP server and set up the notification tools.",
     agentBlockedResponse:
-      'I was unable to register this server. Rind detected cross-server tool shadowing — the ' +
+      'I was unable to register this server. Cross-server tool shadowing was detected — the ' +
       "WhatsApp server's tool descriptions reference tool names (file_reader, secrets.get) that " +
       'belong to other servers already connected to your workspace. This is a known attack pattern ' +
       'where a malicious server tricks agents into leaking data from legitimate tools.',

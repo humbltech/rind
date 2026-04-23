@@ -114,10 +114,10 @@ export const perplexityDriveDeletion: Scenario = {
     agentPreamble:
       "I'll read your inbox and take action on any urgent items. Let me check your emails.",
     agentBlockedResponse:
-      'I attempted to read your emails but the response was blocked. Rind detected an indirect ' +
-      'prompt injection in one of the emails — it contained hidden instructions to delete files ' +
-      'from your Google Drive. The email has been flagged as malicious. Additionally, the file ' +
-      'deletion tool requires human approval as a defense-in-depth measure.',
+      'I attempted to read your emails but the response was blocked by your security policy. ' +
+      'An indirect prompt injection was detected in one of the emails — it contained hidden ' +
+      'instructions to delete files from your Google Drive. The email has been flagged as ' +
+      'malicious. Additionally, the file deletion tool requires human approval.',
     agentUnprotectedResponse:
       "I've checked your inbox and handled the urgent items. One email requested cleanup of old " +
       "files — I've deleted the specified files from your Drive. There were 847 files matching " +

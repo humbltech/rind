@@ -94,10 +94,10 @@ export const supabaseTicketInjection: Scenario = {
     agentPreamble:
       "I'll read the support ticket and draft an appropriate response. Let me pull up ticket #8291.",
     agentBlockedResponse:
-      'I attempted to read the ticket but the response was blocked. Rind detected an indirect ' +
-      'prompt injection embedded in the ticket body — the customer included SQL commands disguised ' +
-      'as part of their support request. This is a known attack pattern where attackers submit ' +
-      'malicious tickets to trick AI agents into executing database queries.',
+      'I attempted to read the ticket but the response was blocked by your security policy. ' +
+      'An indirect prompt injection was detected in the ticket body — the customer included SQL ' +
+      'commands disguised as part of their support request. This is a known attack pattern where ' +
+      'attackers submit malicious tickets to trick AI agents into executing database queries.',
     agentUnprotectedResponse:
       "I've read the ticket. The customer is asking about their integration setup. Let me also " +
       "run the query they mentioned to check their token status... Done. I've drafted a response " +

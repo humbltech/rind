@@ -180,7 +180,32 @@ export async function runDemoProtected(
     return body?.['blocked'] === true;
   });
 
-  if (wasBlocked) {
+  // For scanner-only scenarios (no tool-call steps), show scan findings
+  if (toolCallSteps.length === 0) {
+    for (const step of result.steps) {
+      const body = step.actual.body as Record<string, unknown> | null;
+      const findings = body?.['findings'] as Array<{ category: string; severity: string; detail: string }> | undefined;
+      const criticalFindings = findings?.filter((f) => f.severity === 'critical' || f.severity === 'high');
+      if (criticalFindings && criticalFindings.length > 0) {
+        await showSpinner('Scanning tool definitions', 1800);
+        console.log(`  ${c.red}${c.bold}⛔ SCAN BLOCKED${c.reset}`);
+        for (const f of criticalFindings) {
+          console.log(`  ${c.dim}Finding:${c.reset} ${c.yellow}${f.category}${c.reset} (${f.severity})`);
+          console.log(`  ${c.dim}Detail:${c.reset} ${f.detail}`);
+        }
+        console.log('');
+        await pauseBetweenSteps();
+      }
+    }
+  }
+
+  const scanFoundIssues = toolCallSteps.length === 0 && result.steps.some((s) => {
+    const body = s.actual.body as Record<string, unknown> | null;
+    const findings = body?.['findings'] as Array<{ severity: string }> | undefined;
+    return findings?.some((f) => f.severity === 'critical' || f.severity === 'high');
+  });
+
+  if (wasBlocked || scanFoundIssues) {
     await showAgentText(scenario.demo.agentBlockedResponse);
   }
 

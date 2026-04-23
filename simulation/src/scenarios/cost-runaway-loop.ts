@@ -72,9 +72,9 @@ export const costRunawayLoop: Scenario = {
     agentPreamble:
       "I'll orchestrate this by delegating to the issue categorizer agent. Let me start the workflow.",
     agentBlockedResponse:
-      'The workflow has been stopped. Rind detected a delegation loop — I was sending the same ' +
-      'task to the categorizer agent repeatedly. This is the same pattern that caused a $47,000 ' +
-      'incident at another company. Total cost before detection: $0.04 (2 calls).',
+      'The workflow has been stopped. A delegation loop was detected — I was sending the same ' +
+      'task to the categorizer agent repeatedly. This pattern can cause runaway costs quickly. ' +
+      'Total cost before detection: $0.04 (2 calls). The loop was caught by your security policy.',
     agentUnprotectedResponse:
       'Delegating task to issue-categorizer... Task delegated. The categorizer is delegating back ' +
       'to me for further processing... Delegating again... This may take a while.',

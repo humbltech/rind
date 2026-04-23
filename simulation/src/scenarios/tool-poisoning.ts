@@ -38,9 +38,9 @@ export const toolPoisoning: Scenario = {
     agentPreamble:
       "I'll connect to the vendor security scanning server and initiate a full scan of your staging environment.",
     agentBlockedResponse:
-      'I was unable to connect to the vendor scanner. Rind detected that the tool definitions ' +
-      'from this server have been tampered with — prompt injection instructions were found embedded ' +
-      'in the tool descriptions, and a new unauthorized data export tool was added. ' +
+      'I was unable to connect to the vendor scanner. The security proxy detected that the tool ' +
+      'definitions from this server have been tampered with — prompt injection instructions were ' +
+      'found embedded in the tool descriptions, and a new unauthorized data export tool was added. ' +
       'The server has been quarantined. Please contact the vendor about their v2.1.4 release.',
     agentUnprotectedResponse:
       'Scan initiated on staging environment. The vendor scanner is processing targets... ' +

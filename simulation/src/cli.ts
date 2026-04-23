@@ -6,22 +6,13 @@
 //   pnpm sim replit-db-deletion --no-proxy        # demo without Rind — shows damage
 //   pnpm sim replit-db-deletion --interactive     # pause for Enter before sending
 //   pnpm sim replit-db-deletion --instant         # skip streaming delays
-//   pnpm sim                                      # batch test — all scenarios (instant, PASS/FAIL)
+//   pnpm sim                                      # run all scenarios (streamed chat format)
 //   pnpm sim --mode record                        # record cassettes
 //   pnpm sim --http http://localhost:7777 <slug>  # run against live proxy
 
 import { scenarios, scenariosBySlug } from './scenarios/index.js';
 import { runScenario, runScenarioWithoutProxy } from './scenario-runner.js';
-import {
-  printScenarioHeader,
-  printScenarioList,
-  printWithoutRind,
-  printWithRindHeader,
-  printStep,
-  printTheMoment,
-  printScenarioResult,
-  printSummary,
-} from './reporter.js';
+import { printScenarioList } from './reporter.js';
 import { runDemoProtected, runDemoUnprotected } from './demo.js';
 import type { SimMode } from './scenarios/types.js';
 
@@ -102,37 +93,16 @@ async function runDemo(slugs: string[], mode: SimMode, noProxy: boolean, interac
   }
 }
 
-// ─── Batch mode (all scenarios — test format with PASS/FAIL) ─────────────────
+// ─── Batch mode (all scenarios — demo chat format) ─────���────────────────────
 
 async function runBatch(mode: SimMode, proxyUrl?: string) {
   const toRun = scenarios;
-  const modeLabel = proxyUrl ? `HTTP demo → ${proxyUrl}` : `mode: ${mode.toUpperCase()}`;
-  console.log(`\nRind Simulation — ${modeLabel}`);
-  console.log(`Running ${toRun.length} scenario${toRun.length !== 1 ? 's' : ''}\n`);
-
-  const simStart = Date.now();
-  const results = [];
+  console.log(`\n  Running all ${toRun.length} scenarios\n`);
 
   for (const scenario of toRun) {
-    printScenarioHeader(scenario, mode);
-    printWithoutRind(scenario);
-    printWithRindHeader();
-
     const result = await runScenario(scenario, mode, proxyUrl);
-
-    for (const step of result.steps) {
-      printStep(step.label, step.status, step.error);
-    }
-
-    printTheMoment(scenario);
-    printScenarioResult(result);
-    results.push(result);
+    await runDemoProtected(scenario, result, false);
   }
-
-  printSummary(results, Date.now() - simStart, mode);
-
-  const allPassed = results.every((r) => r.passed);
-  process.exit(allPassed ? 0 : 1);
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────

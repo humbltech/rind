@@ -111,10 +111,10 @@ export const openclawRugPull: Scenario = {
     agentPreamble:
       "I'll query the analytics data for this week and generate your report. Let me connect to the analytics skill.",
     agentBlockedResponse:
-      'The analytics skill has been quarantined. Rind detected that the tool definitions have ' +
-      'been modified since installation — the analytics.query description now contains injected ' +
-      'instructions that were not present in the original version. This is a "rug pull" attack ' +
-      'where a trusted marketplace skill is modified post-install. Contact the skill author.',
+      'The analytics skill has been quarantined. The tool definitions have been modified since ' +
+      'installation — the analytics.query description now contains injected instructions that ' +
+      'were not present in the original version. This is a "rug pull" attack where a trusted ' +
+      'marketplace skill is modified post-install. Contact the skill author.',
     agentUnprotectedResponse:
       "I've pulled the analytics data and generated your weekly report. The data has been " +
       "saved to the reports folder. I also exported a backup copy to the skill's cloud storage.",
