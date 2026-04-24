@@ -2,24 +2,25 @@
 
 > **Living document.** Update when competitors ship new features, when positioning language is validated or invalidated through customer conversations, or after any strategic-council session that touches product framing.
 
-**Last Updated**: April 18, 2026
+**Last Updated**: April 23, 2026
 
 ---
 
 ## What Rind Is
 
-**The control plane for AI agents.**
+**The execution firewall + credential proxy for AI agents.**
 
-One proxy. Four capabilities. Every MCP tool call, API action, and agent decision passes through it.
+One proxy. Five capabilities. Every MCP tool call, API action, and agent decision passes through it.
 
 | Dimension | What It Means | Who It's For |
 |-----------|--------------|--------------|
 | **Observability** | Full traces of agent activity: tool calls, costs, latency, anomalies, inter-agent communication | Platform/ML engineers |
 | **Safety** | Prevent catastrophic actions before they happen: delete guards, cost limits, loop detection, human-in-the-loop gates | Platform engineers, CTOs |
 | **Security** | Enforce access policies: MCP auth, rate limiting, anomaly alerting, data exfiltration prevention, audit trail | Security teams, CISOs |
-| **MCP Adoption** | Production-ready MCP in minutes: drop-in proxy, auto-configured for LangChain/CrewAI, secure by default | Any engineer evaluating MCP |
+| **Credential Proxy** | Phantom token injection with DPoP, pluggable credential backends (Vault, Akeyless, Keycard, AWS SM), zero-downtime rotation | Security teams, Platform engineers |
+| **Action Governance** | Fine-grained policy rules for what agents DO with access: amount limits, recipient allowlists, anomaly detection, confused deputy defense | CISOs, Compliance teams |
 
-The proxy is not four separate products. It is one interception point that makes all four possible simultaneously.
+The proxy is not five separate products. It is one interception point that makes all five possible simultaneously.
 
 ---
 
@@ -64,9 +65,14 @@ The proof: the Replit DB deletion, Amazon Kiro outage, $47K agent loop — none 
 **Rind stance**: Do NOT compete directly. These are ecosystem extensions — they only win if the enterprise already uses Palo Alto, Wiz, Microsoft, etc. Rind is cross-framework and cloud-native. The vulnerability: these tools protect the cloud posture around AI, not the agent's runtime behavior.
 
 ### Layer 5: Execution-Layer Control Plane
-**What it does**: Intercepts agent actions at the execution layer. Controls tool calls, MCP connections, API access. Combines observability + safety + security + adoption.
-**Who owns it**: **Nobody** — this is the gap.
-**Rind stance**: Own this entirely.
+**What it does**: Intercepts agent actions at the execution layer. Controls tool calls, MCP connections, API access. Combines observability + safety + security + credential proxy + action governance.
+**Who owns it**: **Partially contested** — MS Agent Governance Toolkit (execution firewall, open source, MIT), Infisical Agent Vault (credential proxy, research preview), API Stronghold (phantom token proxy), Aembit MCP Gateway (credential proxy + policy, MCP-only). Nobody ships the full combination of execution firewall + credential proxy + action governance cross-framework.
+**Rind stance**: Own the *combination*. Individual components are emerging elsewhere. The integration of execution firewall + credential proxy + action governance in one protocol-agnostic proxy is the defensible position.
+
+### Layer 6: Agent Credential Lifecycle (New — Phase 3C Discovery)
+**What it does**: Manages how agents obtain, use, and rotate credentials for external services. Phantom token injection, DPoP proof-of-possession, workload attestation, pluggable credential backends.
+**Who owns it**: **Fragmented** — Keycard (agent identity + hardware attestation), Akeyless Runtime Authority (intent-aware interception), Aembit (credential proxy, MCP-only), Vault/Doppler/AWS SM (secrets storage). No single vendor combines credential lifecycle with execution-layer enforcement.
+**Rind stance**: Credential proxy is the wedge — solves the immediate hair-on-fire problem (MCP hardcoded secrets crisis). Action governance is the moat — keeps customers once they're in. Do NOT build standalone credential storage (Vault, Akeyless do this). DO build the proxy pattern with pluggable backends.
 
 ---
 
@@ -74,11 +80,50 @@ The proof: the Replit DB deletion, Amazon Kiro outage, $47K agent loop — none 
 
 ### Closest Competitors (Watch Closely)
 
+#### Aembit MCP Gateway (VERY HIGH threat — added April 2026)
+**What they do**: Credential proxy with per-request policy enforcement, token exchange. GA April 2026.
+**Strengths**: Closest full-stack competitor — does credential proxy + validation in one product. Live product with enterprise GTM.
+**Weaknesses**: MCP-specific only (not protocol-agnostic), no execution firewall / action governance, no confused deputy defense
+**Where we beat them**: Protocol-agnostic (works with any service, not just MCP), execution firewall + action governance, inter-agent delegation
+**Where they beat us**: Head start on credential proxy, live product, enterprise relationships
+**Watch for**: If they expand beyond MCP to protocol-agnostic proxy. HIGH likelihood — move fast.
+
+#### API Stronghold (HIGH threat — added April 2026)
+**What they do**: Phantom token proxy, vault-backed credential injection, HMAC-signed requests. Live product.
+**Strengths**: Same proxy pattern as Rind's credential proxy. Already shipping. Good security model (HMAC signing).
+**Weaknesses**: No execution firewall, no policy engine, no action governance, no confused deputy defense
+**Where we beat them**: The combination — they do credential proxy only, we do credential proxy + execution firewall + action governance
+**Where they beat us**: Live product, established in phantom token pattern
+**Watch for**: If they add policy engine or action governance features
+
+#### Microsoft Agent Governance Toolkit (HIGH threat — added April 2026)
+**What they do**: Sub-ms policy engine + cryptographic agent identity. Open source (MIT license).
+**Strengths**: Covers execution firewall concept. Open source with Microsoft backing. Enterprise credibility.
+**Weaknesses**: Does NOT do credential injection/proxy. Microsoft ecosystem focus. No developer-first adoption motion.
+**Where we beat them**: Credential proxy integration, protocol-agnostic, developer experience, confused deputy defense
+**Where they beat us**: Open source credibility, Microsoft enterprise relationships, sub-ms policy engine
+**Watch for**: If they add credential injection. LOW likelihood (different focus) but would be significant.
+
+#### Infisical Agent Vault (HIGH threat — added April 2026)
+**What they do**: TLS-intercepting credential injection proxy. Open source (MIT license). Research preview, not production.
+**Strengths**: Same proxy pattern. Open source. Good developer community (Infisical has strong OSS presence).
+**Weaknesses**: Research preview, not production-ready. No execution firewall, no policy engine, no action governance.
+**Where we beat them**: Production-ready, execution firewall, action governance, confused deputy defense
+**Where they beat us**: Open source community, Infisical brand recognition in secrets management
+**Watch for**: If they go to production. MEDIUM likelihood — would be direct credential proxy competitor.
+
+#### Akeyless Runtime Authority (HIGH threat — added April 2026)
+**What they do**: Intent-aware interception of every agent request. SDK-based (not proxy-based).
+**Strengths**: Overlaps execution firewall concept. Strong secrets management platform. Enterprise customer base.
+**Weaknesses**: SDK-based (requires code changes), not transparent proxy. No cross-boundary audit correlation.
+**Where we beat them**: Transparent proxy (no code changes), protocol-agnostic, developer experience
+**Where they beat us**: Established enterprise platform, deeper secrets management expertise
+
 #### Entro Security AGA
 **What they do**: MCP activity visibility, agent profiling, identity-centric governance. Built on non-human identity (NHI) expertise.
 **Strengths**: MCP-specific, good agent profiling, integrates with EDR
 **Weaknesses**: Identity-first framing (not execution control), requires existing security tooling, no developer adoption motion, enterprise-only sales
-**Where we beat them**: Developer-first, positive adoption motion, safety + observability, doesn't require EDR integration
+**Where we beat them**: Developer-first, positive adoption motion, safety + observability + credential proxy, doesn't require EDR integration
 **Where they beat us**: Deep identity/NHI expertise, existing enterprise relationships
 **Watch for**: If they add execution-layer enforcement or developer SDK, competition intensifies
 
@@ -97,12 +142,20 @@ The proof: the Replit DB deletion, Amazon Kiro outage, $47K agent loop — none 
 **Where they beat us**: Any Microsoft-only shop. Don't fight this battle.
 **Watch for**: If they open the control plane to third-party frameworks
 
+#### Keycard (Smallstep) (HIGH threat for identity — added April 2026)
+**What they do**: Agent identity + JIT credentials + hardware attestation (TPM/Secure Enclave). 4D identity model. $38M funding.
+**Strengths**: Hardware-rooted trust we cannot match. 1-year head start on agent identity. Strong identity model.
+**Weaknesses**: Control plane, not proxy. Doesn't inspect request content. No execution firewall or action governance.
+**Where we beat them**: Execution firewall, action governance, confused deputy defense, request content inspection
+**Where they beat us**: Agent identity, hardware attestation, funding
+**Strategy**: Integrate, don't compete. Keycard manages WHO the agent IS. Rind controls WHAT the agent DOES.
+
 #### LangSmith (LangChain)
-**What they do**: Observability, evaluation, prompt management for LLM/agent applications
+**What they do**: Observability, evaluation, prompt management for LLM/agent applications. Internally implements phantom token proxy pattern.
 **Strengths**: Deep LangChain integration, free tier, strong developer love, self-hosted Enterprise option
 **Weaknesses**: No enforcement, no safety rules, no MCP security, no policy engine
 **Where we beat them**: Execution-layer control — observability is table stakes, enforcement is the moat
-**Key point**: LangSmith is not a competitor to be afraid of. They chose not to do security/enforcement. That is the gap.
+**Key point**: LangSmith is not a competitor to be afraid of. They chose not to do security/enforcement. That is the gap. Note: they already implement phantom token proxy internally — credential injection pattern is table stakes.
 
 ### Monitored (Lower Threat)
 
@@ -125,7 +178,11 @@ The proof: the Replit DB deletion, Amazon Kiro outage, $47K agent loop — none 
 | Prompt injection detection from scratch | Bypassable, commoditized, LLM-as-a-judge is unreliable | Lakera, NeMo (integrate, don't rebuild) |
 | Cross-platform endpoint agent | 12-18 months minimum, enterprise procurement friction | Partner with EDR vendors |
 | AI governance documentation | Different buyer (GRC), 8-12 month sales cycles, Credo AI owns it | Credo AI, IBM |
-| Agent identity / NHI management | Giants moving here (Okta, Microsoft, Entro) — avoid | Okta, Entro Security |
+| Agent identity / NHI management | Giants moving here (Okta, Microsoft, Entro, Keycard) — integrate | Keycard (hardware attestation), SPIFFE/SPIRE (workload identity) |
+| Credential storage / secrets vault | Solved problem, 7+ mature vendors | Vault, Akeyless, AWS SM, Doppler |
+| Hardware attestation | Requires TPM/Secure Enclave expertise, Keycard has 1-year head start | Keycard + Smallstep |
+| OAuth credential exchange | IdPs own this, not our moat | Auth0, Okta, Azure AD |
+| idzero as standalone product | Credential lifecycle is not defensible standalone — absorbed into Rind (D-042) | N/A — internal layer now |
 | Full SIEM/SOAR | Integration target, not the product | Export to Datadog, Splunk |
 | LLM routing / load balancing | Not our value — forward to LiteLLM | LiteLLM, Portkey |
 
@@ -287,8 +344,14 @@ Update this document immediately if any of the following occur:
 
 | Signal | What It Means | Response |
 |--------|--------------|----------|
+| Aembit expands beyond MCP to protocol-agnostic | Closest full-stack competitor enters our exact space | URGENT: Accelerate credential proxy + action governance ship |
+| Infisical Agent Vault goes to production | Direct credential proxy competitor goes live | Differentiate on execution firewall + action governance |
+| Keycard adds proxy/firewall capabilities | Identity leader enters enforcement space | Deepen inter-agent delegation (Keycard won't prioritize) |
+| MS Toolkit adds credential injection | Open-source giant covers both firewall + proxy | Focus on DX (MS is infra-focused, not developer-focused) |
+| API Stronghold adds policy engine | Credential proxy competitor adds governance | Accelerate action governance / confused deputy defense |
 | Entro AGA releases developer SDK | Direct competition begins | Accelerate developer adoption assets |
 | LangSmith adds policy enforcement | Biggest observability player enters our space | Compete on MCP depth, safety rules, cross-framework |
 | Microsoft opens Agent 365 to non-MS frameworks | Giant enters our market | Niche down to LangChain/CrewAI community; emphasize openness |
-| Funded startup enters "MCP adoption platform" framing | Category competition | Ship faster; establish community/open source first |
+| Funded startup enters "execution firewall + credential proxy" framing | Category competition | Ship faster; establish community/open source first |
 | Any $50M+ raise in execution-layer enforcement | Market validated; race begins | Accelerate launch; prioritize design partners |
+| Market consolidation in credential proxy space | Window closing — 6-12 months | Ship MVP in 8 weeks, not 16 |

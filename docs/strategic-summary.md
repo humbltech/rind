@@ -50,11 +50,21 @@ Based on comprehensive research across competitors, emerging players, user pain 
 | **Wiz AI-SPM** | Agentless discovery, cloud context | Posture only, no runtime security |
 
 ### Emerging Threats to Watch
-1. **Noma Security** - $132M raised, 1,300% ARR growth
-2. **WitnessAI** - $85.5M raised, Google Ventures backed
-3. **Geordie AI** - RSAC 2026 Innovation Sandbox WINNER
-4. **Alter** (YC S25) - Zero-trust identity for agents
-5. **Superagent** (YC W24) - Red teaming for AI agents
+
+**Credential Proxy / Action Governance Space (NEW — Phase 3C, April 2026)**:
+1. **Aembit MCP Gateway** — VERY HIGH threat. Closest full-stack competitor. Credential proxy + per-request policy. GA April 2026. MCP-only (not protocol-agnostic). Watch for protocol expansion.
+2. **API Stronghold** — HIGH threat. Phantom token proxy, vault-backed credential injection, HMAC-signed requests. Live product. No execution firewall.
+3. **Infisical Agent Vault** — HIGH threat. TLS-intercepting credential injection proxy. Open source (MIT). Research preview. Watch for production GA.
+4. **Akeyless Runtime Authority** — HIGH threat. Intent-aware interception. SDK-based (not proxy). Enterprise customer base.
+5. **MS Agent Governance Toolkit** — HIGH threat. Sub-ms policy engine + cryptographic agent identity. Open source (MIT). No credential injection.
+6. **Keycard (Smallstep)** — HIGH threat for identity (integrate, don't compete). Agent identity + JIT credentials + hardware attestation. $38M funding.
+
+**General AI Security Space**:
+7. **Noma Security** - $132M raised, 1,300% ARR growth
+8. **WitnessAI** - $85.5M raised, Google Ventures backed
+9. **Geordie AI** - RSAC 2026 Innovation Sandbox WINNER
+10. **Alter** (YC S25) - Zero-trust identity for agents
+11. **Superagent** (YC W24) - Red teaming for AI agents
 
 ---
 
@@ -69,7 +79,9 @@ Based on comprehensive research across competitors, emerging players, user pain 
 | **Tool Fatigue** | "Need 5-6 point solutions with no clear integration" | Unified platform |
 | **Unpredictable Pricing** | "LangSmith is 10x cost for 1 year of data" | Predictable tier pricing |
 | **Python-Only** | "Tools alienate TypeScript and mixed-stack teams" | Multi-language SDKs |
-| **No Agent Identity** | "86% lack access policies for AI identities" | Agent identity layer |
+| **No Agent Identity** | "86% lack access policies for AI identities" | Integrate with Keycard/SPIFFE (D-042: don't build standalone) |
+| **Hardcoded MCP Credentials** | "7,000+ MCP servers with hardcoded secrets, 150M+ downloads" (April 2026) | Credential proxy with phantom tokens + DPoP |
+| **Action Governance Gap** | "OAuth tells you WHO. Nobody tracks WHAT they did with access" (RSAC 2026) | Policy engine + confused deputy defense |
 
 ### What Enterprises Want But Can't Find
 1. **Unified AI Security Platform** - single pane of glass
@@ -84,16 +96,33 @@ Based on comprehensive research across competitors, emerging players, user pain 
 ## Rind Differentiation
 
 ### The One Thing We Do That No One Else Does
-> **Enforcement at the execution layer - policies agents literally cannot bypass**
+> **Execution firewall + credential proxy + action governance in one protocol-agnostic product**
 
-While competitors detect and alert at the prompt layer (which can be bypassed), Rind enforces at the OS level:
-- What files agents can read/write
-- What network endpoints agents can reach
-- What commands agents can execute
-- Resource limits (CPU, memory, disk)
+While individual components exist elsewhere, nobody ships the combination:
+- **Execution firewall**: What agents CAN do (policy engine, tool call validation, cost controls)
+- **Credential proxy**: HOW agents access services (phantom tokens + DPoP, pluggable backends)
+- **Action governance**: WHAT agents DID with access (confused deputy defense, anomaly detection, inter-agent delegation)
+
+Phase 3C research (April 2026) confirmed: credential injection is table stakes (7+ vendors). Action governance is the unsolved frontier (RSAC 2026 Gap #1). The combination is genuinely unique.
 
 ### Positioning Statement
-> "Rind is the first AI agent security platform that actually enforces policies at the execution layer. While other tools rely on prompt-level detection that sophisticated attacks can bypass, Rind controls what agents can do at the OS level. We don't just ask agents to behave; we ensure they can't misbehave."
+> "Rind is the only protocol-agnostic product combining execution firewall, credential proxy, and action governance for AI agents. Credential proxy gets you in the door — it solves the MCP hardcoded secrets crisis. Action governance keeps you in the room — it's the confused deputy defense nobody else ships."
+
+### Rind's Defensible Moat (Revised — Phase 3C)
+
+1. **Execution firewall + credential proxy** — the integration nobody else ships
+2. **Inter-agent delegation with policy constraints** — genuinely unsolved, genuinely hard
+3. **Protocol-agnostic transparent proxy** — works with any service, not just MCP or OAuth
+4. **Confused deputy defense** — policy rules + anomaly detection for authorized-but-malicious calls
+5. **Developer experience** — `pip install rind` vs "set up SPIFFE + OPA + Envoy + Vault"
+
+### Rind's NOT-Defensible (Don't Build — Phase 3C)
+
+1. Agent identity management → use SPIFFE/SPIRE or Keycard
+2. Hardware attestation → use Smallstep/Keycard
+3. Secrets storage → use Vault/Akeyless
+4. OAuth credential exchange → use existing IdPs
+5. Credential injection pattern alone → table stakes, not differentiating
 
 ### Messaging Options
 | Angle | Tagline | Use When |
@@ -251,4 +280,4 @@ While competitors detect and alert at the prompt layer (which can be bypassed), 
 
 ---
 
-*Last Updated: March 2026*
+*Last Updated: April 23, 2026 (Phase 3C research integrated)*

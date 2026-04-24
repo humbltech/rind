@@ -358,7 +358,7 @@ Key architecture: `POST /hook/evaluate` runs interceptor in evaluate-only mode (
 
 > Full map: `docs/positioning.md`
 
-**The five market layers and where Rind plays:**
+**The six market layers and where Rind plays (updated April 2026 — Phase 3C):**
 
 | Layer | Who Owns It | Rind? |
 |-------|-------------|--------|
@@ -366,14 +366,18 @@ Key architecture: `POST /hook/evaluate` runs interceptor in evaluate-only mode (
 | Observability (traces, cost, debugging) | LangSmith, Langfuse, Arize | ~ Entry point only, not the moat |
 | AI Governance (process, compliance docs) | Credo AI, Holistic AI, IBM | ✗ Different buyer, different motion |
 | Enterprise security extensions | Palo Alto, Wiz, Datadog, Microsoft | ✗ Ecosystem-locked, wrong GTM |
-| **Execution-layer control plane** | **Nobody** | **✓ This is Rind** |
+| **Execution-layer control plane** | **Partially contested** (MS Toolkit, Akeyless) | **✓ Rind's core — but no longer uncontested** |
+| **Agent credential lifecycle** | **Fragmented** (Keycard, Aembit, API Stronghold) | **✓ Rind's wedge — credential proxy** |
 
-**What no competitor does**: Cross-framework, protocol-agnostic enforcement at the tool call / MCP layer — observability + safety + security + MCP adoption in one proxy.
+**What no competitor does**: The *combination* of execution firewall + credential proxy + action governance in one protocol-agnostic product. Individual components exist elsewhere.
 
-**Three closest competitors to watch**:
-- **Entro Security AGA** — MCP visibility + identity focus, security-team buyer, no developer adoption motion
-- **Prompt Security** (now SentinelOne) — MCP monitoring, but acquired into enterprise-only motion
-- **Microsoft Agent 365** — comprehensive but Microsoft-only, GA May 2026
+**Six closest competitors to watch (Phase 3C)**:
+- **Aembit MCP Gateway** — VERY HIGH. Credential proxy + policy, but MCP-only. Watch for protocol expansion.
+- **API Stronghold** — HIGH. Phantom token proxy, live product. No execution firewall.
+- **Infisical Agent Vault** — HIGH. Credential proxy, open source. Research preview.
+- **MS Agent Governance Toolkit** — HIGH. Execution firewall, open source. No credential injection.
+- **Akeyless Runtime Authority** — HIGH. Intent-aware interception, SDK-based.
+- **Keycard (Smallstep)** — HIGH for identity. Integrate, don't compete. Hardware attestation.
 
 **Foot-in-the-door assets** (no founder identity required):
 1. `npx rind-scan` — free open-source MCP vulnerability scanner (awareness, GitHub stars)
@@ -476,18 +480,28 @@ then
 ## What We Know vs. What We Assume
 
 ### Validated
-- No competitor covers observability + safety + security + MCP adoption cross-framework
+- No competitor covers execution firewall + credential proxy + action governance cross-framework (Phase 3C, April 2026)
 - 88% of orgs have had AI agent security incidents (Gravitee 2026 survey)
 - Only 24.4% have full visibility into agent communication
 - Prompt-level security fails against 76-98% of novel attacks
-- Real incidents (Replit DB deletion, $47K agent loop, Amazon Kiro outage) are all execution-layer failures — not caught by prompt filters
+- Real incidents (Replit DB deletion, $47K agent loop, Amazon Kiro outage) are all execution-layer failures
+- Phantom token pattern is table stakes — 7+ vendors implement it (Phase 3C)
+- Action governance is the confirmed unsolved gap (RSAC 2026 — "nobody tracks WHAT agents DID with access")
+- Phantom tokens + DPoP is genuinely secure; phantom tokens alone are security theater (Phase 3C threat model)
+- MCP credential crisis is real — 7,000+ servers with hardcoded secrets, 150M+ downloads (Phase 3C)
+- Confused deputy problem is fundamentally unsolvable by credential management — requires policy engine (Phase 3C)
+- idzero as standalone product is not defensible — Keycard, Akeyless, Vault already cover credential lifecycle (Phase 3C)
 
 ### Untested (High Priority to Validate)
 - MCP adoption rate in target companies (validate in first 10 conversations)
 - Whether developers self-install a proxy (vs. needing IT approval)
 - Conversion rate from free observability discovery to paid enforcement
-- Whether "MCP adoption platform" messaging resonates more than "security" messaging
+- Whether "execution firewall + credential proxy" messaging resonates (customer interviews, Weeks 5-6)
+- Whether enterprises will pay for action governance as a distinct capability
+- Whether inter-agent delegation is a real pain point or theoretical concern
 
 ### Risky Assumptions to Watch
 - That MCP becomes the dominant agent communication protocol (fallback: protocol-agnostic LangChain SDK)
 - That enterprises will accept a proxy in their agent stack (fallback: pure SDK, no proxy)
+- That the 6-12 month window before market consolidation is accurate (Aembit, Infisical moving fast)
+- That confused deputy defense is technically achievable at acceptable latency

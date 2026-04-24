@@ -64,4 +64,12 @@ Rind becomes the trust layer for enterprise AI agents - the single platform thro
 
 ## Differentiation
 
-Unlike prompt-based security tools that can be bypassed, Rind enforces policies at the execution layer - where agents actually operate. We don't just ask agents to behave; we ensure they can't misbehave.
+Unlike prompt-based security tools that can be bypassed, Rind enforces policies at the execution layer — where agents actually operate. We don't just ask agents to behave; we ensure they can't misbehave.
+
+**Phase 3C Refinement (April 2026):** Rind is the only protocol-agnostic product combining three capabilities:
+
+1. **Execution Firewall** — What agents CAN do (policy engine, tool call validation, cost controls)
+2. **Credential Proxy** — HOW agents access services (phantom tokens + DPoP, pluggable backends like Vault/Akeyless/Keycard)
+3. **Action Governance** — WHAT agents DID with access (confused deputy defense, anomaly detection, inter-agent delegation)
+
+Credential proxy is the wedge (solves the MCP hardcoded secrets crisis — immediate pain). Action governance is the moat (the unsolved frontier confirmed by RSAC 2026). Individual components exist elsewhere; the combination does not.

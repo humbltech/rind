@@ -72,7 +72,85 @@ The auto-config generator (`rind init --claude-code`) reads an existing `.mcp.js
 
 ---
 
+## What We're Building Next: Credential Proxy + Action Governance (Phase 2B — D-045)
+
+> Added April 23, 2026 based on Phase 3C competitive research. See D-042 through D-045 in strategic-analysis.md.
+
+### Credential Proxy (Wedge — Gets Us In The Door)
+
+The MCP ecosystem has a critical credential management crisis: 7,000+ MCP servers with hardcoded secrets in configuration files, affecting 150M+ downloads. Anthropic declined to modify the protocol, calling it "expected behavior." This is Rind's immediate entry point.
+
+Instead of each MCP server managing its own credentials, Rind proxies all MCP-to-service calls with centralized credential injection:
+
+- **Phantom token pattern**: Agents receive opaque, useless tokens. Rind holds real credentials and injects them on forward. The agent never sees the real API key.
+- **DPoP (RFC 9449)**: Binds tokens to cryptographic keys — stolen tokens are cryptographically useless from another machine. MVP requirement (D-043).
+- **Pluggable credential backends**: `CredentialProvider` interface supports Vault, Akeyless, Keycard, AWS Secrets Manager. Rind does NOT build credential storage — it integrates with existing solutions.
+- **Zero-downtime rotation**: Rotate credentials without agent restart or downtime.
+
+**Why this is table stakes, not a moat**: 7+ vendors already implement the phantom token pattern (Curity, Infisical, API Stronghold, Aembit, LangSmith, Auth0, Envoy). Credential proxy alone is not defensible. It is the wedge that solves a hair-on-fire problem and gets Rind into production environments.
+
+### Action Governance (Moat — Keeps Us In The Room)
+
+RSAC 2026 confirmed three gaps that survived all five major vendor frameworks: (1) Action governance — "OAuth tells you WHO, nobody tracks WHAT they did with access." (2) Permission drift — agent permissions expanded 3x in one month without review. (3) Ghost agents — abandoned agents with active credentials.
+
+The confused deputy problem — an authorized agent making valid but malicious API calls with prompt-injected intent — is fundamentally unsolvable by credential management. It requires:
+
+- **Fine-grained policy rules**: Amount limits, recipient allowlists, operation-type restrictions
+- **Anomaly detection**: Unusual patterns in authorized-but-suspicious calls
+- **Human-in-the-loop**: Approval gates for high-risk operations
+- **Business logic validation**: Domain-specific rules (e.g., "transfers > $10K require approval")
+
+This is RIND's real value proposition. Not credential proxying — *execution validation*.
+
+### Inter-Agent Delegation (Genuinely Novel — Defensible)
+
+No product ships inter-agent delegation with policy constraints. When Agent A delegates a task to Agent B, what credentials does B get? What can B do that A couldn't? How are policies chained?
+
+MS Agent Mesh is a reference architecture only. Research papers describe the problem. Nobody ships a solution. This is Rind's longest-term defensible moat.
+
+### What Changed: idzero Decision (D-042)
+
+idzero was originally planned as a separate standalone product — an "Auth0 for AI agents." Phase 3C research (April 2026) revealed:
+- The credential injection pattern is table stakes (7+ vendors)
+- Keycard has a 1-year head start with hardware attestation and $38M funding
+- API Stronghold already ships the exact proxy pattern
+- The *combination* of execution firewall + credential proxy is genuinely unique — nobody ships both
+
+**Decision**: idzero is NOT a separate product. It becomes Rind's internal credential management layer with a pluggable provider interface. The brand "idzero" is killed.
+
+### Build Sequence (D-045)
+
+Phase 2B (after D-041 Enterprise Readiness):
+1. Week 1-2: `CredentialProvider` interface + Vault integration
+2. Week 3-4: Phantom token injection in proxy pipeline + DPoP
+3. Week 5-6: Policy engine extensions for action governance rules
+4. Week 7-8: Basic anomaly detection + audit correlation
+
+---
+
 ## What We're Not Building, and Why
+
+### Not Building: Standalone Credential Product (idzero)
+
+A separate product for agent credential lifecycle management. This was the original idzero plan — killed by Phase 3C research (D-042).
+
+**Why not**: The credential injection / phantom token pattern is no longer novel — 7+ vendors implement it. Keycard has a 1-year head start with hardware attestation. API Stronghold already ships the exact proxy pattern. Credential lifecycle is a convenience product, not a security product. The security comes from the execution firewall + policy engine (which is Rind). Building it standalone would mean competing against Vault, Akeyless, Keycard, and AWS Secrets Manager on their home turf.
+
+**What we do instead**: Rind has a pluggable `CredentialProvider` interface. Credential proxy is a capability of Rind, not a separate product.
+
+### Not Building: Agent Identity / Hardware Attestation
+
+Agent identity management, workload attestation, hardware-rooted trust (TPM/Secure Enclave).
+
+**Why not**: Keycard + Smallstep have hardware attestation we cannot match (1-year head start, $38M funding, TPM expertise). SPIFFE/SPIRE is the open standard for workload identity. Building our own would be rebuilding solved problems. Rind integrates with these — it doesn't replace them.
+
+**Strategy**: "Keycard manages WHO the agent IS. Rind controls WHAT the agent DOES."
+
+### Not Building: Credential Storage
+
+Secrets vaults, encrypted storage, key management.
+
+**Why not**: Vault, Akeyless, AWS Secrets Manager, Doppler — all mature, well-funded, well-adopted. Rind uses them via the `CredentialProvider` interface. Don't reinvent solved problems.
 
 ### Not Building: LLM Proxy / Prompt Scanning
 
@@ -142,7 +220,7 @@ The kill signal to watch: if MCP adoption plateaus below 30% of new agent deploy
 
 ## The Market Position
 
-Five layers of the AI security market:
+Six layers of the AI security market (updated April 2026 — Phase 3C research):
 
 | Layer | Who Owns It | Rind |
 |-------|-------------|------|
@@ -150,9 +228,14 @@ Five layers of the AI security market:
 | Observability (traces, cost, debugging) | LangSmith, Langfuse, Arize | Entry point, not the moat |
 | AI governance (process, compliance docs) | Credo AI, Holistic AI, IBM | Excluded — different buyer |
 | Enterprise security extensions | Palo Alto, Wiz, Datadog, Microsoft | Excluded — ecosystem-locked |
-| **Execution-layer control plane** | **Nobody** | **This is Rind** |
+| **Execution-layer control plane** | **Partially contested** (MS Toolkit, Akeyless) | **Rind's core — but no longer uncontested** |
+| **Agent credential lifecycle** | **Fragmented** (Keycard, Aembit, API Stronghold, Infisical) | **Rind's wedge — credential proxy** |
 
-The execution-layer gap is real and currently uncontested. Entro Security AGA has MCP visibility but no developer adoption motion. Prompt Security (SentinelOne) monitors MCP but is now enterprise-only. Microsoft Agent 365 is comprehensive but Microsoft-only and GA May 2026. The window is open.
+The execution-layer gap is real but no longer uncontested. Phase 3C research (April 2026) found 7+ vendors implementing the phantom token / credential injection pattern and several entering the execution firewall space. However, **nobody ships the combination of execution firewall + credential proxy + action governance in one protocol-agnostic product**. That combination is Rind's defensible position.
+
+**Closest full-stack competitor**: Aembit MCP Gateway — credential proxy + per-request policy in one product. But MCP-specific only. Rind is protocol-agnostic.
+
+**Window**: 6-12 months before market consolidates. Ship MVP in 8 weeks, not 16.
 
 The primary buyer is the platform engineer or tech lead who deploys AI agents and needs to know they're not going to wake up to a production incident. The budget holder is the CISO who signs off on what agents are allowed to do in production. The entry motion is developer-first: `npx rind-scan` to see your exposure for free, install the proxy to control it.
 
@@ -167,4 +250,11 @@ The primary buyer is the platform engineer or tech lead who deploys AI agents an
 - LangChain adapter ships, covering frameworks beyond MCP
 - Agent identity (real API keys, not self-reported) is live — this is what enterprise contracts require
 
-The 12-month risk to watch: a well-funded competitor enters the execution-layer space with a similar proxy architecture and enterprise GTM. The response is moving faster on identity, async approval, and multi-tenancy — the enterprise features that take time to build and are hard to copy quickly.
+The 12-month risks to watch (updated April 2026 — Phase 3C):
+- **Aembit expands beyond MCP** to protocol-agnostic proxy (HIGH likelihood, HIGH impact) → Move fast, ship in 6-12 months
+- **Infisical Agent Vault goes to production** (MEDIUM likelihood, HIGH impact) → Differentiate on action governance
+- **Keycard adds proxy/firewall** (MEDIUM likelihood, HIGH impact) → Deepen inter-agent delegation
+- **Market doesn't want combined product** (MEDIUM likelihood, HIGH impact) → Customer interviews (director-led, Weeks 5-6) will validate
+- **Too late — window closes** (MEDIUM likelihood, VERY HIGH impact) → Ship MVP in 8 weeks, not 16
+
+The response is no longer "move faster on identity and multi-tenancy." The response is: **ship the credential proxy as wedge (solves hair-on-fire MCP credential crisis), then differentiate on action governance (confused deputy defense, inter-agent delegation) — features that are genuinely hard and genuinely novel.**

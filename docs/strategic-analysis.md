@@ -2,7 +2,7 @@
 
 > This document is updated after every strategic-council session. It is the institutional memory for strategic reasoning — tracking what was decided, why, what was assumed, and what changed our thinking.
 
-**Last Updated**: April 18, 2026 (Activity 3 — Competitive deep dive complete)
+**Last Updated**: April 23, 2026 (Phase 3C — idzero decision, credential proxy competitors, action governance positioning)
 
 ---
 
@@ -942,5 +942,139 @@ User prompt:    "Draft an email to john@acme.com with my card 4111-1111-1111-111
 **Competitive context**: Nightfall AI, Private AI, Microsoft Presidio (OSS) do PII detection. None do the reversible-tokenization-at-tool-call-layer combination. That's the differentiated angle.
 
 **When to revisit**: After Phase 3 (multi-tenant) ships and there is enterprise demand for compliance-grade data handling. Requires a dedicated engineer or partnership with a detection library (Presidio is Apache 2.0, pre-approved candidate).
+
+---
+
+### D-042: idzero Killed as Separate Product — Credential Proxy Absorbed into RIND
+**Date**: April 23, 2026
+**Decision**: idzero will NOT be built as a standalone identity/credential product. Its valuable features (phantom token issuance, credential bundling, cross-boundary audit, task-scoped credentials, inter-agent delegation) are absorbed into RIND as internal modules. RIND becomes "Execution Firewall + Credential Proxy" — one product, not two.
+
+**Reasoning (Phase 3C research — 3 parallel research agents, 130K+ tokens of analysis)**:
+
+**Why idzero as standalone is dead:**
+- 7+ vendors already implement phantom token / credential injection (Curity, Infisical Agent Vault, API Stronghold, Aembit, LangSmith, Auth0 Token Vault, Envoy Gateway)
+- Keycard ($38M funded, a16z) has 1-year head start with hardware attestation via Smallstep (TPM/Secure Enclave proof-of-possession)
+- Per-call validation is standard (OPA, Akeyless Runtime Authority, MS Agent OS, Strata)
+- Zero-downtime rotation is standard (Vault, Doppler, Akeyless, Infisical, AWS SM)
+- Agent identity management is well-served (Keycard 4D model, Akeyless Agent IdP, MS Entra Agent ID, Teleport)
+- A bootstrapped 2-3 person team cannot outcompete $38M-funded Keycard on identity
+
+**What RIND absorbs from idzero:**
+- Phantom token issuance (part of RIND's proxy layer)
+- Pluggable credential provider interface (Vault, Akeyless, Keycard, AWS SM)
+- Cross-boundary audit correlation (Agent → RIND → External Service as unified trace)
+- Task-scoped credentials (expire on task completion, not just TTL)
+- Inter-agent delegation with scope narrowing (genuinely unsolved — RSAC 2026 confirmed)
+
+**What RIND does NOT build (use existing solutions):**
+- Credential storage → Vault or Akeyless
+- Agent identity issuance → SPIFFE/SPIRE or Keycard
+- Hardware attestation → Smallstep/Keycard
+- OAuth token exchange → existing IdPs
+
+**The "Wedge + Moat" strategy:**
+- **Wedge (credential proxy)**: Solves the hair-on-fire problem (29M leaked secrets, MCP hardcoded keys). Gets RIND into conversations and POCs. Table stakes.
+- **Moat (action governance)**: Confused deputy defense, inter-agent delegation, anomaly detection. RSAC 2026 confirmed this is the gap nobody fills. Differentiator that justifies premium pricing.
+
+**Confidence**: 7/10 — goes to 8+ after customer interviews validate action governance as buying trigger
+**Kill criteria**:
+- 8 of 10 interviewed teams say they already use Aembit/API Stronghold and are happy → pivot to pure governance play
+- Customer interviews reveal "we don't care about action governance, just want easy credential proxy" → pivot to pure DX play ("Stripe of credential proxies")
+- Aembit goes protocol-agnostic within 6 months → accelerate inter-agent delegation as primary differentiator
+
+**Source documents**: `PHASE3C_COMPETITIVE_ANALYSIS.md`, `PHASE3C_COMPETITIVE_LANDSCAPE.md`, `PHASE3C_THREAT_MODEL.md`, `PHASE3C_SYNTHESIS_AND_DECISION.md` (all in `/Users/atinderpalsingh/projects/`)
+
+---
+
+### D-043: Credential Proxy Security — DPoP Required for MVP
+**Date**: April 23, 2026
+**Decision**: RIND's credential proxy MUST implement DPoP (RFC 9449) as minimum viable security. Phantom tokens alone are security theater — confirmed by threat model analysis.
+
+**The critical finding**: The founder correctly identified that phantom tokens alone don't prevent impersonation. If an attacker steals the RIND auth token, they can make API calls through RIND as the agent. The phantom token just shifts "steal the Stripe key" to "steal the RIND token" — functionally identical.
+
+**Layered defense, in priority order:**
+
+| Layer | What | Priority | Why |
+|-------|------|----------|-----|
+| No credential-return API | RIND NEVER returns real credentials to caller | Architecture (day 0) | If this API exists, entire model collapses |
+| DPoP (RFC 9449) | Bind tokens to proof-of-possession key | MVP | Prevents stolen-token replay. Raises bar from "read env var" to "dump process memory" |
+| Short TTLs (15-60 min) | Tokens expire quickly | MVP | Limits exploitation window |
+| TLS 1.3 | Encrypt agent-RIND connection | MVP | Prevents MITM |
+| SPIFFE/SPIRE | Kernel-level workload attestation | v1.0 | Prevents impersonation from different process/container |
+| mTLS | Mutual TLS with SPIFFE SVIDs | v1.0 | Transport-level identity |
+| Policy engine | Per-operation rules (amount limits, allowlists) | v1.0 | Confused deputy defense — the hardest threat |
+| Anomaly detection | Behavioral analysis | v1.5 | Catches novel attacks |
+| HSM/KMS | Hardware-backed credential storage | v2.0 | Protects against RIND infrastructure compromise |
+
+**The unsolvable threat (Threat 6 — Confused Deputy)**: A prompt-injected agent making valid, authorized API calls with malicious intent. No credential mechanism can stop this. Defense requires: fine-grained policy rules, anomaly detection, human-in-the-loop gates. **This is RIND's core differentiator** — not credential proxying (table stakes), but execution validation (the moat).
+
+**Confidence**: 9/10 — based on RFC 9449 standard, SPIFFE/SPIRE documentation, and established security patterns
+**Kill criteria**: None — this is a security requirement, not a feature bet
+
+---
+
+### D-044: Updated Competitive Landscape — New Credential Proxy Competitors
+**Date**: April 23, 2026
+**Decision**: Update competitive map with 10+ new competitors discovered in Phase 3C research. Revise "nobody owns Layer 5" claim — it's now "nobody owns the COMBINATION."
+
+**New competitors discovered:**
+
+| Competitor | What They Do | Threat Level | RIND's Advantage |
+|-----------|-------------|-------------|------------------|
+| **API Stronghold** | Phantom token proxy, vault-backed credential injection, live product | HIGH | No execution firewall/policy engine |
+| **Infisical Agent Vault** | TLS-intercepting credential proxy (MIT, open source). Research preview | HIGH | No execution firewall. Not production-ready |
+| **Aembit MCP Gateway** | Credential proxy + per-request policy. GA April 2026 | VERY HIGH | MCP-specific only. RIND is protocol-agnostic |
+| **Akeyless Runtime Authority** | Intent-aware agent request interception. March 2026 | HIGH | SDK-based, not proxy-based. Enterprise-only |
+| **MS Agent Governance Toolkit** | Sub-ms policy engine + crypto agent identity (MIT, open source) | HIGH | No credential injection. Framework, not managed service |
+| **Composio** | 850+ app integrations, managed auth. SOC 2 | MEDIUM | Managed middleware, not transparent proxy |
+| **1Password Unified Access** | Extending 1Password to AI agent identities. March 2026 | MEDIUM | Consumer-to-enterprise, not agent-native |
+
+**Revised 5-layer competitive map:**
+
+Layer 5 ("Execution-layer control plane") now has partial coverage:
+- MS Toolkit does execution firewall (no credential proxy)
+- Infisical/API Stronghold do credential proxy (no execution firewall)
+- Aembit does both but MCP-only
+
+**RIND's revised unique claim**: "The only protocol-agnostic product combining execution firewall + credential proxy + action governance in one proxy."
+
+**What IS genuinely novel (confirmed by RSAC 2026):**
+1. Combined execution firewall + credential proxy — nobody ships both
+2. Inter-agent delegation with policy constraints — genuinely unsolved ("no protocol combines delegation + chained policy + provenance" — VentureBeat RSAC 2026)
+3. Confused deputy / action governance — "OAuth tells you WHO. Nobody tracks WHAT" — RSAC 2026 gap #1
+
+**Confidence**: 8/10
+**Revisit**: Monthly — monitor Aembit changelog (protocol expansion), Infisical Agent Vault (production readiness), MS Toolkit (managed service launch)
+
+---
+
+### D-045: Credential Proxy Build Sequence
+**Date**: April 23, 2026
+**Decision**: Add credential proxy as Phase 2B capability, built after Phase 2 Enterprise Readiness (D-041) but before Phase 3 Coverage Expansion.
+
+**Build order:**
+
+| Phase | What | Timeline | Rationale |
+|-------|------|----------|-----------|
+| 2A | Enterprise Readiness (D-041: identity, SSE, approval, transcript) | Weeks 1-3 | Already planned, prerequisite for credential proxy |
+| 2B | Credential proxy MVP | Weeks 4-7 | Phantom tokens + DPoP + Vault backend. The "wedge" |
+| 2C | Action governance policies | Weeks 5-8 (overlaps) | Amount limits, recipient allowlists, parameter constraints. The "moat" |
+| 2D | Customer validation | Weeks 5-6 (parallel) | Director-led interviews, 10+ teams. Validate action governance as buying trigger |
+| 3 | Inter-agent delegation | Weeks 8-12 | Defensible moat feature. Shaped by customer feedback |
+| 4 | Cross-boundary audit + task-scoped creds | Months 4-6 | Enterprise upsell features |
+
+**Credential proxy architecture:**
+- Pluggable `CredentialProvider` interface (Vault, Akeyless, AWS SM, Keycard)
+- Phantom token issuance as part of existing proxy pipeline
+- DPoP verification as new interceptor step (between auth and policy evaluation)
+- Credential injection at forward step (RIND holds real creds, injects into outbound request)
+- No credential-return API (architectural constraint — enforced by code review)
+
+**This does NOT change Phase A (D-040)**: Claude Code hooks, MCP proxy, stdio wrapper, auto-config — all still ship first. Credential proxy is additive, not a replacement.
+
+**Confidence**: 6/10 — higher after customer interviews
+**Kill criteria**:
+- Credential proxy generates zero interest in first 5 customer conversations → defer, focus on execution firewall only
+- DPoP adds >50ms latency to proxy calls → optimize or find alternative proof-of-possession mechanism
 
 ---
