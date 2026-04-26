@@ -166,6 +166,9 @@ export async function runScenario(
     // Spawn the fixture MCP server so the proxy has a real upstream to forward to.
     // Cassette logic lives in createForwardFn — the fixture server is just an HTTP adapter.
     const cassetteForwardFn = createForwardFn(scenario.slug, mode, scenario.toolHandlers);
+    // NOTE: In record mode, newly recorded cassette entries accumulated by cassetteForwardFn
+    // are not persisted — cassette.ts exposes no flush API. This is a known gap.
+    // To fix: expose a flush() method from createForwardFn and call it after the step loop.
     const fixtureHandlers = Object.fromEntries(
       Object.keys(scenario.toolHandlers).map((toolName) => [
         toolName,

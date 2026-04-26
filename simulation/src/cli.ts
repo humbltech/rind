@@ -51,7 +51,12 @@ function parseArgs(args: string[]): ParsedArgs {
     } else if (arg === '--http' && args[i + 1]) {
       proxyUrl = args[++i]!;
     } else if (arg === '--fixture-port' && args[i + 1]) {
-      fixturePort = Number(args[++i]!);
+      const raw = Number(args[++i]!);
+      if (!Number.isInteger(raw) || raw < 1 || raw > 65535) {
+        process.stderr.write(`Invalid --fixture-port value: must be an integer 1–65535\n`);
+        process.exit(1);
+      }
+      fixturePort = raw;
     } else if (arg === '--no-proxy') {
       noProxy = true;
     } else if (arg === '--interactive') {
