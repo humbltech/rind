@@ -49,6 +49,7 @@ export interface ToolResponseEvent {
 
 export interface ToolErrorEvent {
   sessionId: string;
+  serverId: string;
   agentId: string;
   toolName: string;
   /** 'upstream-unreachable' = ECONNREFUSED / fetch failed; 'upstream-timeout' = AbortError */
@@ -267,6 +268,7 @@ export interface AuditEntry {
     | 'tool:blocked'
     | 'tool:response'
     | 'tool:threat'
+    | 'tool:error'
     | 'scan:complete'
     | 'session:created'
     | 'session:killed'
