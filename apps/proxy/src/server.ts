@@ -855,14 +855,42 @@ export function createProxyServer(config: ProxyConfig) {
     if (isServerQuarantined(event.serverId)) {
       const scanResult = getLastScanResult(event.serverId);
       const criticalFindings = scanResult?.findings.filter((f) => f.severity === 'critical' || f.severity === 'high') ?? [];
+      // Use the primary finding category as the rule name so the dashboard shows
+      // "TOOL_POISONING" or "SCHEMA_DRIFT_TOOL_ADDED" instead of the generic "scan-quarantine".
+      const primaryCategory = criticalFindings[0]?.category ?? 'SCAN_QUARANTINE';
       const reason = `Server "${event.serverId}" is quarantined: scan detected ${criticalFindings.length} critical/high finding(s). ` +
         (criticalFindings[0] ? `First: ${criticalFindings[0].category} — ${criticalFindings[0].detail.slice(0, 80)}` : '');
+
+      // Map scan findings to the ResponseThreat shape so the dashboard's response
+      // panel can show exactly which findings blocked this call.
+      const scanThreats = criticalFindings.map((f) => ({
+        type: f.category as 'PROMPT_INJECTION' | 'CREDENTIAL_LEAK' | 'SUSPICIOUS_REDIRECT' | 'INDIRECT_PROMPT_INJECTION',
+        severity: f.severity as 'critical' | 'high' | 'medium',
+        pattern: f.toolName ? `${f.toolName}: ${f.detail}` : f.detail,
+        sanitized: false,
+      }));
+      const scanSummary = criticalFindings.map((f) =>
+        `[${f.severity.toUpperCase()}] ${f.category}${f.toolName ? ` (${f.toolName})` : ''}: ${f.detail}`
+      ).join('\n');
 
       bus.emit('tool:call', event);
       bus.emit('tool:blocked', { event, action: 'BLOCKED_THREAT' as const, reason });
       ringBuffer.update(
         (e) => e.correlationId === callId,
-        (e) => ({ ...e, outcome: 'blocked' as const, reason, source: 'proxy' as const, matchedRule: 'scan-quarantine' }),
+        (e) => ({
+          ...e,
+          outcome: 'blocked' as const,
+          reason,
+          source: 'proxy' as const,
+          matchedRule: primaryCategory,
+          matchedRuleType: 'scan' as const,
+          response: {
+            outputPreview: scanSummary,
+            outputSizeBytes: scanSummary.length,
+            threats: scanThreats,
+            timestamp: Date.now(),
+          },
+        }),
       );
       logger.warn({ serverId: event.serverId, toolName: event.toolName, findingCount: criticalFindings.length }, 'Tool call blocked — server quarantined by scan');
 
@@ -871,7 +899,8 @@ export function createProxyServer(config: ProxyConfig) {
         action: 'BLOCKED_THREAT',
         reason,
         outcome: 'blocked',
-        rule: 'scan-quarantine',
+        rule: primaryCategory,
+        ruleType: 'scan',
       }, 403);
     }
 
@@ -1183,6 +1212,9 @@ function recordProxyOutcome(
       outcome,
       source: e.source ?? ('mcp' as const),
       matchedRule: interceptorResult.matchedRule,
+      // Mark rules from the policy engine so the dashboard can distinguish them
+      // from scan-blocked calls (which set 'scan' directly in the quarantine block).
+      matchedRuleType: interceptorResult.matchedRule ? ('policy' as const) : undefined,
       reason: interceptorResult.reason,
     }),
   );

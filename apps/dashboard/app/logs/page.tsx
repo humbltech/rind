@@ -517,8 +517,30 @@ function DetailPanel({ entry }: { entry: ToolCallEntry }) {
         <DetailRow label="Session" value={entry.sessionName ?? entry.sessionId} />
         <DetailRow label="Server" value={entry.serverId} />
         <DetailRow label="Tool" value={entry.toolName} />
-        {entry.matchedRule && <DetailRow label="Policy Rule" value={entry.matchedRule} />}
-        {!entry.matchedRule && <DetailRow label="Policy Rule" value="(default allow)" />}
+        {entry.matchedRule ? (
+          <div className="flex gap-2 text-[11px]">
+            <span className="text-dim font-medium w-20 shrink-0">Rule</span>
+            <span className="font-mono text-muted truncate">{entry.matchedRule}</span>
+            {entry.matchedRuleType && (
+              <span
+                className="shrink-0 font-mono text-[9px] tracking-wider font-semibold px-1.5 py-0.5 rounded border uppercase"
+                style={{
+                  color: entry.matchedRuleType === 'policy' ? 'var(--rind-accent)' : 'var(--rind-medium)',
+                  background: entry.matchedRuleType === 'policy'
+                    ? 'color-mix(in srgb, var(--rind-accent) 10%, transparent)'
+                    : 'color-mix(in srgb, var(--rind-medium) 10%, transparent)',
+                  borderColor: entry.matchedRuleType === 'policy'
+                    ? 'color-mix(in srgb, var(--rind-accent) 24%, transparent)'
+                    : 'color-mix(in srgb, var(--rind-medium) 24%, transparent)',
+                }}
+              >
+                {entry.matchedRuleType}
+              </span>
+            )}
+          </div>
+        ) : (
+          <DetailRow label="Rule" value="(default allow)" />
+        )}
         {entry.cwd && <DetailRow label="CWD" value={entry.cwd} />}
         {entry.source && <DetailRow label="Source" value={entry.source} />}
         {entry.correlationId && <DetailRow label="Correlation" value={entry.correlationId} />}

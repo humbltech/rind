@@ -18,6 +18,8 @@ export interface ToolCallEvent {
   reason?: string;
   // Name of the policy rule that matched (if any)
   matchedRule?: string;
+  // Which engine produced the matched rule — 'policy' for the policy engine, 'scan' for the scanner
+  matchedRuleType?: 'policy' | 'scan';
   // Source classification: 'builtin' for Claude Code tools, 'mcp' for MCP server tools
   source?: 'builtin' | 'mcp' | 'proxy';
   // Human-readable label: "Bash: git status", "Read: server.ts", "Edit: types.ts"

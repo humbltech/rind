@@ -22,6 +22,8 @@ export interface ToolCallEntry {
   source?: 'builtin' | 'mcp' | 'proxy';
   // Name of the policy rule that matched
   matchedRule?: string;
+  // Which engine produced the matched rule — 'policy' for policy engine, 'scan' for scanner
+  matchedRuleType?: 'policy' | 'scan';
   // Tool input arguments (for display in expandable row)
   input?: unknown;
   // Working directory
@@ -137,6 +139,7 @@ function TableRow({ entry, isNew }: { entry: ToolCallEntry; isNew: boolean }) {
               cwd={entry.cwd}
               reason={entry.reason}
               matchedRule={entry.matchedRule ?? (entry.outcome === 'allowed' ? '(default)' : undefined)}
+              matchedRuleType={entry.matchedRuleType}
               agentId={entry.agentId}
               sessionId={entry.sessionId}
               sessionName={entry.sessionName}
@@ -283,12 +286,34 @@ function SourceBadge({ source }: { source?: 'builtin' | 'mcp' | 'proxy' }) {
   );
 }
 
+// Rule type badge — POLICY (purple) / SCAN (amber)
+function RuleTypeBadge({ type }: { type: 'policy' | 'scan' }) {
+  const isPolicY = type === 'policy';
+  return (
+    <span
+      className="shrink-0 font-mono text-[9px] tracking-wider font-semibold px-1.5 py-0.5 rounded border uppercase"
+      style={{
+        color: isPolicY ? 'var(--rind-accent)' : 'var(--rind-medium)',
+        background: isPolicY
+          ? 'color-mix(in srgb, var(--rind-accent) 10%, transparent)'
+          : 'color-mix(in srgb, var(--rind-medium) 10%, transparent)',
+        borderColor: isPolicY
+          ? 'color-mix(in srgb, var(--rind-accent) 24%, transparent)'
+          : 'color-mix(in srgb, var(--rind-medium) 24%, transparent)',
+      }}
+    >
+      {type}
+    </span>
+  );
+}
+
 // Expandable input detail panel
-function InputDetail({ input, cwd, reason, matchedRule, agentId, sessionId, sessionName, response, correlationId }: {
+function InputDetail({ input, cwd, reason, matchedRule, matchedRuleType, agentId, sessionId, sessionName, response, correlationId }: {
   input: unknown;
   cwd?: string;
   reason?: string;
   matchedRule?: string;
+  matchedRuleType?: 'policy' | 'scan';
   agentId: string;
   sessionId: string;
   sessionName?: string;
@@ -315,7 +340,11 @@ function InputDetail({ input, cwd, reason, matchedRule, agentId, sessionId, sess
           <span className="font-mono text-critical">{reason}</span>
         </div>
       )}
-      <DetailRow label="Matched Rule" value={matchedRule ?? '—'} />
+      <div className="flex gap-2 text-[11px]">
+        <span className="text-dim font-medium w-20 shrink-0">Matched Rule</span>
+        <span className="font-mono text-muted truncate">{matchedRule ?? '—'}</span>
+        {matchedRuleType && <RuleTypeBadge type={matchedRuleType} />}
+      </div>
 
       {/* Tabs: Input / Response */}
       {(hasInput || hasResponse) && (
