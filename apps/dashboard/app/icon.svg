@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 68 68" fill="none">
+  <defs>
+    <linearGradient id="g" x1="32" y1="0" x2="32" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#d4257f"/>
+      <stop offset="100%" stop-color="#B8146B"/>
+    </linearGradient>
+  </defs>
+  <g transform="rotate(8 32 32)">
+    <circle cx="32" cy="32" r="32" stroke="url(#g)" stroke-width="3"/>
+    <circle cx="32" cy="32" r="22" stroke="url(#g)" stroke-width="2"/>
+    <line x1="32" y1="0" x2="32" y2="10" stroke="url(#g)" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+</svg>

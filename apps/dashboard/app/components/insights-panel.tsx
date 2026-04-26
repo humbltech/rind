@@ -39,7 +39,11 @@ interface InsightsPanelProps {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function InsightsPanel({ toolCalls, mcpServers }: InsightsPanelProps) {
-  const [dismissed, setDismissed] = useState<Set<string>>(loadDismissed);
+  // Start empty — matches SSR. Load from localStorage post-hydration only.
+  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    setDismissed(loadDismissed());
+  }, []);
   const insights = deriveInsights(toolCalls, mcpServers ?? []);
   const visible = insights.filter((i) => !dismissed.has(i.id));
 
