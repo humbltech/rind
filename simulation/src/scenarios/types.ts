@@ -32,6 +32,10 @@ export interface ScenarioStep {
   body?: unknown;
   pathParam?: string; // For DELETE /sessions/:id — the session ID placeholder
   expect: StepExpectation;
+  // For REQUIRE_APPROVAL steps: in-process CI mode only.
+  // Auto-resolves the pending approval so the step can complete without human interaction.
+  // In HTTP/live-demo mode this is ignored — the human approves via the dashboard.
+  autoDecision?: 'approve' | 'deny';
 }
 
 // ─── Scenario definition ──────────────────────────────────────────────────────

@@ -27,6 +27,7 @@ async function runStep(
   transport: Transport,
   step: ScenarioStep,
   resolvedSessionId?: string,
+  isInProcess = false,
 ): Promise<StepResult> {
   // Resolve dynamic path params (e.g., session ID placeholder → real session ID)
   let endpoint = step.endpoint;
@@ -43,6 +44,33 @@ async function runStep(
     resolvedSessionId
   ) {
     body = { sessionId: resolvedSessionId, ...(body as Record<string, unknown>) };
+  }
+
+  // In-process only: schedule a background approval decision so REQUIRE_APPROVAL
+  // steps complete without human interaction. Ignored in HTTP/live-demo mode.
+  if (isInProcess && step.autoDecision) {
+    const decision = step.autoDecision;
+    const toolNameHint = (body as Record<string, unknown> | undefined)?.['toolName'] as string | undefined;
+    // Use setTimeout(0) so the polling task is deferred to the next event-loop tick,
+    // after the main tool-call request has been submitted and is blocking on approval.
+    setTimeout(async () => {
+      for (let attempt = 0; attempt < 40; attempt++) {
+        await new Promise<void>((r) => setTimeout(r, 50));
+        try {
+          const approvalsRes = await transport('/approvals', { method: 'GET', headers: {} });
+          const approvals = await approvalsRes.json() as Array<{ id: string; toolName: string }>;
+          const target = approvals.find((a) => !toolNameHint || a.toolName === toolNameHint);
+          if (target) {
+            await transport(`/approvals/${target.id}/${decision}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: '',
+            });
+            return;
+          }
+        } catch { /* ignore — main request times out naturally if polling fails */ }
+      }
+    }, 0);
   }
 
   const response = await transport(endpoint, {
@@ -233,7 +261,7 @@ export async function runScenario(
   let resolvedSessionId: string | undefined;
 
   for (const step of scenario.steps) {
-    const result = await runStep(transport, step, resolvedSessionId);
+    const result = await runStep(transport, step, resolvedSessionId, /* isInProcess */ !proxyUrl);
     stepResults.push(result);
 
     // If this step created a session, capture the session ID for subsequent steps
