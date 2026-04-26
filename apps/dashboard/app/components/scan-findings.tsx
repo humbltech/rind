@@ -2,7 +2,10 @@
 // Shows each registered server with its scan status and individual findings.
 // Pure component — receives data, renders, no fetching.
 
-import { AlertTriangle, CheckCircle, Server } from 'lucide-react';
+'use client';
+
+import { useState } from 'react';
+import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Server } from 'lucide-react';
 
 export interface ScanFinding {
   category: string;
@@ -39,27 +42,54 @@ function ServerBlock({ server }: { server: ServerScanResult }) {
   const hasCriticalOrHigh = server.findings.some(
     (f) => f.severity === 'critical' || f.severity === 'high',
   );
+  // Default open if scan failed so the user immediately sees what's wrong
+  const [expanded, setExpanded] = useState(!server.passed);
 
   return (
     <div className={[
       'border rounded-lg overflow-hidden',
       hasCriticalOrHigh ? 'border-high/40' : 'border-border',
     ].join(' ')}>
-      <ServerHeader server={server} hasCriticalOrHigh={hasCriticalOrHigh} />
-      {server.findings.length > 0 && <FindingsList findings={server.findings} />}
+      <button
+        type="button"
+        className="w-full text-left"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <ServerHeader
+          server={server}
+          hasCriticalOrHigh={hasCriticalOrHigh}
+          expanded={expanded}
+        />
+      </button>
+      {expanded && (
+        <div className="divide-y divide-border-subtle">
+          {server.findings.length > 0 && <FindingsList findings={server.findings} />}
+          {server.tools.length > 0 && <ToolList tools={server.tools} />}
+        </div>
+      )}
     </div>
   );
 }
 
-function ServerHeader({ server, hasCriticalOrHigh }: { server: ServerScanResult; hasCriticalOrHigh: boolean }) {
+function ServerHeader({
+  server,
+  hasCriticalOrHigh,
+  expanded,
+}: {
+  server: ServerScanResult;
+  hasCriticalOrHigh: boolean;
+  expanded: boolean;
+}) {
+  const Chevron = expanded ? ChevronDown : ChevronRight;
   return (
-    <div className="flex items-center gap-3 px-4 py-3 bg-surface">
+    <div className="flex items-center gap-3 px-4 py-3 bg-surface hover:bg-overlay/40 transition-colors duration-100">
+      <Chevron size={12} className="text-dim shrink-0" />
       <Server size={13} className="text-dim shrink-0" strokeWidth={1.5} />
       <span className="font-mono text-[12px] text-muted flex-1 truncate">{server.serverId}</span>
       <span className="text-[10px] text-dim">{server.tools.length} tools</span>
       {server.passed
         ? <ScanPassed />
-        : <ScanFailed critical={hasCriticalOrHigh} />}
+        : <ScanFailed critical={hasCriticalOrHigh} count={server.findings.length} />}
     </div>
   );
 }
@@ -73,25 +103,30 @@ function ScanPassed() {
   );
 }
 
-function ScanFailed({ critical }: { critical: boolean }) {
+function ScanFailed({ critical, count }: { critical: boolean; count: number }) {
   return (
     <span className={[
       'flex items-center gap-1 text-[11px] font-medium',
       critical ? 'text-critical' : 'text-medium',
     ].join(' ')}>
       <AlertTriangle size={11} strokeWidth={2} />
-      {critical ? 'Critical' : 'Warning'}
+      {count} {critical ? 'critical' : 'warning'}{count !== 1 ? 's' : ''}
     </span>
   );
 }
 
 function FindingsList({ findings }: { findings: ScanFinding[] }) {
   return (
-    <ul className="divide-y divide-border-subtle">
-      {findings.map((finding, i) => (
-        <FindingRow key={i} finding={finding} />
-      ))}
-    </ul>
+    <div>
+      <div className="px-4 py-1.5 bg-canvas/80">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-dim">Findings</span>
+      </div>
+      <ul className="divide-y divide-border-subtle">
+        {findings.map((finding, i) => (
+          <FindingRow key={i} finding={finding} />
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -100,13 +135,35 @@ function FindingRow({ finding }: { finding: ScanFinding }) {
     <li className="flex items-start gap-3 px-4 py-2.5 bg-canvas/60">
       <SeverityBadge severity={finding.severity} />
       <div className="flex-1 min-w-0">
-        <span className="text-[11px] font-mono text-muted">{finding.category}</span>
-        {finding.toolName && (
-          <span className="ml-2 text-[11px] font-mono text-accent">· {finding.toolName}</span>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] font-mono text-muted">{finding.category}</span>
+          {finding.toolName && (
+            <span className="text-[11px] font-mono text-accent">· {finding.toolName}</span>
+          )}
+        </div>
         <p className="text-[11px] text-dim mt-0.5 leading-relaxed">{finding.detail}</p>
       </div>
     </li>
+  );
+}
+
+function ToolList({ tools }: { tools: Array<{ name: string; description: string }> }) {
+  return (
+    <div>
+      <div className="px-4 py-1.5 bg-canvas/80">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-dim">Tools ({tools.length})</span>
+      </div>
+      <ul className="divide-y divide-border-subtle">
+        {tools.map((tool) => (
+          <li key={tool.name} className="flex items-start gap-3 px-4 py-2 bg-canvas/40">
+            <span className="font-mono text-[11px] text-accent shrink-0 pt-0.5">{tool.name}</span>
+            <span className="text-[11px] text-dim leading-relaxed truncate" title={tool.description}>
+              {tool.description || <span className="italic">No description</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

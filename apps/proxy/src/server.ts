@@ -17,7 +17,7 @@ import { randomUUID } from 'node:crypto';
 const _require = createRequire(import.meta.url);
 const PROXY_VERSION: string = (_require('../package.json') as { version: string }).version;
 import type { ProxyConfig, ToolCallEvent, AuditEntry, PolicyRule } from './types.js';
-import { runFullScan, listStoredSchemas } from './scanner/index.js';
+import { runFullScan, listStoredSchemas, listAllScanResults, isServerQuarantined, getLastScanResult } from './scanner/index.js';
 import { intercept } from './interceptor.js';
 import { PolicyEngine } from './policy/engine.js';
 import { InMemoryPolicyStore } from './policy/store.js';
@@ -264,8 +264,9 @@ export function createProxyServer(config: ProxyConfig) {
   // Returns findings from all registered MCP servers — used by the dashboard UI
   // to display the scan findings panel without re-triggering a scan.
   app.get('/scan/results', (c) => {
-    const schemas = listStoredSchemas();
-    return c.json(schemas);
+    // Return all scan results including failed/quarantined servers so the dashboard
+    // can show warnings for servers whose scans did not pass.
+    return c.json(listAllScanResults());
   });
 
   // ─── Policy management (D-021 + D-036) ───────────────────────────────────────
@@ -848,6 +849,31 @@ export function createProxyServer(config: ProxyConfig) {
       timestamp: Date.now(),
       correlationId: callId,
     };
+
+    // Quarantine check — block all calls from servers whose last scan failed.
+    // Scan-on-Connect catches poisoned tool definitions before any call is forwarded.
+    if (isServerQuarantined(event.serverId)) {
+      const scanResult = getLastScanResult(event.serverId);
+      const criticalFindings = scanResult?.findings.filter((f) => f.severity === 'critical' || f.severity === 'high') ?? [];
+      const reason = `Server "${event.serverId}" is quarantined: scan detected ${criticalFindings.length} critical/high finding(s). ` +
+        (criticalFindings[0] ? `First: ${criticalFindings[0].category} — ${criticalFindings[0].detail.slice(0, 80)}` : '');
+
+      bus.emit('tool:call', event);
+      bus.emit('tool:blocked', { event, action: 'BLOCKED_THREAT' as const, reason });
+      ringBuffer.update(
+        (e) => e.correlationId === callId,
+        (e) => ({ ...e, outcome: 'blocked' as const, reason, source: 'proxy' as const, matchedRule: 'scan-quarantine' }),
+      );
+      logger.warn({ serverId: event.serverId, toolName: event.toolName, findingCount: criticalFindings.length }, 'Tool call blocked — server quarantined by scan');
+
+      return c.json({
+        blocked: true,
+        action: 'BLOCKED_THREAT',
+        reason,
+        outcome: 'blocked',
+        rule: 'scan-quarantine',
+      }, 403);
+    }
 
     // D-022: upstream timeout support
     const timeoutMs = config.upstreamTimeoutMs ?? 30_000;

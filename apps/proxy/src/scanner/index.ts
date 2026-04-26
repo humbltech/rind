@@ -11,6 +11,10 @@ import { detectSchemaDrift, hashToolSchema } from './schema-hash.js';
 // Phase 2: persist to Redis/Postgres so drift is detected across proxy restarts
 const schemaStore = new Map<string, ServerSchema>();
 
+// Last scan result per server, including failed scans.
+// Used to quarantine servers that didn't pass — schemaStore only holds clean baselines.
+const lastScanResults = new Map<string, ScanResult & { tools: ToolDefinition[] }>();
+
 export function runFullScan(serverId: string, tools: ToolDefinition[]): ScanResult {
   // Collect tool names from all OTHER registered servers for cross-server shadowing check (D-028)
   const externalToolNames: string[] = [];
@@ -42,7 +46,14 @@ export function runFullScan(serverId: string, tools: ToolDefinition[]): ScanResu
   const passed = !findings.some((f) => f.severity === 'critical' || f.severity === 'high');
   const scannedAt = Date.now();
 
+  const result: ScanResult = { serverId, scannedAt, findings, passed };
+
+  // Always record the latest scan result so callers can check quarantine status.
+  lastScanResults.set(serverId, { ...result, tools });
+
   if (passed) {
+    // Only update the baseline on clean scans — preserves last-known-good schema
+    // so drift is detectable on repeated scans of a poisoned/drifted server.
     schemaStore.set(serverId, {
       serverId,
       hash: hashToolSchema(tools),
@@ -52,7 +63,7 @@ export function runFullScan(serverId: string, tools: ToolDefinition[]): ScanResu
     });
   }
 
-  return { serverId, scannedAt, findings, passed };
+  return result;
 }
 
 export function getStoredSchema(serverId: string): ServerSchema | undefined {
@@ -65,6 +76,23 @@ export function listStoredSchemas(): ServerSchema[] {
 
 export function clearSchemaStore(): void {
   schemaStore.clear();
+  lastScanResults.clear();
+}
+
+/** Returns the last scan result for a server, or undefined if never scanned. */
+export function getLastScanResult(serverId: string): (ScanResult & { tools: ToolDefinition[] }) | undefined {
+  return lastScanResults.get(serverId);
+}
+
+/** Returns all last scan results (clean and failed) for every scanned server. */
+export function listAllScanResults(): Array<ScanResult & { tools: ToolDefinition[] }> {
+  return Array.from(lastScanResults.values());
+}
+
+/** True if the server's last scan failed (critical/high findings). */
+export function isServerQuarantined(serverId: string): boolean {
+  const result = lastScanResults.get(serverId);
+  return result !== undefined && !result.passed;
 }
 
 export type { ScanFinding, ScanResult, ToolDefinition };
