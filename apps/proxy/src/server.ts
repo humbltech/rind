@@ -962,6 +962,93 @@ export function createProxyServer(config: ProxyConfig) {
     }
 
     const { output, interceptorResult } = interceptResult;
+
+    // ── REQUIRE_APPROVAL: hold the MCP response until human decides ───────────
+    if (interceptorResult.action === 'REQUIRE_APPROVAL') {
+      const matchedPolicyRule = policyStore.get().policies.find((r) => r.name === interceptorResult.matchedRule);
+      const approvalTimeoutMs = parseApprovalTimeout(matchedPolicyRule?.approval?.timeout) ?? 120_000;
+      const approvalOnTimeout = matchedPolicyRule?.approval?.onTimeout ?? 'DENY';
+      const toolLabel = deriveToolLabel(event.toolName, event.input);
+
+      const { approval, wait } = approvalQueue.enqueue({
+        sessionId: event.sessionId,
+        agentId: event.agentId,
+        toolName: event.toolName,
+        toolLabel,
+        input: event.input,
+        reason: `Tool call "${event.toolName}" requires human approval.`,
+        ruleName: interceptorResult.matchedRule,
+        timeoutMs: approvalTimeoutMs,
+        onTimeout: approvalOnTimeout,
+      });
+
+      logger.info(
+        { approvalId: approval.id, toolName: event.toolName, timeoutMs: approvalTimeoutMs },
+        'Approval requested — holding MCP proxy response',
+      );
+
+      // Update ring buffer to show pending approval
+      ringBuffer.update(
+        (e) => e.correlationId === callId,
+        (e) => ({
+          ...e,
+          outcome: 'require-approval' as const,
+          reason: `Pending approval (${approval.id})`,
+          matchedRule: interceptorResult.matchedRule,
+          toolLabel,
+          source: e.source ?? ('mcp' as const),
+        }),
+      );
+
+      const approvalResult = await wait;
+
+      const finalOutcome = approvalResult.decision === 'approve'
+        ? 'approved' as const
+        : approvalResult.decision === 'timeout'
+          ? 'approval-timeout' as const
+          : 'disapproved' as const;
+
+      ringBuffer.update(
+        (e) => e.correlationId === callId,
+        (e) => ({
+          ...e,
+          outcome: finalOutcome,
+          reason: approvalResult.decision === 'approve'
+            ? `Approved by ${approvalResult.decidedBy ?? 'dashboard'}`
+            : approvalResult.decision === 'timeout'
+              ? 'Approval timed out'
+              : `Denied by ${approvalResult.decidedBy ?? 'dashboard'}`,
+        }),
+      );
+
+      if (approvalResult.decision === 'approve') {
+        // Execute the tool call now that approval is granted
+        try {
+          const fwdResult = await forwardFn(event);
+          return c.json({ blocked: false, output: fwdResult.output, outcome: 'approved' });
+        } catch (err) {
+          logger.error({ err, toolName: event.toolName }, 'Upstream error after approval');
+          return c.json(
+            { content: [{ type: 'text', text: `MCP server unavailable: ${event.toolName}` }], isError: true },
+            200,
+          );
+        }
+      }
+
+      // Denied or timed out
+      const denyReason = approvalResult.decision === 'timeout'
+        ? 'Approval timed out'
+        : `Denied by ${approvalResult.decidedBy ?? 'dashboard'}`;
+      bus.emit('tool:blocked', { event, action: interceptorResult.action, reason: denyReason });
+      return c.json({
+        blocked: true,
+        action: interceptorResult.action,
+        reason: denyReason,
+        outcome: finalOutcome,
+        rule: interceptorResult.matchedRule,
+      }, 403);
+    }
+
     const blocked = interceptorResult.action !== 'ALLOW' && interceptorResult.action !== 'RATE_LIMIT';
 
     if (blocked || interceptorResult.action === 'RATE_LIMIT') {

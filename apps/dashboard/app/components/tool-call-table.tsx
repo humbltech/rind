@@ -136,7 +136,7 @@ function TableRow({ entry, isNew }: { entry: ToolCallEntry; isNew: boolean }) {
               input={entry.input}
               cwd={entry.cwd}
               reason={entry.reason}
-              matchedRule={entry.matchedRule}
+              matchedRule={entry.matchedRule ?? (entry.outcome === 'allowed' ? '(default)' : undefined)}
               agentId={entry.agentId}
               sessionId={entry.sessionId}
               sessionName={entry.sessionName}
