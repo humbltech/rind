@@ -136,6 +136,7 @@ function TableRow({ entry, isNew }: { entry: ToolCallEntry; isNew: boolean }) {
               input={entry.input}
               cwd={entry.cwd}
               reason={entry.reason}
+              matchedRule={entry.matchedRule}
               agentId={entry.agentId}
               sessionId={entry.sessionId}
               sessionName={entry.sessionName}
@@ -259,10 +260,11 @@ function SourceBadge({ source }: { source?: 'builtin' | 'mcp' | 'proxy' }) {
 }
 
 // Expandable input detail panel
-function InputDetail({ input, cwd, reason, agentId, sessionId, sessionName, response, correlationId }: {
+function InputDetail({ input, cwd, reason, matchedRule, agentId, sessionId, sessionName, response, correlationId }: {
   input: unknown;
   cwd?: string;
   reason?: string;
+  matchedRule?: string;
   agentId: string;
   sessionId: string;
   sessionName?: string;
@@ -289,6 +291,7 @@ function InputDetail({ input, cwd, reason, agentId, sessionId, sessionName, resp
           <span className="font-mono text-critical">{reason}</span>
         </div>
       )}
+      <DetailRow label="Matched Rule" value={matchedRule ?? '—'} />
 
       {/* Tabs: Input / Response */}
       {(hasInput || hasResponse) && (
