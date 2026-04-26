@@ -974,20 +974,9 @@ export function createProxyServer(config: ProxyConfig) {
         action: interceptorResult.action,
         reason: interceptorResult.reason,
       });
-      // Enrich the event already in the ring buffer with block details.
-      // The raw event was pushed by the onToolCallEvent callback before policy evaluation;
-      // now we backfill outcome/rule/reason so the dashboard shows the block.
-      const updated = ringBuffer.update(
-        (e) => e.correlationId === callId,
-        (e) => ({
-          ...e,
-          outcome: 'blocked' as const,
-          matchedRule: interceptorResult.matchedRule,
-          reason: interceptorResult.reason,
-          source: 'mcp' as const,
-        }),
-      );
-      logger.debug({ updated, bufferLen: ringBuffer.length }, 'Ring buffer enrichment for blocked call');
+      // Backfill outcome/rule/reason so the dashboard shows the block.
+      recordProxyOutcome(callId, interceptorResult, ringBuffer);
+      logger.debug({ bufferLen: ringBuffer.length }, 'Ring buffer enrichment for blocked call');
       emitAudit(bus, {
         eventType: 'tool:blocked',
         sessionId: event.sessionId,
@@ -1025,11 +1014,8 @@ export function createProxyServer(config: ProxyConfig) {
       return c.json(responseBody, 403);
     }
 
-    // Enrich the ring buffer event with allowed outcome so dashboard shows status
-    ringBuffer.update(
-      (e) => e.correlationId === callId,
-      (e) => ({ ...e, outcome: 'allowed' as const, source: e.source ?? ('mcp' as const), matchedRule: interceptorResult.matchedRule }),
-    );
+    // Backfill outcome/rule so dashboard shows allowed status
+    recordProxyOutcome(callId, interceptorResult, ringBuffer);
 
     return c.json({ blocked: false, output, outcome: 'allowed' });
   });
@@ -1086,6 +1072,29 @@ export function createProxyServer(config: ProxyConfig) {
     logger,
     policyStore, // exposed for Phase 2 API mutations
   };
+}
+
+// ─── Outcome recording ───────────────────────────────────────────────────────
+// Single place that translates an InterceptorResult into a ring buffer update
+// for the MCP proxy path. The hook path pre-enriches events before push and
+// doesn't use this helper (see B-003 in mvp-roadmap.md for future unification).
+
+function recordProxyOutcome(
+  correlationId: string,
+  interceptorResult: import('./interceptor.js').InterceptorResult,
+  ringBuffer: PersistentRingBuffer<ToolCallEvent>,
+): void {
+  const isBlocked = interceptorResult.action !== 'ALLOW' && interceptorResult.action !== 'RATE_LIMIT';
+  ringBuffer.update(
+    (e) => e.correlationId === correlationId,
+    (e) => ({
+      ...e,
+      outcome: isBlocked ? ('blocked' as const) : ('allowed' as const),
+      source: e.source ?? ('mcp' as const),
+      matchedRule: interceptorResult.matchedRule,
+      reason: interceptorResult.reason,
+    }),
+  );
 }
 
 // ─── Audit helpers ────────────────────────────────────────────────────────────

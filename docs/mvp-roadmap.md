@@ -512,4 +512,48 @@ rind/                          # This repo
 
 ---
 
+## Engineering Backlog (Deferred Design Items)
+
+These items were identified during Phase 1 implementation and intentionally deferred. Each needs a full design exercise before touching code.
+
+### B-001 — Rule Chaining / `pass` Action
+
+**Problem:** Today `policy/engine.ts` stops at the first rule that takes action (first-match-wins). A loop rule that matches but hasn't hit its threshold is silently skipped. There is no way for a rule to say "I saw this call — keep evaluating the next rule." Two open questions:
+
+1. **`pass` action** — a rule should be able to explicitly `pass` (continue to next rule) rather than `allow` (stop evaluation). `allow` = stop and permit. `pass` = matched, no decision, continue. This lets you layer rules: a loop observer rule `pass`es while tracking, and a hard `deny` rule below still fires on every call.
+
+2. **What gets logged when multiple rules touch a call** — options:
+   - Log only the rule that took final action (current behavior, works for first-match-wins)
+   - Log an array of all rules that matched (`matchedRules: string[]`) — needed if `pass` exists
+   - Log the "tracking rule" (loop observer) separately from the "deciding rule"
+
+**Constraint:** Any change here must not break existing rule priority semantics. Existing `DENY`/`ALLOW`/`REQUIRE_APPROVAL` rules that don't use `pass` must behave identically.
+
+---
+
+### B-002 — Protocol-Agnostic Approval Queue
+
+**Problem:** The approval queue (wait for human decision before continuing) is currently wired directly into the `/hook/evaluate` route handler in `server.ts`. It works for Claude Code hooks but can't be reused for Slack, WhatsApp, email, or any other notification/response channel.
+
+**Target design:** `ApprovalQueue` becomes a shared service. A thin `NotificationAdapter` interface handles channel-specific delivery (Slack message, WhatsApp, dashboard banner, etc.). The core wait/resolve/timeout logic is channel-agnostic. Route handlers call `approvalQueue.request(event)` and await resolution — they don't know or care which channel the notification went to.
+
+**Why deferred:** Requires stable notification channel abstractions (Slack/WhatsApp API integrations) before the adapter interface can be properly designed.
+
+---
+
+### B-003 — Unified Enforcement Pipeline
+
+**Problem:** `evaluateHook()` in `hooks/claude-code.ts` calls `intercept()` but passes `loopDetector: undefined` and `rateLimiter: undefined`. Loop detection and rate limiting don't run for hook-mode calls. Two gaps:
+
+1. Hook-mode calls are not loop-detected — an agent can loop infinitely through hooks without triggering loop rules.
+2. `server.ts` has scattered `ringBuffer.update()` calls in two places (MCP proxy path and hook path) that duplicate the outcome-recording logic. A shared `recordOutcome(event, interceptorResult, ringBuffer, bus)` helper should be the single place this happens.
+
+**Proposed fix (small, low risk):**
+- Extract `recordOutcome()` helper — unifies ring buffer updates across both paths.
+- Pass `loopDetector` and `rateLimiter` from server.ts down through `evaluateHook()` to `intercept()` — one-line change in hooks/claude-code.ts.
+
+**Why partially deferred:** The `recordOutcome()` extraction is safe to do now (no semantic change, pure refactor). Passing loop/rate state to hooks needs a deliberate test run first — loop rules behave differently in hook mode (no upstream call = no durationMs, different correlationId lifecycle).
+
+---
+
 *Last Updated: April 2026 — Rewritten for TypeScript/Node.js stack (AD-006)*
