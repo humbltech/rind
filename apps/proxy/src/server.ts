@@ -895,7 +895,7 @@ export function createProxyServer(config: ProxyConfig) {
           bus.emit('tool:response', e);
           ringBuffer.update(
             (entry) => entry.correlationId === callId,
-            (entry) => ({ ...entry, source: 'mcp' as const }),
+            (entry) => ({ ...entry, source: entry.source ?? ('mcp' as const) }),
           );
           if (e.threats.length > 0) {
             bus.emit('tool:threat', e);

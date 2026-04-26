@@ -21,7 +21,7 @@ async function callWithError(throwFn: () => never) {
     }),
   });
 
-  const body = await res.json() as { content?: Array<{ type: string; text: string }>; isError?: boolean };
+  const body = await res.json() as { content: Array<{ type: string; text: string }>; isError: boolean };
   const logsRes = await app.request('/logs/tool-calls');
   const events = await logsRes.json() as Array<{ toolName: string; outcome?: string; source?: string }>;
   const entry = events.find((e) => e.toolName === 'db.execute');
@@ -38,9 +38,10 @@ describe('/proxy/tool-call — upstream error handling', () => {
     expect(res.status).toBe(200);
     expect(body.isError).toBe(true);
     expect(body.content).toHaveLength(1);
-    expect(body.content![0].type).toBe('text');
-    expect(body.content![0].text).toContain('db.execute');
-    expect(body.content![0].text).toContain('unavailable');
+    const [first] = body.content;
+    expect(first?.type).toBe('text');
+    expect(first?.text).toContain('db.execute');
+    expect(first?.text).toContain('unavailable');
   });
 
   it('records outcome:upstream-error and source:proxy in ring buffer', async () => {
@@ -61,7 +62,8 @@ describe('/proxy/tool-call — upstream error handling', () => {
 
     expect(res.status).toBe(200);
     expect(body.isError).toBe(true);
-    expect(body.content![0].text).toContain('timed out');
+    const [first] = body.content;
+    expect(first?.text).toContain('timed out');
     expect(entry?.outcome).toBe('upstream-timeout');
     expect(entry?.source).toBe('proxy');
   });
