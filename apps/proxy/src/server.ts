@@ -158,7 +158,9 @@ export function createProxyServer(config: ProxyConfig) {
 
   // Persist API-created rules to a JSON file alongside the audit log.
   // On restart, persisted rules are merged with the YAML base config.
-  const policyStore = new InMemoryPolicyStore(policyConfig, policyPersistPath);
+  // Skip persisted rules when policy is provided in-memory (e.g. tests) — prevents
+  // disk state from bleeding into isolated test environments.
+  const policyStore = new InMemoryPolicyStore(policyConfig, config.policy ? undefined : policyPersistPath);
   // ── Runtime safety (D-015) — loop detector is shared between interceptor and policy engine
   const loopDetector = new LoopDetector();
   // ── PreToolUse ↔ PostToolUse correlation tracker
@@ -513,16 +515,20 @@ export function createProxyServer(config: ProxyConfig) {
       const result = await wait;
 
       // Update the event in the ring buffer with the final decision
-      const finalOutcome = result.decision === 'approve' ? 'allowed' : 'blocked';
+      const finalOutcome = result.decision === 'approve'
+        ? 'approved'
+        : result.decision === 'timeout'
+          ? 'approval-timeout'
+          : 'disapproved';
       ringBuffer.update(
         (e) => e.correlationId === correlationId,
         (e) => ({
           ...e,
-          outcome: finalOutcome as 'allowed' | 'blocked',
+          outcome: finalOutcome as 'approved' | 'disapproved' | 'approval-timeout',
           reason: result.decision === 'approve'
             ? `Approved by ${result.decidedBy ?? 'dashboard'}`
             : result.decision === 'timeout'
-              ? `Approval timed out (${onTimeout})`
+              ? `Approval timed out — ${onTimeout === 'ALLOW' ? 'allowed through' : 'blocked'}`
               : `Denied by ${result.decidedBy ?? 'dashboard'}`,
         }),
       );
@@ -1022,7 +1028,7 @@ export function createProxyServer(config: ProxyConfig) {
     // Enrich the ring buffer event with allowed outcome so dashboard shows status
     ringBuffer.update(
       (e) => e.correlationId === callId,
-      (e) => ({ ...e, outcome: 'allowed' as const, source: 'mcp' as const }),
+      (e) => ({ ...e, outcome: 'allowed' as const, source: e.source ?? ('mcp' as const), matchedRule: interceptorResult.matchedRule }),
     );
 
     return c.json({ blocked: false, output, outcome: 'allowed' });

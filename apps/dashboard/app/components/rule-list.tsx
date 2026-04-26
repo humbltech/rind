@@ -129,7 +129,10 @@ function RuleRow({ rule, onDelete, onEdit, onToggle }: { rule: PolicyRuleRow; on
         </span>
       </Td>
       <Td>
-        <ActionBadge action={rule.action} />
+        <div className="flex items-center gap-1.5">
+          <ActionBadge action={rule.action} />
+          {rule.loop && <LoopBadge loop={rule.loop} />}
+        </div>
       </Td>
       <Td>
         <SourceBadge source={rule._meta?.source} modified={rule._meta?.modifiedFromPack} />
@@ -164,6 +167,17 @@ function ActionBadge({ action }: { action: PolicyRuleRow['action'] }) {
   return (
     <span className={['text-[10px] font-medium border rounded px-1.5 py-0.5 whitespace-nowrap', ACTION_STYLES[action]].join(' ')}>
       {action.replace('_', ' ')}
+    </span>
+  );
+}
+
+function LoopBadge({ loop }: { loop: NonNullable<PolicyRuleRow['loop']> }) {
+  return (
+    <span
+      title={`Loop: ${loop.type}, threshold ${loop.threshold}, window ${loop.window ?? 10}`}
+      className="text-[10px] border rounded px-1.5 py-0.5 font-medium text-warning border-warning/30 bg-warning/8 whitespace-nowrap"
+    >
+      ↺ {loop.threshold}×
     </span>
   );
 }

@@ -16,7 +16,7 @@ export interface ToolCallEntry {
   toolLabel?: string;
   timestamp: number;
   // Present when the proxy returns a decision alongside the call
-  outcome?: 'allowed' | 'blocked' | 'require-approval' | 'upstream-error' | 'upstream-timeout';
+  outcome?: 'allowed' | 'blocked' | 'require-approval' | 'approved' | 'disapproved' | 'approval-timeout' | 'upstream-error' | 'upstream-timeout';
   reason?: string;
   // Tool source classification
   source?: 'builtin' | 'mcp' | 'proxy';
@@ -179,6 +179,30 @@ function OutcomeBadge({ outcome }: { outcome: NonNullable<ToolCallEntry['outcome
         borderColor: 'color-mix(in srgb, var(--rind-medium) 24%, transparent)',
       },
     },
+    approved: {
+      label: 'APPROVED',
+      style: {
+        color: 'var(--rind-low)',
+        background: 'color-mix(in srgb, var(--rind-low) 10%, transparent)',
+        borderColor: 'color-mix(in srgb, var(--rind-low) 24%, transparent)',
+      },
+    },
+    disapproved: {
+      label: 'DISAPPROVED',
+      style: {
+        color: 'var(--rind-critical)',
+        background: 'color-mix(in srgb, var(--rind-critical) 10%, transparent)',
+        borderColor: 'color-mix(in srgb, var(--rind-critical) 24%, transparent)',
+      },
+    },
+    'approval-timeout': {
+      label: 'APPROVAL TIMEOUT',
+      style: {
+        color: 'var(--rind-medium)',
+        background: 'color-mix(in srgb, var(--rind-medium) 10%, transparent)',
+        borderColor: 'color-mix(in srgb, var(--rind-medium) 24%, transparent)',
+      },
+    },
     'upstream-error': {
       label: 'UPSTREAM ERROR',
       style: {
@@ -188,7 +212,7 @@ function OutcomeBadge({ outcome }: { outcome: NonNullable<ToolCallEntry['outcome
       },
     },
     'upstream-timeout': {
-      label: 'TIMED OUT',
+      label: 'UPSTREAM TIMEOUT',
       style: {
         color: 'var(--rind-medium)',
         background: 'color-mix(in srgb, var(--rind-medium) 10%, transparent)',

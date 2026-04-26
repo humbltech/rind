@@ -225,7 +225,7 @@ export async function intercept(
     responseThreats = inspectResponse(output);
   } catch {
     // Response inspection error → fail closed (block response)
-    return blocked('BLOCKED_THREAT', `Response inspection failed — blocking for safety.`);
+    return blocked('BLOCKED_THREAT', `Response inspection failed — blocking for safety.`, matchedRule?.name);
   }
 
   const responseEvent: ToolResponseEvent = {
@@ -248,13 +248,14 @@ export async function intercept(
         `Tool response from "${event.toolName}" contained a critical threat: ` +
           criticalThreats.map((t) => t.pattern).join(', ') +
           '. Response blocked.',
+        matchedRule?.name,
       );
     }
   }
 
   return {
     output,
-    interceptorResult: { action: effectiveAction },
+    interceptorResult: { action: effectiveAction, matchedRule: matchedRule?.name },
   };
 }
 

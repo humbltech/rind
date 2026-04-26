@@ -14,7 +14,7 @@ export interface ToolCallEvent {
   input: unknown;
   timestamp: number;
   // Enriched after policy evaluation — not present on the initial event
-  outcome?: 'allowed' | 'blocked' | 'require-approval' | 'upstream-error' | 'upstream-timeout';
+  outcome?: 'allowed' | 'blocked' | 'require-approval' | 'approved' | 'disapproved' | 'approval-timeout' | 'upstream-error' | 'upstream-timeout';
   reason?: string;
   // Name of the policy rule that matched (if any)
   matchedRule?: string;

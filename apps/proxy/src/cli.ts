@@ -11,7 +11,7 @@ import type { ProxyConfig } from './types.js';
 // ─── ANSI helpers ─────────────────────────────────────────────────────────────
 
 const c = {
-  teal:  '\x1b[36m',
+  teal:  '\x1b[35m',
   green: '\x1b[32m',
   yellow:'\x1b[33m',
   bold:  '\x1b[1m',

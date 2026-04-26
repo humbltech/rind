@@ -25,9 +25,9 @@
   --rind-foreground-muted: #a1a1aa;  /* Secondary text — labels, metadata */
   --rind-foreground-dim:   #71717a;  /* Tertiary text — timestamps, placeholders */
 
-  /* Rind brand accent — teal. Restricted to identity: △ logo, active nav, tool badges */
-  --rind-accent:       #14b8a6;  /* teal-500 */
-  --rind-accent-light: #2dd4bf;  /* teal-400 — hover state */
+  /* Rind brand accent — magenta. Restricted to identity: △ logo, active nav, tool badges */
+  --rind-accent:       #B8146B;
+  --rind-accent-light: #d4257f;  /* lighter variant — hover state */
 
   /* Severity palette — 400-level on dark bg gives even luminance across all five levels.
      500-level (Tailwind defaults) are calibrated for light backgrounds: yellow-500
@@ -51,9 +51,9 @@
  *   red-400 (#f87171) on white is only 3.2:1 — fails WCAG AA for text.
  *   red-600 (#dc2626) on white is 5.9:1 — passes AA and AAA for large text.
  *
- * Accent shifts from teal-500 to teal-600 because:
- *   #14b8a6 on white is 4.5:1 — marginal AA.
- *   #0d9488 on white is 5.5:1 — clear AA.
+ * Accent shifts darker in light mode for contrast:
+ *   #B8146B on white is ~5.5:1 — clear AA.
+ *   #9d1159 on white is ~7:1 — AAA.
  */
 
 @media (prefers-color-scheme: light) {
@@ -66,8 +66,8 @@
     --rind-foreground:       #09090b;
     --rind-foreground-muted: #52525b;
     --rind-foreground-dim:   #71717a;
-    --rind-accent:       #0d9488;
-    --rind-accent-light: #14b8a6;
+    --rind-accent:       #9d1159;
+    --rind-accent-light: #B8146B;
     --rind-critical: #dc2626;
     --rind-high:     #ea580c;
     --rind-medium:   #ca8a04;
@@ -86,8 +86,8 @@
   --rind-foreground:       #09090b;
   --rind-foreground-muted: #52525b;
   --rind-foreground-dim:   #71717a;
-  --rind-accent:       #0d9488;
-  --rind-accent-light: #14b8a6;
+  --rind-accent:       #9d1159;
+  --rind-accent-light: #B8146B;
   --rind-critical: #dc2626;
   --rind-high:     #ea580c;
   --rind-medium:   #ca8a04;
@@ -105,8 +105,8 @@
   --rind-foreground:       #fafafa;
   --rind-foreground-muted: #a1a1aa;
   --rind-foreground-dim:   #71717a;
-  --rind-accent:       #14b8a6;
-  --rind-accent-light: #2dd4bf;
+  --rind-accent:       #B8146B;
+  --rind-accent-light: #d4257f;
   --rind-critical: #f87171;
   --rind-high:     #fb923c;
   --rind-medium:   #fbbf24;

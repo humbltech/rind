@@ -8,6 +8,7 @@ async function callWithError(throwFn: () => never) {
     upstreamMcpUrl: 'http://mock-unused',
     forwardFn: async () => throwFn(),
     logLevel: 'error',
+    policy: { policies: [] }, // prevents .rind/policies.json from being loaded
   });
 
   const res = await app.request('/proxy/tool-call', {
@@ -77,6 +78,7 @@ describe('/proxy/tool-call — happy path source', () => {
       upstreamMcpUrl: 'http://mock-unused',
       forwardFn: async () => ({ output: { rows: [] }, durationMs: 5 }),
       logLevel: 'error',
+      policy: { policies: [] },
     });
 
     await app.request('/proxy/tool-call', {

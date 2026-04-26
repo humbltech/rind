@@ -27,6 +27,7 @@ interface RuleForm {
   subcommands: string;
   parameters: ParamEntry[];
   priority: string;
+  loop: { enabled: boolean; type: 'exact' | 'consecutive' | 'subcommand'; threshold: string; window: string };
 }
 
 interface RuleBuilderProps {
@@ -48,6 +49,7 @@ const DEFAULT_FORM: RuleForm = {
   subcommands: '',
   parameters: [],
   priority: '50',
+  loop: { enabled: false, type: 'exact', threshold: '3', window: '10' },
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -255,6 +257,54 @@ function FormPanel({ form, set }: { form: RuleForm; set: <K extends keyof RuleFo
 
       <Field label="Priority" hint="Lower number = evaluated first. Default 50, pack rules use 100.">
         <Input value={form.priority} onChange={(v) => set('priority', v)} placeholder="50" mono />
+      </Field>
+
+      <Field label="Loop detection" hint="Only trigger this rule when the agent repeats the same call N times in a sliding window.">
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={form.loop.enabled}
+            onChange={(e) => set('loop', { ...form.loop, enabled: e.target.checked })}
+            className="rounded border-border accent-[var(--rind-accent)]"
+          />
+          <span className="text-xs text-muted">Enable loop detection</span>
+        </label>
+        {form.loop.enabled && (
+          <div className="mt-2 flex gap-2">
+            <div className="flex-1">
+              <p className="text-[10px] text-dim mb-1">Type</p>
+              <select
+                value={form.loop.type}
+                onChange={(e) => set('loop', { ...form.loop, type: e.target.value as RuleForm['loop']['type'] })}
+                className="w-full px-2 py-1.5 text-xs rounded border border-border bg-canvas text-foreground focus:outline-none focus:ring-1 focus:ring-accent/50"
+              >
+                <option value="exact">exact — same input</option>
+                <option value="consecutive">consecutive — any input</option>
+                <option value="subcommand">subcommand — Bash only</option>
+              </select>
+            </div>
+            <div className="w-20">
+              <p className="text-[10px] text-dim mb-1">Threshold</p>
+              <input
+                type="number"
+                min="2"
+                value={form.loop.threshold}
+                onChange={(e) => set('loop', { ...form.loop, threshold: e.target.value })}
+                className="w-full px-2 py-1.5 text-xs font-mono rounded border border-border bg-canvas text-foreground focus:outline-none focus:ring-1 focus:ring-accent/50"
+              />
+            </div>
+            <div className="w-20">
+              <p className="text-[10px] text-dim mb-1">Window</p>
+              <input
+                type="number"
+                min="2"
+                value={form.loop.window}
+                onChange={(e) => set('loop', { ...form.loop, window: e.target.value })}
+                className="w-full px-2 py-1.5 text-xs font-mono rounded border border-border bg-canvas text-foreground focus:outline-none focus:ring-1 focus:ring-accent/50"
+              />
+            </div>
+          </div>
+        )}
       </Field>
     </div>
   );
@@ -470,6 +520,9 @@ function ruleToForm(rule: PolicyRuleRow | null | undefined): RuleForm {
     subcommands: rule.match.subcommand?.join(', ') ?? '',
     parameters,
     priority: String(rule.priority ?? 50),
+    loop: rule.loop
+      ? { enabled: true, type: rule.loop.type as RuleForm['loop']['type'], threshold: String(rule.loop.threshold), window: String(rule.loop.window ?? 10) }
+      : DEFAULT_FORM.loop,
   };
 }
 
@@ -516,6 +569,9 @@ function formToRule(form: RuleForm): PolicyRuleRow | null {
   }
 
   const priority = Number(form.priority);
+  const loop = form.loop.enabled
+    ? { type: form.loop.type, threshold: Math.max(2, Number(form.loop.threshold) || 3), window: Math.max(2, Number(form.loop.window) || 10) }
+    : undefined;
 
   return {
     name:   form.name.trim(),
@@ -523,6 +579,7 @@ function formToRule(form: RuleForm): PolicyRuleRow | null {
     match,
     action: form.action,
     priority: Number.isNaN(priority) ? 50 : priority,
+    ...(loop ? { loop } : {}),
     _meta: { source: 'manual' },
   };
 }
@@ -579,6 +636,13 @@ function formToYaml(form: RuleForm): string {
     lines.push('  limit: ' + (form.rateLimit.limit || '10'));
     lines.push('  window: ' + (form.rateLimit.window || '1m'));
     lines.push('  scope: per_agent');
+  }
+
+  if (form.loop.enabled) {
+    lines.push('loop:');
+    lines.push('  type: ' + form.loop.type);
+    lines.push('  threshold: ' + (form.loop.threshold || '3'));
+    lines.push('  window: ' + (form.loop.window || '10'));
   }
 
   lines.push('failMode: closed');
