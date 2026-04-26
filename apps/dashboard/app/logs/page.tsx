@@ -431,19 +431,43 @@ function ToolBadge({ toolLabel, toolName, input }: { toolLabel?: string; toolNam
   );
 }
 
-function SourceBadge({ source }: { source?: 'builtin' | 'mcp' }) {
+function SourceBadge({ source }: { source?: 'builtin' | 'mcp' | 'proxy' }) {
   if (!source) return null;
-  const isMcp = source === 'mcp';
+
+  const config: Record<'builtin' | 'mcp' | 'proxy', { label: string; style: React.CSSProperties }> = {
+    mcp: {
+      label: 'MCP',
+      style: {
+        color: 'var(--rind-accent)',
+        background: 'color-mix(in srgb, var(--rind-accent) 10%, transparent)',
+        borderColor: 'color-mix(in srgb, var(--rind-accent) 24%, transparent)',
+      },
+    },
+    builtin: {
+      label: 'BUILTIN',
+      style: {
+        color: 'var(--rind-foreground-muted)',
+        background: 'var(--rind-overlay)',
+        borderColor: 'var(--rind-border-subtle)',
+      },
+    },
+    proxy: {
+      label: 'PROXY',
+      style: {
+        color: 'var(--rind-foreground-muted)',
+        background: 'var(--rind-overlay)',
+        borderColor: 'var(--rind-border-subtle)',
+      },
+    },
+  };
+
+  const { label, style } = config[source];
   return (
     <span
       className="font-mono text-[10px] tracking-[0.04em] px-2 py-0.5 rounded border"
-      style={{
-        color: isMcp ? 'var(--rind-accent)' : 'var(--rind-foreground-muted)',
-        background: isMcp ? 'color-mix(in srgb, var(--rind-accent) 10%, transparent)' : 'var(--rind-overlay)',
-        borderColor: isMcp ? 'color-mix(in srgb, var(--rind-accent) 24%, transparent)' : 'var(--rind-border-subtle)',
-      }}
+      style={style}
     >
-      {isMcp ? 'MCP' : 'BUILTIN'}
+      {label}
     </span>
   );
 }
