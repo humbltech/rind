@@ -940,16 +940,18 @@ export function createProxyServer(config: ProxyConfig) {
 
       ringBuffer.update(
         (e) => e.correlationId === callId,
-        (e) => ({ ...e, outcome, source: 'mcp' as const }),
+        (e) => ({ ...e, outcome, source: 'proxy' as const }),
       );
 
       logger.error({ err, toolName: event.toolName, durationMs }, isTimeout ? 'Upstream timeout' : 'Upstream error');
       return c.json(
         {
-          error: isTimeout ? 'Upstream MCP server timed out' : 'Upstream MCP server unreachable',
+          content: [{ type: 'text', text: isTimeout
+            ? `MCP server timed out: ${event.toolName}`
+            : `MCP server unavailable: ${event.toolName}` }],
           isError: true,
         },
-        isTimeout ? 504 : 502,
+        200,
       );
     }
 

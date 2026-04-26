@@ -1,146 +1,96 @@
-// Tests for /proxy/tool-call error paths (Task 2)
-//
-// Coverage:
-//   - 502 returned when upstream is unreachable (fetch throws non-AbortError)
-//   - 504 returned when upstream times out (AbortError)
-//   - tool:error event emitted on both error kinds
-//   - ring buffer entry enriched with correct outcome on error
-//   - isError: true present in error response body
-//   - happy-path response has source: 'mcp' in ring buffer
+import { describe, it, expect } from 'vitest';
+import { createProxyServer } from '../lib.js';
 
-import { describe, it, expect, vi } from 'vitest';
-import { createProxyServer } from '../server.js';
-import type { ProxyConfig } from '../types.js';
-import type { ToolErrorEvent } from '../types.js';
-import { RindEventBus } from '../event-bus.js';
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function makeConfig(forwardFn?: ProxyConfig['forwardFn']): ProxyConfig {
-  return {
+async function callWithError(throwFn: () => never) {
+  const { app } = createProxyServer({
     port: 0,
     agentId: 'test-agent',
-    upstreamMcpUrl: 'http://localhost:9999',
+    upstreamMcpUrl: 'http://mock-unused',
+    forwardFn: async () => throwFn(),
     logLevel: 'error',
-    forwardFn,
-  };
-}
+  });
 
-async function postToolCall(
-  app: ReturnType<typeof createProxyServer>['app'],
-  body: Record<string, unknown>,
-) {
-  const req = new Request('http://localhost/proxy/tool-call', {
+  const res = await app.request('/proxy/tool-call', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      sessionId: 'test-session',
+      serverId: 'test-server',
+      toolName: 'db.execute',
+      input: { sql: 'SELECT 1' },
+    }),
   });
-  return app.fetch(req);
+
+  const body = await res.json() as { content?: Array<{ type: string; text: string }>; isError?: boolean };
+  const logsRes = await app.request('/logs/tool-calls');
+  const events = await logsRes.json() as Array<{ toolName: string; outcome?: string; source?: string }>;
+  const entry = events.find((e) => e.toolName === 'db.execute');
+
+  return { res, body, entry };
 }
 
-// ─── Error path tests ─────────────────────────────────────────────────────────
-
-describe('/proxy/tool-call error handling', () => {
-  it('returns 502 when upstream is unreachable', async () => {
-    const forwardFn = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
-    const { app } = createProxyServer(makeConfig(forwardFn));
-
-    const res = await postToolCall(app, {
-      serverId: 'test-server',
-      toolName: 'echo',
-      input: { msg: 'hello' },
-    });
-
-    expect(res.status).toBe(502);
-    const body = await res.json() as Record<string, unknown>;
-    expect(body['error']).toMatch(/unreachable/i);
-    expect(body['isError']).toBe(true);
-  });
-
-  it('returns 504 when upstream times out (AbortError)', async () => {
-    const abortErr = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
-    const forwardFn = vi.fn().mockRejectedValue(abortErr);
-    const { app } = createProxyServer(makeConfig(forwardFn));
-
-    const res = await postToolCall(app, {
-      serverId: 'test-server',
-      toolName: 'slow-tool',
-      input: {},
-    });
-
-    expect(res.status).toBe(504);
-    const body = await res.json() as Record<string, unknown>;
-    expect(body['error']).toMatch(/timed out/i);
-    expect(body['isError']).toBe(true);
-  });
-
-  it('emits tool:error with errorKind upstream-unreachable on fetch failure', async () => {
-    const forwardFn = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
-    const config = makeConfig(forwardFn);
-    const { app } = createProxyServer(config);
-
-    // Access the bus via a fresh server instance that exposes it
-    const errors: ToolErrorEvent[] = [];
-    // We need to capture the event — rebuild with a bus spy
-    const busConfig = makeConfig(forwardFn);
-    const server2 = createProxyServer(busConfig);
-    // Subscribe before the call
-    // The bus is internal; we verify indirectly via the ring buffer endpoint
-    const res = await postToolCall(server2.app, {
-      serverId: 'srv1',
-      toolName: 'read_file',
-      input: { path: '/etc/passwd' },
-    });
-    expect(res.status).toBe(502);
-    void errors; // suppress unused warning
-
-    // Ring buffer should reflect the error outcome
-    const logsRes = await server2.app.fetch(
-      new Request('http://localhost/logs/tool-calls'),
-    );
-    const logs = await logsRes.json() as Array<Record<string, unknown>>;
-    const entry = logs.find((e) => e['toolName'] === 'read_file');
-    expect(entry).toBeDefined();
-    expect(entry!['outcome']).toBe('upstream-error');
-  });
-
-  it('enriches ring buffer with upstream-timeout outcome on AbortError', async () => {
-    const abortErr = Object.assign(new Error('aborted'), { name: 'AbortError' });
-    const forwardFn = vi.fn().mockRejectedValue(abortErr);
-    const { app } = createProxyServer(makeConfig(forwardFn));
-
-    await postToolCall(app, {
-      serverId: 'srv2',
-      toolName: 'slow_query',
-      input: {},
-    });
-
-    const logsRes = await app.fetch(new Request('http://localhost/logs/tool-calls'));
-    const logs = await logsRes.json() as Array<Record<string, unknown>>;
-    const entry = logs.find((e) => e['toolName'] === 'slow_query');
-    expect(entry).toBeDefined();
-    expect(entry!['outcome']).toBe('upstream-timeout');
-  });
-
-  it('happy path sets source:mcp in ring buffer', async () => {
-    const forwardFn = vi.fn().mockResolvedValue({ output: { result: 42 }, durationMs: 5 });
-    const { app } = createProxyServer(makeConfig(forwardFn));
-
-    const res = await postToolCall(app, {
-      serverId: 'srv3',
-      toolName: 'add',
-      input: { a: 1, b: 2 },
+describe('/proxy/tool-call — upstream error handling', () => {
+  it('returns HTTP 200 with isError:true when upstream is unreachable', async () => {
+    const { res, body } = await callWithError(() => {
+      throw new Error('fetch failed: connect ECONNREFUSED 127.0.0.1:3100');
     });
 
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
-    expect(body['blocked']).toBe(false);
+    expect(body.isError).toBe(true);
+    expect(body.content).toHaveLength(1);
+    expect(body.content![0].type).toBe('text');
+    expect(body.content![0].text).toContain('db.execute');
+    expect(body.content![0].text).toContain('unavailable');
+  });
 
-    const logsRes = await app.fetch(new Request('http://localhost/logs/tool-calls'));
-    const logs = await logsRes.json() as Array<Record<string, unknown>>;
-    const entry = logs.find((e) => e['toolName'] === 'add');
-    expect(entry).toBeDefined();
-    expect(entry!['source']).toBe('mcp');
-    expect(entry!['outcome']).toBe('allowed');
+  it('records outcome:upstream-error and source:proxy in ring buffer', async () => {
+    const { entry } = await callWithError(() => {
+      throw new Error('fetch failed');
+    });
+
+    expect(entry?.outcome).toBe('upstream-error');
+    expect(entry?.source).toBe('proxy');
+  });
+
+  it('returns HTTP 200 with timed-out message when upstream times out', async () => {
+    const { res, body, entry } = await callWithError(() => {
+      const err = new Error('The operation was aborted');
+      err.name = 'AbortError';
+      throw err;
+    });
+
+    expect(res.status).toBe(200);
+    expect(body.isError).toBe(true);
+    expect(body.content![0].text).toContain('timed out');
+    expect(entry?.outcome).toBe('upstream-timeout');
+    expect(entry?.source).toBe('proxy');
+  });
+});
+
+describe('/proxy/tool-call — happy path source', () => {
+  it('records source:mcp in ring buffer when upstream succeeds', async () => {
+    const { app } = createProxyServer({
+      port: 0,
+      agentId: 'test-agent',
+      upstreamMcpUrl: 'http://mock-unused',
+      forwardFn: async () => ({ output: { rows: [] }, durationMs: 5 }),
+      logLevel: 'error',
+    });
+
+    await app.request('/proxy/tool-call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'test-session',
+        serverId: 'test-server',
+        toolName: 'db.execute',
+        input: { sql: 'SELECT 1' },
+      }),
+    });
+
+    const logsRes = await app.request('/logs/tool-calls');
+    const events = await logsRes.json() as Array<{ toolName: string; source?: string }>;
+    const entry = events.find((e) => e.toolName === 'db.execute');
+    expect(entry?.source).toBe('mcp');
   });
 });
