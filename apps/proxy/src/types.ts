@@ -14,12 +14,12 @@ export interface ToolCallEvent {
   input: unknown;
   timestamp: number;
   // Enriched after policy evaluation — not present on the initial event
-  outcome?: 'allowed' | 'blocked' | 'require-approval';
+  outcome?: 'allowed' | 'blocked' | 'require-approval' | 'upstream-error' | 'upstream-timeout';
   reason?: string;
   // Name of the policy rule that matched (if any)
   matchedRule?: string;
   // Source classification: 'builtin' for Claude Code tools, 'mcp' for MCP server tools
-  source?: 'builtin' | 'mcp';
+  source?: 'builtin' | 'mcp' | 'proxy';
   // Human-readable label: "Bash: git status", "Read: server.ts", "Edit: types.ts"
   toolLabel?: string;
   // Working directory where the agent is operating
@@ -45,6 +45,15 @@ export interface ToolResponseEvent {
   output: unknown;
   durationMs: number;
   threats: ResponseThreat[]; // prompt injection, credential patterns
+}
+
+export interface ToolErrorEvent {
+  sessionId: string;
+  agentId: string;
+  toolName: string;
+  /** 'upstream-unreachable' = ECONNREFUSED / fetch failed; 'upstream-timeout' = AbortError */
+  errorKind: 'upstream-unreachable' | 'upstream-timeout';
+  durationMs: number;
 }
 
 // ─── Response-side threat detection ─────────────────────────────────────────
