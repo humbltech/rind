@@ -867,6 +867,7 @@ export function createProxyServer(config: ProxyConfig) {
           }
         };
 
+    const callStart = Date.now();
     let interceptResult: Awaited<ReturnType<typeof intercept>>;
     try {
       interceptResult = await intercept(event, forwardFn, {
@@ -892,6 +893,10 @@ export function createProxyServer(config: ProxyConfig) {
         },
         onToolResponseEvent: (e) => {
           bus.emit('tool:response', e);
+          ringBuffer.update(
+            (entry) => entry.correlationId === callId,
+            (entry) => ({ ...entry, source: 'mcp' as const }),
+          );
           if (e.threats.length > 0) {
             bus.emit('tool:threat', e);
             logger.warn(
@@ -920,9 +925,30 @@ export function createProxyServer(config: ProxyConfig) {
     } catch (err) {
       // Upstream unreachable or timed out (D-022)
       const isTimeout = err instanceof Error && err.name === 'AbortError';
-      logger.error({ err, toolName: event.toolName }, isTimeout ? 'Upstream timeout' : 'Upstream error');
+      const errorKind = isTimeout ? 'upstream-timeout' as const : 'upstream-unreachable' as const;
+      const outcome = isTimeout ? 'upstream-timeout' as const : 'upstream-error' as const;
+      const durationMs = Date.now() - callStart;
+
+      bus.emit('tool:error', {
+        sessionId: event.sessionId,
+        agentId: event.agentId,
+        serverId: event.serverId,
+        toolName: event.toolName,
+        errorKind,
+        durationMs,
+      });
+
+      ringBuffer.update(
+        (e) => e.correlationId === callId,
+        (e) => ({ ...e, outcome, source: 'mcp' as const }),
+      );
+
+      logger.error({ err, toolName: event.toolName, durationMs }, isTimeout ? 'Upstream timeout' : 'Upstream error');
       return c.json(
-        { error: isTimeout ? 'Upstream MCP server timed out' : 'Upstream MCP server unreachable' },
+        {
+          error: isTimeout ? 'Upstream MCP server timed out' : 'Upstream MCP server unreachable',
+          isError: true,
+        },
         isTimeout ? 504 : 502,
       );
     }
