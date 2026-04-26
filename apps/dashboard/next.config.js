@@ -9,6 +9,12 @@ const nextConfig = {
         source: '/api/proxy/:path*',
         destination: `${proxyUrl}/:path*`,
       },
+      // Browsers request /favicon.ico directly regardless of <link> tags.
+      // Rewrite to the SVG icon so there's no 404 in the console.
+      {
+        source: '/favicon.ico',
+        destination: '/icon.svg',
+      },
     ];
   },
 };
