@@ -4,7 +4,8 @@
 
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
-import type { Server } from 'node:http';
+import type { ServerType } from '@hono/node-server';
+import type { Server as HttpServer } from 'node:http';
 
 export interface ToolHandlerMap {
   [toolName: string]: (input: unknown) => Promise<unknown>;
@@ -40,16 +41,18 @@ export function createFixtureMcpServer(opts: FixtureMcpServerOptions): FixtureMc
         });
 
         const port = opts.port ?? 3100;
-        let httpServer: Server;
 
-        const server = serve({ fetch: app.fetch, port }, (info) => {
-          httpServer = server as unknown as Server;
+        const server: ServerType = serve({ fetch: app.fetch, port }, (info) => {
           const stop = (): Promise<void> =>
-            new Promise((res, rej) => httpServer.close((err) => (err ? rej(err) : res())));
+            new Promise((res, rej) => {
+              const http = server as HttpServer;
+              http.closeAllConnections();
+              http.close((err) => (err ? rej(err) : res()));
+            });
           resolve({ port: info.port, url: `http://localhost:${info.port}`, stop });
         });
 
-        (server as unknown as Server).on('error', reject);
+        server.on('error', reject);
       }),
   };
 }
