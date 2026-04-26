@@ -16,10 +16,10 @@ export interface ToolCallEntry {
   toolLabel?: string;
   timestamp: number;
   // Present when the proxy returns a decision alongside the call
-  outcome?: 'allowed' | 'blocked' | 'require-approval';
+  outcome?: 'allowed' | 'blocked' | 'require-approval' | 'upstream-error' | 'upstream-timeout';
   reason?: string;
   // Tool source classification
-  source?: 'builtin' | 'mcp';
+  source?: 'builtin' | 'mcp' | 'proxy';
   // Name of the policy rule that matched
   matchedRule?: string;
   // Tool input arguments (for display in expandable row)
@@ -136,6 +136,7 @@ function TableRow({ entry, isNew }: { entry: ToolCallEntry; isNew: boolean }) {
               input={entry.input}
               cwd={entry.cwd}
               reason={entry.reason}
+              matchedRule={entry.matchedRule}
               agentId={entry.agentId}
               sessionId={entry.sessionId}
               sessionName={entry.sessionName}
@@ -178,6 +179,22 @@ function OutcomeBadge({ outcome }: { outcome: NonNullable<ToolCallEntry['outcome
         borderColor: 'color-mix(in srgb, var(--rind-medium) 24%, transparent)',
       },
     },
+    'upstream-error': {
+      label: 'UPSTREAM ERROR',
+      style: {
+        color: 'var(--rind-medium)',
+        background: 'color-mix(in srgb, var(--rind-medium) 10%, transparent)',
+        borderColor: 'color-mix(in srgb, var(--rind-medium) 24%, transparent)',
+      },
+    },
+    'upstream-timeout': {
+      label: 'TIMED OUT',
+      style: {
+        color: 'var(--rind-medium)',
+        background: 'color-mix(in srgb, var(--rind-medium) 10%, transparent)',
+        borderColor: 'color-mix(in srgb, var(--rind-medium) 24%, transparent)',
+      },
+    },
   };
 
   const { label, style } = config[outcome];
@@ -200,33 +217,54 @@ function EmptyState() {
   );
 }
 
-// Source badge — BUILTIN vs MCP
-function SourceBadge({ source }: { source?: 'builtin' | 'mcp' }) {
+// Source badge — BUILTIN / MCP / PROXY
+function SourceBadge({ source }: { source?: 'builtin' | 'mcp' | 'proxy' }) {
   if (!source) return null;
-  const isMcp = source === 'mcp';
+
+  const config: Record<'builtin' | 'mcp' | 'proxy', { label: string; style: React.CSSProperties }> = {
+    mcp: {
+      label: 'MCP',
+      style: {
+        color: 'var(--rind-accent)',
+        background: 'color-mix(in srgb, var(--rind-accent) 10%, transparent)',
+        borderColor: 'color-mix(in srgb, var(--rind-accent) 24%, transparent)',
+      },
+    },
+    builtin: {
+      label: 'BUILTIN',
+      style: {
+        color: 'var(--rind-foreground-muted)',
+        background: 'var(--rind-overlay)',
+        borderColor: 'var(--rind-border-subtle)',
+      },
+    },
+    proxy: {
+      label: 'PROXY',
+      style: {
+        color: 'var(--rind-foreground-muted)',
+        background: 'var(--rind-overlay)',
+        borderColor: 'var(--rind-border-subtle)',
+      },
+    },
+  };
+
+  const { label, style } = config[source];
   return (
     <span
       className="font-mono text-[10px] tracking-[0.04em] px-2 py-0.5 rounded border"
-      style={{
-        color: isMcp ? 'var(--rind-accent)' : 'var(--rind-foreground-muted)',
-        background: isMcp
-          ? 'color-mix(in srgb, var(--rind-accent) 10%, transparent)'
-          : 'var(--rind-overlay)',
-        borderColor: isMcp
-          ? 'color-mix(in srgb, var(--rind-accent) 24%, transparent)'
-          : 'var(--rind-border-subtle)',
-      }}
+      style={style}
     >
-      {isMcp ? 'MCP' : 'BUILTIN'}
+      {label}
     </span>
   );
 }
 
 // Expandable input detail panel
-function InputDetail({ input, cwd, reason, agentId, sessionId, sessionName, response, correlationId }: {
+function InputDetail({ input, cwd, reason, matchedRule, agentId, sessionId, sessionName, response, correlationId }: {
   input: unknown;
   cwd?: string;
   reason?: string;
+  matchedRule?: string;
   agentId: string;
   sessionId: string;
   sessionName?: string;
@@ -253,6 +291,7 @@ function InputDetail({ input, cwd, reason, agentId, sessionId, sessionName, resp
           <span className="font-mono text-critical">{reason}</span>
         </div>
       )}
+      <DetailRow label="Matched Rule" value={matchedRule ?? '—'} />
 
       {/* Tabs: Input / Response */}
       {(hasInput || hasResponse) && (

@@ -21,6 +21,7 @@ interface ParsedArgs {
   mode: SimMode;
   slugs: string[];
   proxyUrl?: string;
+  fixturePort: number;
   noProxy: boolean;
   interactive: boolean;
   instant: boolean;
@@ -30,6 +31,7 @@ function parseArgs(args: string[]): ParsedArgs {
   let mode: SimMode = 'replay';
   const slugs: string[] = [];
   let proxyUrl: string | undefined;
+  let fixturePort = 3100;
   let noProxy = false;
   let interactive = false;
   let instant = false;
@@ -37,7 +39,7 @@ function parseArgs(args: string[]): ParsedArgs {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === 'list') {
-      return { command: 'list', mode, slugs: [], noProxy: false, interactive: false, instant: false };
+      return { command: 'list', mode, slugs: [], proxyUrl: undefined, fixturePort, noProxy: false, interactive: false, instant: false };
     }
     if (arg === '--mode' && args[i + 1]) {
       const m = args[++i]!;
@@ -48,6 +50,13 @@ function parseArgs(args: string[]): ParsedArgs {
       mode = m as SimMode;
     } else if (arg === '--http' && args[i + 1]) {
       proxyUrl = args[++i]!;
+    } else if (arg === '--fixture-port' && args[i + 1]) {
+      const raw = Number(args[++i]!);
+      if (!Number.isInteger(raw) || raw < 1 || raw > 65535) {
+        process.stderr.write(`Invalid --fixture-port value: must be an integer 1–65535\n`);
+        process.exit(1);
+      }
+      fixturePort = raw;
     } else if (arg === '--no-proxy') {
       noProxy = true;
     } else if (arg === '--interactive') {
@@ -59,7 +68,7 @@ function parseArgs(args: string[]): ParsedArgs {
     }
   }
 
-  return { command: 'run', mode, slugs, proxyUrl, noProxy, interactive, instant };
+  return { command: 'run', mode, slugs, proxyUrl, fixturePort, noProxy, interactive, instant };
 }
 
 function resolveScenarios(slugs: string[]) {
@@ -79,7 +88,7 @@ function resolveScenarios(slugs: string[]) {
 
 // ─── Demo mode (single scenario — chat format) ─────────────────────────────
 
-async function runDemo(slugs: string[], mode: SimMode, noProxy: boolean, interactive: boolean, proxyUrl?: string) {
+async function runDemo(slugs: string[], mode: SimMode, noProxy: boolean, interactive: boolean, proxyUrl?: string, fixturePort = 3100) {
   const toRun = resolveScenarios(slugs);
 
   for (const scenario of toRun) {
@@ -87,7 +96,7 @@ async function runDemo(slugs: string[], mode: SimMode, noProxy: boolean, interac
       const result = await runScenarioWithoutProxy(scenario);
       await runDemoUnprotected(scenario, result.steps, interactive);
     } else {
-      const result = await runScenario(scenario, mode, proxyUrl);
+      const result = await runScenario(scenario, mode, proxyUrl, fixturePort);
       await runDemoProtected(scenario, result, interactive);
     }
   }
@@ -95,12 +104,12 @@ async function runDemo(slugs: string[], mode: SimMode, noProxy: boolean, interac
 
 // ─── Batch mode (all scenarios — demo chat format) ─────���────────────────────
 
-async function runBatch(mode: SimMode, proxyUrl?: string) {
+async function runBatch(mode: SimMode, proxyUrl?: string, fixturePort = 3100) {
   const toRun = scenarios;
   console.log(`\n  Running all ${toRun.length} scenarios\n`);
 
   for (const scenario of toRun) {
-    const result = await runScenario(scenario, mode, proxyUrl);
+    const result = await runScenario(scenario, mode, proxyUrl, fixturePort);
     await runDemoProtected(scenario, result, false);
   }
 }
@@ -117,12 +126,12 @@ async function main() {
 
   // Single scenario(s) specified → demo mode (chat format)
   if (parsed.slugs.length > 0) {
-    await runDemo(parsed.slugs, parsed.mode, parsed.noProxy, parsed.interactive, parsed.proxyUrl);
+    await runDemo(parsed.slugs, parsed.mode, parsed.noProxy, parsed.interactive, parsed.proxyUrl, parsed.fixturePort);
     return;
   }
 
   // No slug → batch mode (test all scenarios)
-  await runBatch(parsed.mode, parsed.proxyUrl);
+  await runBatch(parsed.mode, parsed.proxyUrl, parsed.fixturePort);
 }
 
 main().catch((err: unknown) => {

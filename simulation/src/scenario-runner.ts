@@ -18,6 +18,7 @@ import type {
   UnprotectedStepResult,
 } from './scenarios/types.js';
 import { createForwardFn } from './cassette.js';
+import { createFixtureMcpServer } from '../../apps/proxy/src/fixture/index.js';
 
 // A transport abstracts in-process vs HTTP dispatch so runStep stays unchanged.
 type Transport = (endpoint: string, init: RequestInit) => Promise<Response>;
@@ -128,6 +129,7 @@ export async function runScenario(
   // When set, sends real HTTP requests to the running proxy instead of running in-process.
   // The proxy must be started separately with appropriate policies loaded.
   proxyUrl?: string,
+  fixturePort = 3100,
 ): Promise<ScenarioResult> {
   // Reset shared singleton state to prevent bleed between scenarios in the same process.
   // Only needed for in-process mode — HTTP mode talks to an external process.
@@ -159,6 +161,59 @@ export async function runScenario(
           body: JSON.stringify(rule),
         });
       }
+    }
+
+    // Spawn the fixture MCP server so the proxy has a real upstream to forward to.
+    // Cassette logic lives in createForwardFn — the fixture server is just an HTTP adapter.
+    const cassetteForwardFn = createForwardFn(scenario.slug, mode, scenario.toolHandlers);
+    // NOTE: In record mode, newly recorded cassette entries accumulated by cassetteForwardFn
+    // are not persisted — cassette.ts exposes no flush API. This is a known gap.
+    // To fix: expose a flush() method from createForwardFn and call it after the step loop.
+    const fixtureHandlers = Object.fromEntries(
+      Object.keys(scenario.toolHandlers).map((toolName) => [
+        toolName,
+        async (input: unknown) => {
+          const { output } = await cassetteForwardFn(toolName, input);
+          return output;
+        },
+      ]),
+    );
+
+    const fixture = createFixtureMcpServer({ port: fixturePort, handlers: fixtureHandlers });
+    const { stop: stopFixture } = await fixture.start();
+
+    try {
+      const stepResults: StepResult[] = [];
+      let resolvedSessionId: string | undefined;
+
+      for (const step of scenario.steps) {
+        const result = await runStep(transport, step, resolvedSessionId);
+        stepResults.push(result);
+
+        if (step.endpoint === '/sessions' && step.method === 'POST' && result.status === 'PASS') {
+          const body = result.actual.body as Record<string, unknown>;
+          if (typeof body?.['sessionId'] === 'string') {
+            resolvedSessionId = body['sessionId'];
+          }
+        }
+      }
+
+      const passed = stepResults.every((s) => s.status === 'PASS');
+
+      return {
+        scenario: {
+          name: scenario.name,
+          slug: scenario.slug,
+          company: scenario.company,
+          feature: scenario.feature,
+        },
+        mode,
+        passed,
+        steps: stepResults,
+        durationMs: Date.now() - start,
+      };
+    } finally {
+      await stopFixture();
     }
   } else {
     // In-process transport — call the Hono app directly, no network round-trip.

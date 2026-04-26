@@ -6,13 +6,14 @@
 // Phase 2: webhook dispatcher, SSE push to dashboard.
 
 import { EventEmitter } from 'node:events';
-import type { ToolCallEvent, ToolResponseEvent, ScanResult, Session, AuditEntry } from './types.js';
+import type { ToolCallEvent, ToolResponseEvent, ToolErrorEvent, ScanResult, Session, AuditEntry } from './types.js';
 
 // ─── Event map ───────────────────────────────────────────────────────────────
 
 export interface RindEventMap {
   'tool:call': ToolCallEvent;
   'tool:response': ToolResponseEvent;
+  'tool:error': ToolErrorEvent;
   'tool:blocked': { event: ToolCallEvent; action: string; reason?: string };
   'tool:threat': ToolResponseEvent;
   'scan:complete': ScanResult;
