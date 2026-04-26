@@ -24,13 +24,19 @@ const ACTIVE_ROUTES = new Set(['/', '/policies', '/logs']);
 const STORAGE_KEY = 'rind-sidebar-collapsed';
 
 export function Sidebar() {
-  const [collapsed, setCollapsed] = useState(() =>
-    typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) === 'true' : false
-  );
+  // Always start false — matches server render, avoids hydration mismatch.
+  // Read from localStorage in an effect (post-hydration only).
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, String(collapsed));
-  }, [collapsed]);
+    if (localStorage.getItem(STORAGE_KEY) === 'true') setCollapsed(true);
+  }, []);
+
+  const toggle = () => setCollapsed((c) => {
+    const next = !c;
+    localStorage.setItem(STORAGE_KEY, String(next));
+    return next;
+  });
 
   return (
     <aside
@@ -42,7 +48,7 @@ export function Sidebar() {
     >
       <LogoMark collapsed={collapsed} />
       <Nav collapsed={collapsed} />
-      <SidebarFooter collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
+      <SidebarFooter collapsed={collapsed} onToggle={toggle} />
     </aside>
   );
 }

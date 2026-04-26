@@ -386,9 +386,12 @@ function LogRow({ entry }: { entry: ToolCallEntry }) {
         </td>
         <td className="px-4 py-2">
           {entry.matchedRule && (
-            <span className="font-mono text-[10px] text-muted truncate max-w-[120px] inline-block" title={entry.matchedRule}>
-              {entry.matchedRule}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-[10px] text-muted truncate max-w-[90px] inline-block" title={entry.matchedRule}>
+                {entry.matchedRule}
+              </span>
+              {entry.matchedRuleType && <RuleTypeBadge type={entry.matchedRuleType} />}
+            </div>
           )}
           {!entry.matchedRule && entry.outcome === 'allowed' && (
             <span className="text-[10px] text-dim">default</span>
@@ -416,6 +419,26 @@ function AgentLabel({ agentId, sessionName }: { agentId: string; sessionName?: s
       <span className="font-mono text-[11px] text-foreground font-medium truncate">{label}</span>
       <span className="font-mono text-[10px] text-dim truncate">{session}</span>
     </div>
+  );
+}
+
+function RuleTypeBadge({ type }: { type: 'policy' | 'scan' }) {
+  const isPolicy = type === 'policy';
+  return (
+    <span
+      className="shrink-0 font-mono text-[9px] tracking-wider font-semibold px-1 py-0.5 rounded border uppercase"
+      style={{
+        color: isPolicy ? 'var(--rind-accent)' : 'var(--rind-medium)',
+        background: isPolicy
+          ? 'color-mix(in srgb, var(--rind-accent) 10%, transparent)'
+          : 'color-mix(in srgb, var(--rind-medium) 10%, transparent)',
+        borderColor: isPolicy
+          ? 'color-mix(in srgb, var(--rind-accent) 24%, transparent)'
+          : 'color-mix(in srgb, var(--rind-medium) 24%, transparent)',
+      }}
+    >
+      {type}
+    </span>
   );
 }
 
