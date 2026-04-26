@@ -46,6 +46,8 @@ export interface InterceptorResult {
   rateLimitResetMs?: number;
   // BLOCKED_COST_LIMIT metadata
   limitType?: 'calls_per_session' | 'calls_per_hour' | 'cost_per_session' | 'cost_per_hour';
+  // Set when the call passed through the approval queue
+  approvalDecision?: 'approved' | 'disapproved' | 'approval-timeout';
 }
 
 export interface ForwardFn {
@@ -62,6 +64,14 @@ export interface InterceptorOptions {
   // Skip request-side injection scanning. Set true for hook evaluate-only mode
   // where tool inputs are user-initiated (not attacker-controlled MCP inputs).
   skipRequestInspection?: boolean;
+  // When set, called on REQUIRE_APPROVAL to wait for a human decision before
+  // forwarding the call. If absent, REQUIRE_APPROVAL returns immediately
+  // (backward-compat for evaluate-only hook path). Returns the decision and
+  // a human-readable reason string.
+  onRequireApproval?: (
+    event: ToolCallEvent,
+    ruleName?: string,
+  ) => Promise<{ decision: 'approved' | 'disapproved' | 'approval-timeout'; reason?: string }>;
 }
 
 // ─── Interceptor ─────────────────────────────────────────────────────────────
@@ -132,6 +142,7 @@ export async function intercept(
   // a RATE_LIMIT check passes — the tool call proceeds but we don't leak RATE_LIMIT
   // in the final interceptor result when the caller was actually allowed through.
   let effectiveAction: InterceptedAction = action;
+  let pendingApprovalDecision: 'approved' | undefined;
 
   if (action === 'DENY') {
     // Loop-triggered rules use BLOCKED_LOOP for clearer downstream handling
@@ -144,19 +155,41 @@ export async function intercept(
   }
 
   if (action === 'REQUIRE_APPROVAL') {
-    // D-013: structured DENY with approval metadata. Real async workflow is Phase 2.
-    const inputSummary = summariseInput(event.input);
-    return {
-      output: null,
-      interceptorResult: {
-        action: 'REQUIRE_APPROVAL',
-        reason: `Tool call "${event.toolName}" requires human approval before proceeding.`,
-        matchedRule: matchedRule?.name,
-        approvalRequired: true,
-        callbackUrl: null, // Phase 2: real callback URL
-        inputSummary,
-      },
-    };
+    if (!opts.onRequireApproval) {
+      // No callback — return immediately. Used by the evaluate-only hook path and
+      // by callers that handle the approval queue themselves (backward compat).
+      const inputSummary = summariseInput(event.input);
+      return {
+        output: null,
+        interceptorResult: {
+          action: 'REQUIRE_APPROVAL',
+          reason: `Tool call "${event.toolName}" requires human approval before proceeding.`,
+          matchedRule: matchedRule?.name,
+          approvalRequired: true,
+          callbackUrl: null,
+          inputSummary,
+        },
+      };
+    }
+
+    // Await human decision — callback handles queue, ring buffer intermediate state, and wait.
+    const { decision, reason: approvalReason } = await opts.onRequireApproval(event, matchedRule?.name);
+
+    if (decision !== 'approved') {
+      return {
+        output: null,
+        interceptorResult: {
+          action: 'REQUIRE_APPROVAL',
+          approvalDecision: decision,
+          reason: approvalReason ?? (decision === 'approval-timeout' ? 'Approval timed out' : 'Denied by operator'),
+          matchedRule: matchedRule?.name,
+        },
+      };
+    }
+
+    // Approved — continue through the normal forward → response-inspect pipeline.
+    pendingApprovalDecision = 'approved';
+    effectiveAction = 'ALLOW';
   }
 
   if (action === 'RATE_LIMIT') {
@@ -255,7 +288,7 @@ export async function intercept(
 
   return {
     output,
-    interceptorResult: { action: effectiveAction, matchedRule: matchedRule?.name },
+    interceptorResult: { action: effectiveAction, matchedRule: matchedRule?.name, approvalDecision: pendingApprovalDecision },
   };
 }
 
