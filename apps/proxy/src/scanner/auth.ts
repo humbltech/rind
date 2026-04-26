@@ -40,7 +40,13 @@ export function checkAuth(tools: ToolDefinition[]): ScanFinding[] {
     if (isPrivileged && !hasAuthGuard) {
       findings.push({
         category: 'AUTH_MISSING',
-        severity: 'high',
+        // medium, not high — AUTH_MISSING is a documentation/configuration gap advisory.
+        // It flags that auth isn't visible in the tool description, but the tool may still
+        // be protected at the infrastructure layer. Quarantine-worthy findings (critical/high)
+        // are reserved for definitive evidence of active compromise: TOOL_POISONING,
+        // SCHEMA_DRIFT_TOOL_ADDED, CROSS_SERVER_SHADOWING. This keeps AUTH_MISSING as a
+        // surface-and-warn finding, not a blanket quarantine trigger.
+        severity: 'medium',
         toolName: tool.name,
         detail: `Tool "${tool.name}" appears to perform a privileged operation but its description does not document authentication requirements. An unauthenticated caller may be able to invoke it.`,
       });
