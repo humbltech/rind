@@ -333,5 +333,8 @@ export interface ProxyConfig {
   // Hook: include actionable guidance in deny responses (default: true)
   hookSendGuidance?: boolean;
   // LLM API proxy configuration (D-041 scope clarification)
-  llmProxy?: import('./transport/llm/types.js').LlmProxyConfig;
+  llmProxy?: Partial<import('./transport/llm/types.js').LlmProxyConfig>;
+  // Module enable flags — all on by default, disabled with --no-* CLI flags
+  mcpProxyEnabled?: boolean;   // default true — disable with --no-mcp-proxy
+  hooksEnabled?: boolean;      // default true — disable with --no-hooks
 }

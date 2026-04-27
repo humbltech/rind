@@ -31,6 +31,10 @@ export interface LlmCallEntry {
   matchedRule?: string;
   requestThreats?: Array<{ type: string; severity: string; detail: string }>;
   responseThreats?: Array<{ type: string; severity: string; detail: string }>;
+  toolUses?: Array<{ id: string; name: string; input: unknown }>;
+  referencedToolUseIds?: string[];
+  parentLlmCallId?: string;
+  conversationId?: string;
 }
 
 // ─── Provider badge ───────────────────────────────────────────────────────────
@@ -127,6 +131,24 @@ function ThreatIndicator({ entry }: { entry: LlmCallEntry }) {
   );
 }
 
+// ─── Agent label ─────────────────────────────────────────────────────────────
+
+function AgentLabel({ agentId, sessionId }: { agentId: string; sessionId: string }) {
+  // llm-anthropic / llm-openai → strip prefix for display
+  const label = agentId.startsWith('llm-')
+    ? agentId.slice(4)
+    : agentId.length > 16
+      ? agentId.slice(0, 16) + '\u2026'
+      : agentId;
+  const sub = sessionId.slice(0, 8);
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <span className="font-mono text-[11px] text-foreground font-medium truncate">{label}</span>
+      <span className="font-mono text-[10px] text-dim truncate">{sub}</span>
+    </div>
+  );
+}
+
 // ─── Table row ────────────────────────────────────────────────────────────────
 
 function TableRow({ entry }: { entry: LlmCallEntry }) {
@@ -149,6 +171,9 @@ function TableRow({ entry }: { entry: LlmCallEntry }) {
         </td>
         <td className="px-3 py-2.5 whitespace-nowrap">
           <RelTime ts={entry.timestamp} />
+        </td>
+        <td className="px-3 py-2.5 max-w-[130px]">
+          <AgentLabel agentId={entry.agentId} sessionId={entry.sessionId} />
         </td>
         <td className="px-3 py-2.5">
           <div className="flex items-center gap-2">
@@ -178,7 +203,7 @@ function TableRow({ entry }: { entry: LlmCallEntry }) {
       </tr>
       {expanded && hasDetail && (
         <tr className="bg-overlay/30 border-b border-border">
-          <td colSpan={8} className="px-6 py-3">
+          <td colSpan={9} className="px-6 py-3">
             <DetailPanel entry={entry} />
           </td>
         </tr>
@@ -191,6 +216,27 @@ function DetailPanel({ entry }: { entry: LlmCallEntry }) {
   const allThreats = [...(entry.requestThreats ?? []), ...(entry.responseThreats ?? [])];
   return (
     <div className="space-y-2 text-[11px] font-mono text-muted">
+      {entry.conversationId && (
+        <div><span className="text-dim">conversation: </span><span className="text-foreground">{entry.conversationId.slice(0, 16)}</span>
+          {entry.parentLlmCallId && <span className="text-dim ml-3">← {entry.parentLlmCallId.slice(0, 8)}</span>}
+        </div>
+      )}
+      {entry.toolUses && entry.toolUses.length > 0 && (
+        <div className="space-y-0.5">
+          <span className="text-dim">tool_uses generated:</span>
+          {entry.toolUses.map((t) => (
+            <div key={t.id} className="ml-4 flex items-center gap-2">
+              <span className="text-accent">{t.name}</span>
+              <span className="text-dim">{t.id.slice(0, 16)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {entry.referencedToolUseIds && entry.referencedToolUseIds.length > 0 && (
+        <div><span className="text-dim">consuming tool_results: </span>
+          <span className="text-foreground">{entry.referencedToolUseIds.map((id) => id.slice(0, 12)).join(', ')}</span>
+        </div>
+      )}
       {entry.matchedRule && (
         <div><span className="text-dim">rule: </span><span className="text-foreground">{entry.matchedRule}</span></div>
       )}
@@ -238,6 +284,7 @@ export function LlmCallTable({ entries, maxHeight = '420px' }: LlmCallTableProps
           <tr>
             <th className="pl-4 pr-2 py-2.5 w-6" />
             <th className="px-3 py-2.5 text-left text-[10px] font-semibold tracking-[0.1em] uppercase text-muted">Time</th>
+            <th className="px-3 py-2.5 text-left text-[10px] font-semibold tracking-[0.1em] uppercase text-muted">Agent</th>
             <th className="px-3 py-2.5 text-left text-[10px] font-semibold tracking-[0.1em] uppercase text-muted">Model</th>
             <th className="px-3 py-2.5 text-center text-[10px] font-semibold tracking-[0.1em] uppercase text-muted">Msgs</th>
             <th className="px-3 py-2.5 text-left text-[10px] font-semibold tracking-[0.1em] uppercase text-muted">Tokens in/out</th>

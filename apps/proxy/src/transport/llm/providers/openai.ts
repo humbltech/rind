@@ -128,12 +128,23 @@ export const openaiProvider: LlmProxyProvider = {
     }
     // logLevel === 'metadata' → logMessages stays undefined
 
+    // Extract tool_use_ids from tool messages (OpenAI uses role:'tool' with tool_call_id)
+    const referencedToolUseIds: string[] = [];
+    for (const message of messages) {
+      if (message.role !== 'tool') continue;
+      const raw = message as Record<string, unknown>;
+      if (typeof raw['tool_call_id'] === 'string') {
+        referencedToolUseIds.push(raw['tool_call_id']);
+      }
+    }
+
     return {
       model,
       messageCount: messages.length,
       systemPromptLength: systemPromptLength(messages),
       isStreaming: stream === true,
       messages: logMessages,
+      referencedToolUseIds,
     };
   },
 

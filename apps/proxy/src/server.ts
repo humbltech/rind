@@ -218,7 +218,7 @@ export function createProxyServer(config: ProxyConfig) {
   // ─── MCP protocol gateway (D-040 Phase A3) ───────────────────────────────────
   // /mcp/:serverId — receives MCP JSON-RPC from Claude Code, Cursor, Windsurf, etc.
   // Intercepts tools/call through the policy engine; proxies everything else.
-  if (Object.keys(config.servers ?? {}).length > 0) {
+  if (config.mcpProxyEnabled !== false && Object.keys(config.servers ?? {}).length > 0) {
     const gatewayInterceptorOpts = {
       policyEngine,
       loopDetector,
@@ -273,12 +273,13 @@ export function createProxyServer(config: ProxyConfig) {
     logger.info({ logLevel: llmConfig.logLevel }, 'LLM API proxy gateway mounted');
 
     app.get('/logs/llm-calls', (c) => {
-      const { provider, model, outcome, since, until } = c.req.query();
+      const { provider, model, outcome, agentId, since, until } = c.req.query();
       let events = llmRingBuffer.toArray();
 
       if (provider) events = events.filter((e) => e.provider === provider);
       if (model) events = events.filter((e) => e.model === model);
       if (outcome) events = events.filter((e) => e.outcome === outcome);
+      if (agentId) events = events.filter((e) => e.agentId.includes(agentId));
       if (since) {
         const ts = parseInt(since, 10);
         if (!isNaN(ts)) events = events.filter((e) => e.timestamp >= ts);
@@ -289,6 +290,29 @@ export function createProxyServer(config: ProxyConfig) {
       }
 
       return c.json(events);
+    });
+
+    // Unified timeline: merges tool calls + LLM calls sorted by timestamp.
+    // Supports ?agentId=, ?since=, ?until= filters.
+    app.get('/logs/timeline', (c) => {
+      const { agentId, since, until } = c.req.query();
+      const sinceTs = since ? parseInt(since, 10) : NaN;
+      const untilTs = until ? parseInt(until, 10) : NaN;
+
+      const toolEvents = ringBuffer.toArray()
+        .filter((e) => !agentId || e.agentId.includes(agentId))
+        .filter((e) => isNaN(sinceTs) || e.timestamp >= sinceTs)
+        .filter((e) => isNaN(untilTs) || e.timestamp <= untilTs)
+        .map((e) => ({ kind: 'tool' as const, timestamp: e.timestamp, data: e }));
+
+      const llmEvents = llmRingBuffer.toArray()
+        .filter((e) => !agentId || e.agentId.includes(agentId))
+        .filter((e) => isNaN(sinceTs) || e.timestamp >= sinceTs)
+        .filter((e) => isNaN(untilTs) || e.timestamp <= untilTs)
+        .map((e) => ({ kind: 'llm' as const, timestamp: e.timestamp, data: e }));
+
+      const merged = [...toolEvents, ...llmEvents].sort((a, b) => b.timestamp - a.timestamp);
+      return c.json(merged);
     });
   }
 
@@ -467,7 +491,9 @@ export function createProxyServer(config: ProxyConfig) {
     );
   });
 
-  // ─── Claude Code PreToolUse hook endpoint (D-040) ────────────────────────────
+  // ─── Claude Code hook endpoints (D-040) ─────────────────────────────────────
+  // Disable with --no-hooks flag. When disabled, Claude Code hooks will be ignored.
+  if (config.hooksEnabled !== false) {
   // Claude Code fires this before every tool call — built-in (Bash, Write, Edit, …)
   // and MCP tools. The hook blocks execution if Rind returns { continue: false }.
   // This endpoint runs the interceptor in evaluate-only mode (steps 1-5, no forward).
@@ -793,6 +819,7 @@ export function createProxyServer(config: ProxyConfig) {
     const name = resolveSessionName(c.req.param('sessionId'));
     return c.json({ name: name ?? null });
   });
+  } // end hooksEnabled
 
   // ─── Session management ────────────────────────────────────────────────────────
   app.post('/sessions', async (c) => {

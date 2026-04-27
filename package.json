@@ -12,7 +12,8 @@
     "sim": "pnpm --filter @rind/simulation sim",
     "sim:record": "pnpm --filter @rind/simulation sim:record",
     "sim:live": "pnpm --filter @rind/simulation sim:live",
-    "sim:demo": "pnpm --filter @rind/simulation sim:demo"
+    "sim:demo": "pnpm --filter @rind/simulation sim:demo",
+    "rind-proxy": "pnpm --filter @rind/proxy exec node dist/index.js"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",

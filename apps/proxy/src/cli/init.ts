@@ -318,7 +318,6 @@ function applyPolicyYaml(policyPath: string, dryRun: boolean): void {
 }
 
 function applyLlmProxyConfig(settingsPath: string, rindUrl: string, dryRun: boolean): void {
-  const llmBaseUrl = `${rindUrl}/llm/anthropic`;
   process.stdout.write(`\nLLM proxy  (${settingsPath})\n`);
 
   // Read the current settings (may have been updated by applySettingsHook already)
@@ -326,35 +325,45 @@ function applyLlmProxyConfig(settingsPath: string, rindUrl: string, dryRun: bool
   const settings = parseClaudeSettings(raw);
 
   const existingEnv = (settings['env'] ?? {}) as Record<string, unknown>;
-  const current = existingEnv['ANTHROPIC_BASE_URL'];
 
-  if (current === llmBaseUrl) {
-    process.stdout.write('  = skip  ANTHROPIC_BASE_URL already points to Rind\n');
-    return;
+  const targets: Array<{ key: string; url: string }> = [
+    { key: 'ANTHROPIC_BASE_URL', url: `${rindUrl}/llm/anthropic` },
+    { key: 'OPENAI_BASE_URL',    url: `${rindUrl}/llm/openai` },
+  ];
+
+  let newEnv = { ...existingEnv };
+  let anyWritten = false;
+
+  for (const { key, url } of targets) {
+    const current = existingEnv[key];
+
+    if (current === url) {
+      process.stdout.write(`  = skip  ${key} already points to Rind\n`);
+      continue;
+    }
+
+    if (current !== undefined) {
+      process.stdout.write(
+        `  ! warn  ${key} is already set to "${String(current)}" — not overwriting\n` +
+        `          To enable, set manually: ${key}=${url}\n`,
+      );
+      continue;
+    }
+
+    process.stdout.write(`  + add   ${key}=${url}\n`);
+    newEnv = { ...newEnv, [key]: url };
+    anyWritten = true;
   }
 
-  if (current !== undefined) {
-    process.stdout.write(
-      `  ! warn  ANTHROPIC_BASE_URL is already set to "${String(current)}" — not overwriting\n` +
-      `          To enable LLM proxy, set it manually: ANTHROPIC_BASE_URL=${llmBaseUrl}\n`,
-    );
-    return;
-  }
-
-  process.stdout.write(`  + add   ANTHROPIC_BASE_URL=${llmBaseUrl}\n`);
-
-  if (!dryRun) {
-    const updated: typeof settings = {
-      ...settings,
-      env: { ...existingEnv, ANTHROPIC_BASE_URL: llmBaseUrl },
-    };
+  if (anyWritten && !dryRun) {
+    const updated: typeof settings = { ...settings, env: newEnv };
     writeFile(settingsPath, JSON.stringify(updated, null, 2) + '\n');
     process.stdout.write('  ✓ written\n');
   }
 
   process.stdout.write(
-    `\n  Claude Code LLM calls will now route through Rind.\n` +
-    `  To bypass at any time: unset ANTHROPIC_BASE_URL in settings.json\n` +
+    `\n  Claude Code and OpenAI calls will now route through Rind.\n` +
+    `  To bypass: remove ANTHROPIC_BASE_URL / OPENAI_BASE_URL from settings.json\n` +
     `  Start Rind before using Claude Code: node dist/index.js\n`,
   );
 }

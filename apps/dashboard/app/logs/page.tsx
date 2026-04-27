@@ -37,7 +37,7 @@ import {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-type LogView = 'tools' | 'llm';
+type LogView = 'tools' | 'llm' | 'timeline';
 
 export default function LogsPage() {
   const { toolCalls, llmCalls, isConnected } = useLogData();
@@ -56,6 +56,7 @@ export default function LogsPage() {
   const filtered = useMemo(() => filterEntries(toolCalls, query), [toolCalls, query]);
   const sorted = useMemo(() => sortEntries(filtered, sortField, sortDir), [filtered, sortField, sortDir]);
   const stats = useMemo(() => deriveStats(filtered), [filtered]);
+  const timeline = useMemo(() => buildTimeline(toolCalls, llmCalls), [toolCalls, llmCalls]);
 
   const handleSort = useCallback((field: SortField) => {
     if (field === sortField) {
@@ -75,8 +76,8 @@ export default function LogsPage() {
       <Sidebar />
       <main className="flex-1 overflow-auto">
         <div className="max-w-[1400px] mx-auto px-8 py-8 space-y-6">
-          <PageHeader connected={isConnected} total={view === 'tools' ? toolCalls.length : llmCalls.length} filtered={view === 'tools' ? sorted.length : llmCalls.length} />
-          <ViewTabs view={view} onChange={setView} toolCount={toolCalls.length} llmCount={llmCalls.length} />
+          <PageHeader connected={isConnected} total={view === 'tools' ? toolCalls.length : view === 'llm' ? llmCalls.length : timeline.length} filtered={view === 'tools' ? sorted.length : view === 'llm' ? llmCalls.length : timeline.length} />
+          <ViewTabs view={view} onChange={setView} toolCount={toolCalls.length} llmCount={llmCalls.length} timelineCount={timeline.length} />
           {view === 'tools' ? (
             <>
               <QueryBar query={query} onChange={setQuery} />
@@ -89,8 +90,10 @@ export default function LogsPage() {
                 onSort={handleSort}
               />
             </>
-          ) : (
+          ) : view === 'llm' ? (
             <LlmCallTable entries={llmCalls} maxHeight="calc(100vh - 280px)" />
+          ) : (
+            <TimelineView events={timeline} />
           )}
         </div>
       </main>
@@ -100,17 +103,18 @@ export default function LogsPage() {
 
 // ─── View tab switcher ────────────────────────────────────────────────────────
 
-function ViewTabs({ view, onChange, toolCount, llmCount }: {
+function ViewTabs({ view, onChange, toolCount, llmCount, timelineCount }: {
   view: LogView;
   onChange: (v: LogView) => void;
   toolCount: number;
   llmCount: number;
+  timelineCount: number;
 }) {
   return (
     <div className="flex gap-1 border-b border-border">
-      {(['tools', 'llm'] as LogView[]).map((v) => {
-        const label = v === 'tools' ? 'Tool calls' : 'LLM calls';
-        const count = v === 'tools' ? toolCount : llmCount;
+      {(['tools', 'llm', 'timeline'] as LogView[]).map((v) => {
+        const label = v === 'tools' ? 'Tool calls' : v === 'llm' ? 'LLM calls' : 'Timeline';
+        const count = v === 'tools' ? toolCount : v === 'llm' ? llmCount : timelineCount;
         const active = view === v;
         return (
           <button
@@ -1001,6 +1005,199 @@ function clientToolLabel(toolName: string, input: unknown): string {
     }
     default: return toolName;
   }
+}
+
+// ─── Timeline ─────────────────────────────────────────────────────────────────
+// Merges tool calls and LLM calls into a unified chronological stream.
+// No hard join key exists between the two streams; proximity in time and
+// shared agentId are the best available correlation signals.
+
+type TimelineEvent =
+  | { kind: 'tool'; timestamp: number; data: ToolCallEntry; correlated: boolean }
+  | { kind: 'llm';  timestamp: number; data: LlmCallEntry;  correlated: boolean };
+
+function buildTimeline(toolCalls: ToolCallEntry[], llmCalls: LlmCallEntry[]): TimelineEvent[] {
+  // Build a set of tool call timestamps+names that are matched to LLM tool_uses,
+  // so we can mark them as "correlated" vs "heuristic only" in the UI.
+  // Match: same tool name, same JSON input, hook fires within 120s after LLM response.
+  const matchedToolCallKeys = new Set<string>();
+  for (const llm of llmCalls) {
+    if (!llm.toolUses?.length) continue;
+    for (const toolUse of llm.toolUses) {
+      for (const tc of toolCalls) {
+        if (tc.toolName !== toolUse.name) continue;
+        if (tc.timestamp < llm.timestamp || tc.timestamp > llm.timestamp + 120_000) continue;
+        try {
+          if (JSON.stringify(tc.input) === JSON.stringify(toolUse.input)) {
+            matchedToolCallKeys.add(`${tc.timestamp}:${tc.toolName}`);
+          }
+        } catch { /* skip if not serialisable */ }
+      }
+    }
+  }
+
+  const toolEvents: TimelineEvent[] = toolCalls.map((e) => ({
+    kind: 'tool',
+    timestamp: e.timestamp,
+    data: e,
+    correlated: matchedToolCallKeys.has(`${e.timestamp}:${e.toolName}`),
+  }));
+  const llmEvents: TimelineEvent[] = llmCalls.map((e) => ({
+    kind: 'llm',
+    timestamp: e.timestamp,
+    data: e,
+    correlated: false,
+  }));
+  return [...toolEvents, ...llmEvents].sort((a, b) => b.timestamp - a.timestamp);
+}
+
+function TimelineView({ events }: { events: TimelineEvent[] }) {
+  if (events.length === 0) {
+    return (
+      <div className="border border-border rounded-lg h-40 flex flex-col items-center justify-center gap-2">
+        <p className="text-sm text-muted">No events yet</p>
+        <p className="text-xs text-dim">Tool calls and LLM calls will appear here once Rind is active</p>
+      </div>
+    );
+  }
+
+  // Track which conversationIds we've seen to insert thread separators
+  const seenConversations = new Set<string>();
+
+  return (
+    <div className="space-y-0.5 overflow-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+      <div className="flex items-center gap-4 mb-3 text-[10px] font-mono text-dim">
+        <span>LLM calls and tool calls interleaved by time.</span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-sm" style={{ background: 'var(--rind-accent)' }} />
+          correlated via tool_use_id
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-sm" style={{ background: 'var(--rind-foreground-dim)' }} />
+          proximity only
+        </span>
+      </div>
+      {events.map((event, i) => {
+        // Insert a conversation thread header when we encounter a new conversationId
+        // (only for LLM events that are the root of a new conversation)
+        let threadHeader: React.ReactNode = null;
+        if (event.kind === 'llm') {
+          const convId = event.data.conversationId ?? event.data.id;
+          const isRoot = !event.data.parentLlmCallId;
+          if (isRoot && !seenConversations.has(convId)) {
+            seenConversations.add(convId);
+            threadHeader = (
+              <div key={`thread-${convId}`} className="flex items-center gap-2 mt-4 mb-1 px-3">
+                <div className="h-px flex-1" style={{ background: 'var(--rind-border)' }} />
+                <span className="text-[9px] font-mono text-dim tracking-wider uppercase">
+                  conversation {convId.slice(0, 8)}
+                </span>
+                <div className="h-px flex-1" style={{ background: 'var(--rind-border)' }} />
+              </div>
+            );
+          }
+        }
+
+        const row = event.kind === 'tool'
+          ? <TimelineToolRow key={`t-${event.data.timestamp}-${i}`} entry={event.data} correlated={event.correlated} />
+          : <TimelineLlmRow  key={`l-${event.data.id}`}            entry={event.data} />;
+
+        return threadHeader ? [threadHeader, row] : row;
+      })}
+    </div>
+  );
+}
+
+function TimelineToolRow({ entry, correlated }: { entry: ToolCallEntry; correlated: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const outcomeColor = entry.outcome === 'blocked' ? 'var(--rind-critical)' : 'var(--rind-accent)';
+  const label = entry.toolLabel ?? entry.toolName;
+  const borderColor = correlated ? outcomeColor : 'var(--rind-foreground-dim)';
+
+  return (
+    <div
+      className="flex items-start gap-3 px-3 py-2 rounded hover:bg-overlay/60 cursor-pointer transition-colors"
+      style={{ borderLeft: `2px solid color-mix(in srgb, ${borderColor} 40%, transparent)` }}
+      onClick={() => setExpanded((e) => !e)}
+    >
+      {/* Kind pill */}
+      <span className="shrink-0 font-mono text-[9px] tracking-wider font-semibold px-1.5 py-0.5 rounded-sm mt-0.5"
+        style={{ color: 'var(--rind-foreground-muted)', background: 'var(--rind-overlay)' }}>
+        TOOL
+      </span>
+      {/* Time */}
+      <span className="shrink-0 font-mono text-[11px] text-dim w-[52px]">
+        {new Date(entry.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+      </span>
+      {/* Agent */}
+      <span className="shrink-0 font-mono text-[11px] text-muted w-[90px] truncate">
+        {entry.agentId.startsWith('hook:') ? 'claude-code' : entry.agentId.slice(0, 12)}
+      </span>
+      {/* Tool label */}
+      <span className="font-mono text-[12px] text-accent truncate flex-1">{label}</span>
+      {/* Outcome */}
+      {entry.outcome && (
+        <span className="shrink-0 font-mono text-[10px]" style={{ color: outcomeColor }}>
+          {entry.outcome.toUpperCase()}
+        </span>
+      )}
+      {expanded && (
+        <div className="w-full mt-1 text-[11px] font-mono text-dim">
+          <span className="text-foreground/60">{entry.serverId}</span>
+          {entry.correlationId && <span className="ml-3 text-dim">corr:{entry.correlationId.slice(0, 12)}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TimelineLlmRow({ entry }: { entry: LlmCallEntry }) {
+  const outcomeColor = entry.outcome === 'blocked'
+    ? 'var(--rind-critical)'
+    : entry.outcome === 'error'
+      ? 'var(--rind-high)'
+      : '#10a37f';
+
+  const providerColors: Record<string, string> = {
+    anthropic: 'var(--rind-accent)',
+    openai:    '#10a37f',
+    google:    '#4285f4',
+  };
+  const providerColor = providerColors[entry.provider] ?? 'var(--rind-foreground-muted)';
+  const costStr = entry.estimatedCostUsd != null
+    ? (entry.estimatedCostUsd < 0.001 ? '<$0.001' : `$${entry.estimatedCostUsd.toFixed(4)}`)
+    : null;
+
+  return (
+    <div
+      className="flex items-start gap-3 px-3 py-2 rounded hover:bg-overlay/60 transition-colors"
+      style={{ borderLeft: `2px solid color-mix(in srgb, ${providerColor} 40%, transparent)` }}
+    >
+      {/* Kind pill */}
+      <span className="shrink-0 font-mono text-[9px] tracking-wider font-semibold px-1.5 py-0.5 rounded-sm mt-0.5"
+        style={{ color: providerColor, background: `color-mix(in srgb, ${providerColor} 12%, transparent)` }}>
+        LLM
+      </span>
+      {/* Time */}
+      <span className="shrink-0 font-mono text-[11px] text-dim w-[52px]">
+        {new Date(entry.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+      </span>
+      {/* Agent — use sessionId prefix as it's the stable per-key identifier */}
+      <span className="shrink-0 font-mono text-[11px] text-muted w-[90px] truncate">
+        {entry.agentId.startsWith('llm-') ? entry.provider : entry.agentId.slice(0, 12)}
+      </span>
+      {/* Model */}
+      <span className="font-mono text-[12px] text-foreground truncate flex-1" style={{ color: providerColor }}>
+        {entry.model}
+      </span>
+      {/* Cost */}
+      {costStr && <span className="shrink-0 font-mono text-[11px] text-muted">{costStr}</span>}
+      {/* Outcome */}
+      <span className="shrink-0 font-mono text-[10px]" style={{ color: outcomeColor }}>
+        {entry.outcome.toUpperCase()}
+      </span>
+    </div>
+  );
 }
 
 // ─── Data polling ────────────────────────────────────────────────────────────

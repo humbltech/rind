@@ -30,9 +30,15 @@ if (subcommand === 'wrap') {
 } else if (subcommand === 'init') {
   // auto-config generator — wraps .mcp.json + adds Claude Code hook + writes starter policy
   runInit(process.argv);
+} else if (subcommand === 'uninit') {
+  // remove Rind hooks and ANTHROPIC_BASE_URL from Claude Code settings
+  runUninit(process.argv);
 } else {
   // Default: HTTP proxy server mode
-  const config = buildConfigFromEnv();
+  // All flags that aren't subcommands are passed through as module toggles
+  // e.g. --no-llm-proxy --no-mcp-proxy --no-hooks
+  const serverArgs = process.argv.slice(2);
+  const config = buildConfigFromEnv(serverArgs);
 
   if (isInteractiveTerminal()) {
     printBanner();

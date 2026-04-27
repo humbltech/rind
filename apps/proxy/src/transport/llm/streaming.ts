@@ -11,6 +11,7 @@
 //   - Malformed chunks are logged + skipped, never throw (streaming must not crash)
 
 import type { LlmResponseMeta } from './providers/interface.js';
+import type { ToolUseRef } from './types.js';
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 
@@ -107,6 +108,11 @@ export function createAnthropicAccumulator(): StreamAccumulator {
   let stopReason: string | undefined;
   const textParts: string[] = [];
 
+  // tool_use accumulation — keyed by content block index
+  // Each tool_use block arrives as: content_block_start (id+name) → N×content_block_delta (partial_json) → content_block_stop
+  const toolUseByIndex = new Map<number, { id: string; name: string; jsonParts: string[] }>();
+  const toolUses: ToolUseRef[] = [];
+
   return {
     onEvent(eventType: string, data: string): void {
       // Silently skip [DONE] and empty data
@@ -137,15 +143,40 @@ export function createAnthropicAccumulator(): StreamAccumulator {
           break;
         }
 
+        case 'content_block_start': {
+          // { index: N, content_block: { type: 'tool_use', id: '...', name: '...', input: {} } }
+          const index = typeof obj['index'] === 'number' ? obj['index'] : -1;
+          const block = obj['content_block'] as Record<string, unknown> | undefined;
+          if (block?.['type'] === 'tool_use' && typeof block['id'] === 'string' && typeof block['name'] === 'string') {
+            toolUseByIndex.set(index, { id: block['id'], name: block['name'], jsonParts: [] });
+          }
+          break;
+        }
+
         case 'content_block_delta': {
-          // { type: 'content_block_delta', index: N, delta: { type: 'text_delta', text: '...' } }
-          // or { delta: { type: 'input_json_delta', partial_json: '...' } } (tool use)
+          // { index: N, delta: { type: 'text_delta', text: '...' } }
+          // or { index: N, delta: { type: 'input_json_delta', partial_json: '...' } }
+          const index = typeof obj['index'] === 'number' ? obj['index'] : -1;
           const delta = obj['delta'] as Record<string, unknown> | undefined;
           if (delta) {
             if (delta['type'] === 'text_delta' && typeof delta['text'] === 'string') {
               textParts.push(delta['text']);
+            } else if (delta['type'] === 'input_json_delta' && typeof delta['partial_json'] === 'string') {
+              toolUseByIndex.get(index)?.jsonParts.push(delta['partial_json']);
             }
-            // input_json_delta (tool use) — skip for now; tool call accumulation is future work
+          }
+          break;
+        }
+
+        case 'content_block_stop': {
+          // { index: N } — finalize the tool_use at this index
+          const index = typeof obj['index'] === 'number' ? obj['index'] : -1;
+          const pending = toolUseByIndex.get(index);
+          if (pending) {
+            let input: unknown = {};
+            try { input = JSON.parse(pending.jsonParts.join('')); } catch { /* keep {} */ }
+            toolUses.push({ id: pending.id, name: pending.name, input });
+            toolUseByIndex.delete(index);
           }
           break;
         }
@@ -163,7 +194,7 @@ export function createAnthropicAccumulator(): StreamAccumulator {
           break;
         }
 
-        // message_stop, content_block_start, content_block_stop — nothing to accumulate
+        // message_stop — nothing to accumulate
         default:
           break;
       }
@@ -176,6 +207,7 @@ export function createAnthropicAccumulator(): StreamAccumulator {
         outputTokens,
         stopReason,
         responseText: textParts.length > 0 ? textParts.join('') : undefined,
+        toolUses: toolUses.length > 0 ? [...toolUses] : undefined,
         partial,
       };
     },

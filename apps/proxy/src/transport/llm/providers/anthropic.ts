@@ -8,13 +8,27 @@
 import { z } from 'zod';
 import type { LlmProxyProvider, LlmRequestMeta, LlmResponseMeta } from './interface.js';
 import { ProviderParseError, redactSensitiveHeaders } from './interface.js';
-import type { LlmLogLevel } from '../types.js';
+import type { LlmLogLevel, ToolUseRef } from '../types.js';
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
 
 // Content block — text or image or tool use (non-exhaustive)
 const TextBlockSchema = z.object({ type: z.literal('text'), text: z.string() });
 const AnyBlockSchema = z.object({ type: z.string() }).passthrough();
+
+// tool_use block in a response (model-generated)
+const ToolUseBlockSchema = z.object({
+  type: z.literal('tool_use'),
+  id: z.string(),
+  name: z.string(),
+  input: z.unknown().default({}),
+});
+
+// tool_result block in a user message (tool execution result sent back to the model)
+const ToolResultBlockSchema = z.object({
+  type: z.literal('tool_result'),
+  tool_use_id: z.string(),
+});
 
 // System prompt: either a plain string or an array of content blocks
 const SystemSchema = z.union([
@@ -128,12 +142,27 @@ export const anthropicProvider: LlmProxyProvider = {
     }
     // logLevel === 'metadata' → logMessages stays undefined
 
+    // Extract tool_use_ids from tool_result blocks in user messages.
+    // These link this request to the previous LLM call that generated those tool_use blocks.
+    const referencedToolUseIds: string[] = [];
+    for (const message of messages) {
+      if (message.role !== 'user') continue;
+      if (!Array.isArray(message.content)) continue;
+      for (const block of message.content) {
+        const parsed = ToolResultBlockSchema.safeParse(block);
+        if (parsed.success) {
+          referencedToolUseIds.push(parsed.data.tool_use_id);
+        }
+      }
+    }
+
     return {
       model,
       messageCount: messages.length,
       systemPromptLength: systemPromptLength(system),
       isStreaming: stream === true,
       messages: logMessages,
+      referencedToolUseIds,
     };
   },
 
@@ -191,12 +220,23 @@ export const anthropicProvider: LlmProxyProvider = {
       responseText = full.slice(0, 200) + (full.length > 200 ? '…' : '');
     }
 
+    // Extract tool_use blocks — these link this LLM call to subsequent calls
+    // that reference these ids in their tool_result blocks.
+    const toolUses: ToolUseRef[] = [];
+    for (const block of content) {
+      const parsed = ToolUseBlockSchema.safeParse(block);
+      if (parsed.success) {
+        toolUses.push({ id: parsed.data.id, name: parsed.data.name, input: parsed.data.input });
+      }
+    }
+
     return {
       model,
       inputTokens: usage.input_tokens,
       outputTokens: usage.output_tokens,
       stopReason: stop_reason ?? undefined,
       responseText,
+      toolUses: toolUses.length > 0 ? toolUses : undefined,
     };
   },
 };

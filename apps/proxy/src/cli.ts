@@ -36,7 +36,7 @@ const VERSION: string = (_require('../package.json') as { version: string }).ver
  * Build a ProxyConfig from environment variables with safe defaults.
  * index.ts delegates all env-reading to this function so it stays clean.
  */
-export function buildConfigFromEnv(): ProxyConfig {
+export function buildConfigFromEnv(args: string[] = []): ProxyConfig {
   return {
     port:            Number(process.env['PROXY_PORT'] ?? 7777),
     agentId:         process.env['RIND_AGENT_ID'] ?? 'default-agent',
@@ -46,6 +46,10 @@ export function buildConfigFromEnv(): ProxyConfig {
     policyFile:      process.env['RIND_POLICY_FILE'],
     logLevel:        (process.env['LOG_LEVEL'] ?? 'info') as ProxyConfig['logLevel'],
     auditLogPath:    process.env['RIND_AUDIT_LOG'],
+    // All modules on by default — opt out with --no-* flags
+    llmProxy:        { enabled: !args.includes('--no-llm-proxy') },
+    mcpProxyEnabled: !args.includes('--no-mcp-proxy'),
+    hooksEnabled:    !args.includes('--no-hooks'),
   };
 }
 
@@ -90,7 +94,7 @@ export function printStartupSummary(config: ProxyConfig): void {
   line();
   line(`  ${c.green}✓${c.reset}  Ready. Intercepting all tool calls on port ${c.bold}${config.port}${c.reset}.`);
   line();
-  printEndpointReference(config.port);
+  printEndpointReference(config.port, config);
 }
 
 // ─── Next steps (upstream not configured) ────────────────────────────────────
@@ -108,19 +112,30 @@ export function printNextSteps(config: ProxyConfig): void {
   line(`    2.  Restart:  npx @rind/proxy`);
   line(`    3.  Scan:     POST http://localhost:${config.port}/scan`);
   line();
-  printEndpointReference(config.port);
+  printEndpointReference(config.port, config);
 }
 
 // ─── Endpoint reference (shared by both paths) ────────────────────────────────
 
-function printEndpointReference(port: number): void {
+function printEndpointReference(port: number, config?: ProxyConfig): void {
+  const llmOn  = config?.llmProxy?.enabled !== false;
+  const mcpOn  = config?.mcpProxyEnabled !== false;
+  const hookOn = config?.hooksEnabled !== false;
+
+  const on  = `${c.teal}●${c.reset}`;
+  const off = `${c.dim}○${c.reset}`;
+
+  line(`  ${c.dim}Modules${c.reset}`);
+  line(`    ${llmOn  ? on : off}  LLM proxy   ${llmOn  ? `POST /llm/anthropic/*  POST /llm/openai/*` : c.dim + 'disabled (--no-llm-proxy)' + c.reset}`);
+  line(`    ${mcpOn  ? on : off}  MCP proxy   ${mcpOn  ? `POST /proxy/tool-call  /mcp/:serverId`     : c.dim + 'disabled (--no-mcp-proxy)' + c.reset}`);
+  line(`    ${hookOn ? on : off}  Hooks       ${hookOn ? `POST /hook/evaluate    POST /hook/event`   : c.dim + 'disabled (--no-hooks)' + c.reset}`);
+  line();
   line(`  ${c.dim}Endpoints${c.reset}`);
-  line(`    POST /scan                scan your MCP server tools (scan-on-connect)`);
-  line(`    POST /scan/refresh        re-scan for post-install mutations (rug pull detection)`);
-  line(`    POST /sessions            create an agent session`);
-  line(`    POST /proxy/tool-call     intercept and forward a tool call`);
   line(`    GET  /status              live stats — sessions, calls, threats`);
-  line(`    GET  /logs/tool-calls     tool call history (ring buffer, last 10k events)`);
+  line(`    GET  /logs/tool-calls     tool call history`);
+  line(`    GET  /logs/llm-calls      LLM call history with cost + threat data`);
+  line(`    GET  /logs/timeline       unified tool + LLM timeline`);
   line(`    GET  /policies            active policy rules`);
+  line(`    GET  /health              health check`);
   line();
 }
