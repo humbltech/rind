@@ -18,6 +18,7 @@ import { HeaderBand, type BlockedIncident } from './components/header-band';
 import { McpServerList, type McpServerInfo } from './components/mcp-server-list';
 import { InsightsPanel } from './components/insights-panel';
 import { ApprovalBanner } from './components/approval-banner';
+import { LlmCallTable, type LlmCallEntry } from './components/llm-call-table';
 
 // ─── Data shapes from the proxy API ───────────────────────────────────────────
 
@@ -44,7 +45,7 @@ interface HookContext {
 // ─── Dashboard page ───────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const { status, toolCalls, scanResults, hookContext, isConnected } = useProxyData();
+  const { status, toolCalls, scanResults, hookContext, llmCalls, isConnected } = useProxyData();
 
   const sessions  = status?.sessions  ?? { total: 0, active: 0 };
   const calls     = status?.toolCalls ?? { total: 0 };
@@ -76,9 +77,11 @@ export default function DashboardPage() {
           />
           <ApprovalBanner />
           <StatsGrid status={status} toolCalls={toolCalls} mcpServerCount={hookContext?.mcpServers?.length ?? servers.total} />
+          {llmCalls.length > 0 && <LlmStatsGrid llmCalls={llmCalls} />}
           <InsightsSection toolCalls={toolCalls} mcpServers={hookContext?.mcpServers} />
           <ActiveSessionsSection sessions={hookContext?.activeSessions ?? []} workDirs={activeWorkDirs} />
           <ToolCallSection entries={toolCalls} />
+          {llmCalls.length > 0 && <LlmCallSection entries={llmCalls} />}
           <McpServerSection servers={hookContext?.mcpServers ?? []} />
           <ScanSection servers={scanResults} />
         </div>
@@ -267,6 +270,79 @@ function ScanSection({ servers }: { servers: ServerScanResult[] }) {
   );
 }
 
+// ─── LLM sections ────────────────────────────────────────────────────────────
+
+function LlmStatsGrid({ llmCalls }: { llmCalls: LlmCallEntry[] }) {
+  const totalInputTokens  = llmCalls.reduce((s, e) => s + (e.inputTokens ?? 0), 0);
+  const totalOutputTokens = llmCalls.reduce((s, e) => s + (e.outputTokens ?? 0), 0);
+  const totalTokens = totalInputTokens + totalOutputTokens;
+  const totalCost   = llmCalls.reduce((s, e) => s + (e.estimatedCostUsd ?? 0), 0);
+  const blocked     = llmCalls.filter((e) => e.outcome === 'blocked').length;
+
+  return (
+    <section>
+      <SectionLabel>LLM API calls</SectionLabel>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
+        <CountDeltaCard
+          label="LLM Calls"
+          value={llmCalls.length}
+          unit="total"
+          badge="lifetime"
+          delta={-blocked}
+          deltaLabel="blocked"
+        />
+        <VolumeCard
+          label="Tokens used"
+          value={totalTokens}
+          unit="tokens"
+          badge="all calls"
+          sparkline={[]}
+        />
+        <CountDeltaCard
+          label="Est. Cost"
+          value={Math.round(totalCost * 10000) / 10000}
+          unit="USD"
+          badge="lifetime"
+          delta={0}
+          deltaLabel=""
+        />
+        <CountScaleCard
+          label="Blocked calls"
+          value={blocked}
+          max={Math.max(blocked, llmCalls.length)}
+          badge="by policy"
+        />
+      </div>
+    </section>
+  );
+}
+
+function LlmCallSection({ entries }: { entries: LlmCallEntry[] }) {
+  const recent = useMemo(() => [...entries].sort((a, b) => b.timestamp - a.timestamp).slice(0, 15), [entries]);
+
+  return (
+    <section>
+      <SectionLabel>
+        Recent LLM calls
+        <span className="ml-2 text-dim font-normal normal-case">
+          (last {recent.length}{entries.length > 15 ? ` of ${entries.length}` : ''})
+        </span>
+        {entries.length > 15 && (
+          <a
+            href="/logs?view=llm"
+            className="ml-auto text-[11px] font-normal normal-case text-accent hover:underline"
+          >
+            View all in Logs
+          </a>
+        )}
+      </SectionLabel>
+      <div className="mt-3">
+        <LlmCallTable entries={recent} />
+      </div>
+    </section>
+  );
+}
+
 // ─── Shared UI primitives ─────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -349,6 +425,7 @@ function useProxyData() {
   const [toolCalls, setToolCalls]     = useState<ToolCallEntry[]>([]);
   const [scanResults, setScanResults] = useState<ServerScanResult[]>([]);
   const [hookContext, setHookContext]  = useState<HookContext | null>(null);
+  const [llmCalls, setLlmCalls]       = useState<LlmCallEntry[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
@@ -356,11 +433,12 @@ function useProxyData() {
 
     async function poll() {
       try {
-        const [statusRes, logsRes, scanRes, ctxRes] = await Promise.all([
+        const [statusRes, logsRes, scanRes, ctxRes, llmRes] = await Promise.all([
           fetch('/api/proxy/status'),
           fetch('/api/proxy/logs/tool-calls'),
           fetch('/api/proxy/scan/results'),
           fetch('/api/proxy/hook/context'),
+          fetch('/api/proxy/logs/llm-calls'),
         ]);
 
         if (!active) return;
@@ -372,6 +450,7 @@ function useProxyData() {
         }
         if (scanRes.ok)   setScanResults(await scanRes.json());
         if (ctxRes.ok)    setHookContext(await ctxRes.json());
+        if (llmRes.ok)    setLlmCalls(await llmRes.json());
 
         setIsConnected(statusRes.ok);
       } catch {
@@ -384,5 +463,5 @@ function useProxyData() {
     return () => { active = false; clearInterval(interval); };
   }, []);
 
-  return { status, toolCalls, scanResults, hookContext, isConnected };
+  return { status, toolCalls, scanResults, hookContext, llmCalls, isConnected };
 }

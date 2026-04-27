@@ -1,30 +1,32 @@
-// `rind-proxy init` — auto-config generator for Claude Code (D-040 Phase A5).
+// `rind-proxy init` — auto-config generator for Claude Code.
 //
 // Usage:
 //   rind-proxy init [options]
-//   npx @rind/proxy init --claude-code
 //
 // Options:
 //   --claude-code         Generate Claude Code hook config + wrapped MCP config (default)
 //   --rind-url <url>      Rind proxy URL (default: http://localhost:7777)
 //   --mcp-json <path>     Path to .mcp.json (default: auto-detect)
-//   --settings <path>     Path to .claude/settings.json (default: auto-detect)
-//   --policy <path>       Output path for rind.policy.yaml (default: ./rind.policy.yaml)
+//   --settings <path>     Explicit path to settings.json (overrides --global/--local)
+//   --global              Write settings to ~/.claude/settings.json (default)
+//   --local               Write settings to .claude/settings.json in the current directory
+//   --llm-proxy           Configure ANTHROPIC_BASE_URL so LLM calls flow through Rind
+//   --write-policy <path> Generate a starter rind.policy.yaml at the given path
 //   --dry-run             Print what would change without writing any files
 //
 // What it does:
 //   1. Reads the existing .mcp.json (if present) and wraps every stdio server
 //      so Claude Code routes MCP calls through Rind instead of the real server
-//   2. Reads the existing .claude/settings.json (if present) and merges in a
-//      PreToolUse hook that calls Rind's /hook/evaluate endpoint
-//   3. Generates a starter rind.policy.yaml if one does not already exist
-//   4. Prints a human-readable diff of every change made
+//   2. Merges Rind hooks into the Claude Code settings.json (global by default)
+//   3. Optionally: sets ANTHROPIC_BASE_URL for LLM API interception (--llm-proxy)
+//   4. Optionally: generates a starter rind.policy.yaml (--write-policy)
 //
 // Responsibility: I/O orchestration only — file reading, writing, and printing.
 // All transforms live in config/ modules and are independently testable.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
+import { homedir } from 'node:os';
 import { parseMcpJson, wrapWithRind, describeWrap } from '../config/mcp-json.js';
 import { parseClaudeSettings, mergeRindHook, alreadyHasRindHook, alreadyHasRindEventHooks } from '../config/settings-json.js';
 import { generateStarterPolicyYaml } from '../config/policy-yaml.js';
@@ -35,9 +37,11 @@ export interface InitArgs {
   claudeCode:   boolean;
   rindUrl:      string;
   mcpJsonPath:  string | undefined;
-  settingsPath: string | undefined;
-  policyPath:   string;
+  settingsPath: string | undefined; // explicit override; takes precedence over global/local
+  settingsScope: 'global' | 'local'; // where to write settings when no explicit path
   dryRun:       boolean;
+  llmProxy:     boolean;    // configure ANTHROPIC_BASE_URL for LLM API interception
+  writePolicy:  string | undefined; // path to generate rind.policy.yaml, or undefined = skip
 }
 
 // ─── Arg parsing ──────────────────────────────────────────────────────────────
@@ -54,19 +58,24 @@ export function parseInitArgs(argv: string[]): InitArgs | null {
   let rindUrl       = 'http://localhost:7777';
   let mcpJsonPath: string | undefined;
   let settingsPath: string | undefined;
-  let policyPath    = './rind.policy.yaml';
+  let settingsScope: 'global' | 'local' = 'global'; // default: write to ~/.claude/settings.json
   let dryRun        = false;
+  let llmProxy      = false;
+  let writePolicy: string | undefined;
 
   const USAGE = `Usage: rind-proxy init [options]
 
 Options:
-  --claude-code           Generate Claude Code hook config + wrapped MCP config (default)
-  --rind-url <url>        Rind proxy URL (default: http://localhost:7777)
-  --mcp-json <path>       Path to .mcp.json (default: auto-detect)
-  --settings <path>       Path to .claude/settings.json (default: auto-detect)
-  --policy <path>         Output path for rind.policy.yaml (default: ./rind.policy.yaml)
-  --dry-run               Print what would change without writing any files
-  --help                  Show this help message
+  --claude-code              Generate Claude Code hook config + wrapped MCP config (default)
+  --rind-url <url>           Rind proxy URL (default: http://localhost:7777)
+  --mcp-json <path>          Path to .mcp.json (default: auto-detect)
+  --global                   Write settings to ~/.claude/settings.json (default)
+  --local                    Write settings to .claude/settings.json in current directory
+  --settings <path>          Explicit settings.json path (overrides --global/--local)
+  --llm-proxy                Set ANTHROPIC_BASE_URL so LLM calls route through Rind
+  --write-policy [path]      Generate starter rind.policy.yaml (default: ./rind.policy.yaml)
+  --dry-run                  Print what would change without writing any files
+  --help                     Show this help message
 `;
 
   for (let i = 0; i < args.length; i++) {
@@ -78,6 +87,9 @@ Options:
         break;
       case '--claude-code': claudeCode = true; break;
       case '--dry-run':     dryRun = true; break;
+      case '--llm-proxy':   llmProxy = true; break;
+      case '--global':      settingsScope = 'global'; break;
+      case '--local':       settingsScope = 'local'; break;
       case '--rind-url':
         if (!args[i + 1]) { process.stderr.write('--rind-url requires a value\n'); return null; }
         rindUrl = args[++i]!;
@@ -90,10 +102,16 @@ Options:
         if (!args[i + 1]) { process.stderr.write('--settings requires a path\n'); return null; }
         settingsPath = args[++i];
         break;
-      case '--policy':
-        if (!args[i + 1]) { process.stderr.write('--policy requires a path\n'); return null; }
-        policyPath = args[++i]!;
+      case '--write-policy': {
+        // Optional value — if the next arg looks like a path use it, else use default
+        const next = args[i + 1];
+        if (next && !next.startsWith('--')) {
+          writePolicy = args[++i];
+        } else {
+          writePolicy = './rind.policy.yaml';
+        }
         break;
+      }
       default:
         process.stderr.write(`Unknown option: ${arg}\n`);
         process.stderr.write(USAGE);
@@ -104,7 +122,7 @@ Options:
   // --claude-code is the default if no target is specified
   if (!claudeCode) claudeCode = true;
 
-  return { claudeCode, rindUrl, mcpJsonPath, settingsPath, policyPath, dryRun };
+  return { claudeCode, rindUrl, mcpJsonPath, settingsPath, settingsScope, dryRun, llmProxy, writePolicy };
 }
 
 // ─── File I/O helpers ─────────────────────────────────────────────────────────
@@ -112,8 +130,7 @@ Options:
 /**
  * Reads a file as a parsed JSON value.
  * Returns null when the file is absent.
- * Throws with a clear message when the file exists but is not valid JSON —
- * so the caller can warn the user rather than silently treating it as empty.
+ * Throws with a clear message when the file exists but is not valid JSON.
  */
 function readJsonFile(path: string): unknown {
   if (!existsSync(path)) return null;
@@ -131,24 +148,27 @@ function writeFile(path: string, content: string): void {
   writeFileSync(path, content, 'utf-8');
 }
 
-// ─── Path auto-detection ──────────────────────────────────────────────────────
+// ─── Path resolution ──────────────────────────────────────────────────────────
+
+/**
+ * Resolve the settings.json path.
+ *   --settings <path>  → explicit override (always wins)
+ *   --global (default) → ~/.claude/settings.json
+ *   --local            → .claude/settings.json (relative to CWD)
+ */
+function resolveSettingsPath(args: InitArgs): string {
+  if (args.settingsPath) return args.settingsPath;
+  if (args.settingsScope === 'global') return join(homedir(), '.claude', 'settings.json');
+  return '.claude/settings.json';
+}
 
 /**
  * Finds .mcp.json by checking common locations in priority order.
- * Returns the first path that exists, or a default path.
  */
 function detectMcpJsonPath(override?: string): string {
   if (override) return override;
   const candidates = ['.mcp.json', '.claude/mcp.json'];
   return candidates.find(existsSync) ?? '.mcp.json';
-}
-
-/**
- * Finds .claude/settings.json — always at this fixed path for Claude Code.
- * Returns the override if provided.
- */
-function detectSettingsPath(override?: string): string {
-  return override ?? '.claude/settings.json';
 }
 
 // ─── Init runner ──────────────────────────────────────────────────────────────
@@ -162,26 +182,38 @@ export async function runInit(argv: string[]): Promise<void> {
   if (!args) { process.exit(1); return; }
 
   const mcpJsonPath  = detectMcpJsonPath(args.mcpJsonPath);
-  const settingsPath = detectSettingsPath(args.settingsPath);
-  const policyPath   = args.policyPath;
+  const settingsPath = resolveSettingsPath(args);
   const rindUrl      = args.rindUrl;
   const dryRun       = args.dryRun;
+
+  const scopeLabel = args.settingsPath
+    ? args.settingsPath
+    : args.settingsScope === 'global'
+      ? `~/.claude/settings.json (global)`
+      : `.claude/settings.json (local)`;
 
   if (dryRun) {
     process.stdout.write('\nRind init — dry run (no files will be written)\n\n');
   } else {
-    process.stdout.write('\nRind init\n\n');
+    process.stdout.write(`\nRind init  [${scopeLabel}]\n\n`);
   }
 
   try {
     // ── Step 1: Wrap MCP servers ──────────────────────────────────────────────
     applyMcpJsonWrap(mcpJsonPath, dryRun);
 
-    // ── Step 2: Add PreToolUse hook ───────────────────────────────────────────
+    // ── Step 2: Add Claude Code hooks ─────────────────────────────────────────
     applySettingsHook(settingsPath, rindUrl, dryRun);
 
-    // ── Step 3: Generate starter policy ──────────────────────────────────────
-    applyPolicyYaml(policyPath, dryRun);
+    // ── Step 3: LLM proxy (opt-in via --llm-proxy) ───────────────────────────
+    if (args.llmProxy) {
+      applyLlmProxyConfig(settingsPath, rindUrl, dryRun);
+    }
+
+    // ── Step 4: Policy file (opt-in via --write-policy) ──────────────────────
+    if (args.writePolicy) {
+      applyPolicyYaml(args.writePolicy, dryRun);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`\nError: ${message}\n`);
@@ -194,8 +226,8 @@ export async function runInit(argv: string[]): Promise<void> {
   if (dryRun) {
     process.stdout.write('Dry run complete — no files were written.\n');
   } else {
-    process.stdout.write('Done. Start Rind, then run Claude Code normally — all tool calls flow through Rind.\n');
-    process.stdout.write(`\n  npx @rind/proxy            # start the proxy\n\n`);
+    process.stdout.write('Done. Start Rind, then run Claude Code normally.\n');
+    process.stdout.write(`\n  node dist/index.js         # start the proxy\n\n`);
   }
 }
 
@@ -283,4 +315,46 @@ function applyPolicyYaml(policyPath: string, dryRun: boolean): void {
     writeFile(policyPath, generateStarterPolicyYaml());
     process.stdout.write('  ✓ written\n');
   }
+}
+
+function applyLlmProxyConfig(settingsPath: string, rindUrl: string, dryRun: boolean): void {
+  const llmBaseUrl = `${rindUrl}/llm/anthropic`;
+  process.stdout.write(`\nLLM proxy  (${settingsPath})\n`);
+
+  // Read the current settings (may have been updated by applySettingsHook already)
+  const raw = readJsonFile(settingsPath);
+  const settings = parseClaudeSettings(raw);
+
+  const existingEnv = (settings['env'] ?? {}) as Record<string, unknown>;
+  const current = existingEnv['ANTHROPIC_BASE_URL'];
+
+  if (current === llmBaseUrl) {
+    process.stdout.write('  = skip  ANTHROPIC_BASE_URL already points to Rind\n');
+    return;
+  }
+
+  if (current !== undefined) {
+    process.stdout.write(
+      `  ! warn  ANTHROPIC_BASE_URL is already set to "${String(current)}" — not overwriting\n` +
+      `          To enable LLM proxy, set it manually: ANTHROPIC_BASE_URL=${llmBaseUrl}\n`,
+    );
+    return;
+  }
+
+  process.stdout.write(`  + add   ANTHROPIC_BASE_URL=${llmBaseUrl}\n`);
+
+  if (!dryRun) {
+    const updated: typeof settings = {
+      ...settings,
+      env: { ...existingEnv, ANTHROPIC_BASE_URL: llmBaseUrl },
+    };
+    writeFile(settingsPath, JSON.stringify(updated, null, 2) + '\n');
+    process.stdout.write('  ✓ written\n');
+  }
+
+  process.stdout.write(
+    `\n  Claude Code LLM calls will now route through Rind.\n` +
+    `  To bypass at any time: unset ANTHROPIC_BASE_URL in settings.json\n` +
+    `  Start Rind before using Claude Code: node dist/index.js\n`,
+  );
 }

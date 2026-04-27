@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { Sidebar } from '../components/sidebar';
 import type { ToolCallEntry } from '../components/tool-call-table';
+import { LlmCallTable, type LlmCallEntry } from '../components/llm-call-table';
 import {
   Search,
   ChevronDown,
@@ -36,8 +37,18 @@ import {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
+type LogView = 'tools' | 'llm';
+
 export default function LogsPage() {
-  const { toolCalls, isConnected } = useLogData();
+  const { toolCalls, llmCalls, isConnected } = useLogData();
+  const [view, setView] = useState<LogView>(() => {
+    // Read ?view=llm from URL on mount (client-side only)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('view') === 'llm' ? 'llm' : 'tools';
+    }
+    return 'tools';
+  });
   const [query, setQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -55,7 +66,6 @@ export default function LogsPage() {
     }
   }, [sortField]);
 
-  // Quick filter chips — clicking sets the query
   const handleChip = useCallback((q: string) => {
     setQuery((prev) => (prev === q ? '' : q));
   }, []);
@@ -65,18 +75,60 @@ export default function LogsPage() {
       <Sidebar />
       <main className="flex-1 overflow-auto">
         <div className="max-w-[1400px] mx-auto px-8 py-8 space-y-6">
-          <PageHeader connected={isConnected} total={toolCalls.length} filtered={sorted.length} />
-          <QueryBar query={query} onChange={setQuery} />
-          <QuickFilters query={query} onChip={handleChip} stats={stats} />
-          <StatsBar stats={stats} />
-          <LogTable
-            entries={sorted}
-            sortField={sortField}
-            sortDir={sortDir}
-            onSort={handleSort}
-          />
+          <PageHeader connected={isConnected} total={view === 'tools' ? toolCalls.length : llmCalls.length} filtered={view === 'tools' ? sorted.length : llmCalls.length} />
+          <ViewTabs view={view} onChange={setView} toolCount={toolCalls.length} llmCount={llmCalls.length} />
+          {view === 'tools' ? (
+            <>
+              <QueryBar query={query} onChange={setQuery} />
+              <QuickFilters query={query} onChip={handleChip} stats={stats} />
+              <StatsBar stats={stats} />
+              <LogTable
+                entries={sorted}
+                sortField={sortField}
+                sortDir={sortDir}
+                onSort={handleSort}
+              />
+            </>
+          ) : (
+            <LlmCallTable entries={llmCalls} maxHeight="calc(100vh - 280px)" />
+          )}
         </div>
       </main>
+    </div>
+  );
+}
+
+// ─── View tab switcher ────────────────────────────────────────────────────────
+
+function ViewTabs({ view, onChange, toolCount, llmCount }: {
+  view: LogView;
+  onChange: (v: LogView) => void;
+  toolCount: number;
+  llmCount: number;
+}) {
+  return (
+    <div className="flex gap-1 border-b border-border">
+      {(['tools', 'llm'] as LogView[]).map((v) => {
+        const label = v === 'tools' ? 'Tool calls' : 'LLM calls';
+        const count = v === 'tools' ? toolCount : llmCount;
+        const active = view === v;
+        return (
+          <button
+            key={v}
+            onClick={() => onChange(v)}
+            className={`px-4 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors ${
+              active
+                ? 'border-accent text-accent'
+                : 'border-transparent text-muted hover:text-foreground'
+            }`}
+          >
+            {label}
+            <span className={`ml-2 text-[10px] font-mono px-1.5 py-0.5 rounded ${active ? 'bg-accent/15 text-accent' : 'bg-overlay text-dim'}`}>
+              {count}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -955,6 +1007,7 @@ function clientToolLabel(toolName: string, input: unknown): string {
 
 function useLogData() {
   const [toolCalls, setToolCalls] = useState<ToolCallEntry[]>([]);
+  const [llmCalls, setLlmCalls]   = useState<LlmCallEntry[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
@@ -962,7 +1015,10 @@ function useLogData() {
 
     async function poll() {
       try {
-        const callsRes = await fetch('/api/proxy/logs/tool-calls');
+        const [callsRes, llmRes] = await Promise.all([
+          fetch('/api/proxy/logs/tool-calls'),
+          fetch('/api/proxy/logs/llm-calls'),
+        ]);
         if (!active) return;
 
         if (callsRes.ok) {
@@ -971,6 +1027,10 @@ function useLogData() {
           setIsConnected(true);
         } else {
           setIsConnected(false);
+        }
+        if (llmRes.ok) {
+          const calls: LlmCallEntry[] = await llmRes.json();
+          setLlmCalls(calls);
         }
       } catch {
         if (active) setIsConnected(false);
@@ -982,5 +1042,5 @@ function useLogData() {
     return () => { active = false; clearInterval(interval); };
   }, []);
 
-  return { toolCalls, isConnected };
+  return { toolCalls, llmCalls, isConnected };
 }

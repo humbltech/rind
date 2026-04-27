@@ -146,7 +146,7 @@ describe('dispatchToolCall — ALLOW', () => {
     const upstream = makeUpstream();
     const toolCallReq = req('tools/call', { name: 'sql_query', arguments: { sql: 'SELECT 1' } });
 
-    const res = await dispatchToolCall(toolCallReq, upstream, 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
+    const res = await dispatchToolCall(toolCallReq, upstream, 'srv', undefined, undefined, makeAllowOpts());
     expect(res.error).toBeUndefined();
     expect(upstream.callTool).toHaveBeenCalledWith('sql_query', { sql: 'SELECT 1' });
   });
@@ -155,7 +155,7 @@ describe('dispatchToolCall — ALLOW', () => {
     const upstream = makeUpstream();
     const toolCallReq = req('tools/call', { name: 'do_thing', arguments: { x: 42 } });
 
-    await dispatchToolCall(toolCallReq, upstream, 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
+    await dispatchToolCall(toolCallReq, upstream, 'srv', undefined, undefined, makeAllowOpts());
     expect(upstream.callTool).toHaveBeenCalledWith('do_thing', { x: 42 });
   });
 
@@ -163,7 +163,7 @@ describe('dispatchToolCall — ALLOW', () => {
     const upstream = makeUpstream();
     const toolCallReq = req('tools/call', { name: 'no_args' });
 
-    await dispatchToolCall(toolCallReq, upstream, 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
+    await dispatchToolCall(toolCallReq, upstream, 'srv', undefined, undefined, makeAllowOpts());
     expect(upstream.callTool).toHaveBeenCalledWith('no_args', {});
   });
 });
@@ -259,13 +259,13 @@ describe('dispatchToolCall — DENY / block', () => {
 describe('dispatchToolCall — invalid params', () => {
   it('returns invalid-request when params are missing', async () => {
     const toolCallReq = req('tools/call'); // no params
-    const res = await dispatchToolCall(toolCallReq, makeUpstream(), 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
+    const res = await dispatchToolCall(toolCallReq, makeUpstream(), 'srv', undefined, undefined, makeAllowOpts());
     expect(res.error?.code).toBe(JSON_RPC.INVALID_REQUEST);
   });
 
   it('returns invalid-request when name is absent from params', async () => {
     const toolCallReq = req('tools/call', { arguments: {} }); // missing name
-    const res = await dispatchToolCall(toolCallReq, makeUpstream(), 'srv', undefined, undefined, makeAllowOpts(), '0.0.0-test');
+    const res = await dispatchToolCall(toolCallReq, makeUpstream(), 'srv', undefined, undefined, makeAllowOpts());
     expect(res.error?.code).toBe(JSON_RPC.INVALID_REQUEST);
   });
 });

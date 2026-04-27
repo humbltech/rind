@@ -1,0 +1,370 @@
+// LLM API proxy gateway — Hono sub-app factory.
+//
+// Responsibility: mount /llm/:provider/* routes, orchestrate the LLM proxy pipeline:
+//   1. Parse + validate inbound request
+//   2. Pre-forward policy check (evaluateLlm)
+//   3. Forward to upstream (streaming or non-streaming)
+//   4. Emit llm:request + llm:response events
+//   5. Post-stream async scanning (wired in Phase 7)
+//
+// Follows the same factory pattern as mcpGateway() in transport/gateway.ts.
+// All business logic is in pure functions; this file handles HTTP concerns only.
+
+import { Hono, type Context } from 'hono';
+import { stream } from 'hono/streaming';
+import { createHash, randomUUID } from 'node:crypto';
+import { RateLimiter } from '../../rate-limiter.js';
+import type pino from 'pino';
+import type { RindEventBus } from '../../event-bus.js';
+import type { PolicyEngine } from '../../policy/engine.js';
+import type { LlmCallEvent, LlmProxyConfig } from './types.js';
+import { anthropicProvider } from './providers/anthropic.js';
+import { openaiProvider } from './providers/openai.js';
+import type { LlmProxyProvider } from './providers/interface.js';
+import { ProviderParseError } from './providers/interface.js';
+import { forwardLlmRequest } from './forward.js';
+import { createAnthropicAccumulator, createOpenAIAccumulator } from './streaming.js';
+import { scanLlmRequest } from './request-scanner.js';
+import { scanLlmResponse } from './response-scanner.js';
+import { calculateCost } from './cost-calculator.js';
+
+// ─── Gateway options ──────────────────────────────────────────────────────────
+
+export interface LlmGatewayOptions {
+  config: LlmProxyConfig;
+  bus: RindEventBus;
+  policyEngine: PolicyEngine;
+  logger: pino.Logger;
+  /**
+   * Optional post-response scan hook. Called async after the response completes.
+   * Does not block the response — fire and forget.
+   */
+  onResponseComplete?: (event: LlmCallEvent) => void;
+}
+
+// ─── Accumulator factory map ──────────────────────────────────────────────────
+
+const ACCUMULATOR_FACTORIES: Record<string, () => ReturnType<typeof createAnthropicAccumulator>> = {
+  anthropic: createAnthropicAccumulator,
+  openai: createOpenAIAccumulator,
+};
+
+// ─── Session correlation via API key hash ─────────────────────────────────────
+
+/**
+ * Derive a stable session ID from the API key.
+ * This lets us correlate LLM calls with tool calls in the same Claude Code session
+ * without storing the actual key.
+ */
+function deriveSessionId(headers: Record<string, string>): string {
+  const key =
+    headers['x-api-key'] ??
+    headers['authorization']?.replace(/^Bearer\s+/i, '') ??
+    '';
+  if (!key) return 'unknown-session';
+  return createHash('sha256').update(key).digest('hex').slice(0, 16);
+}
+
+// ─── Build LlmCallEvent from request ─────────────────────────────────────────
+
+function buildInitialEvent(
+  provider: LlmProxyProvider,
+  headers: Record<string, string>,
+  body: unknown,
+  config: LlmProxyConfig,
+): LlmCallEvent {
+  const meta = provider.parseRequest(body, config.logLevel);
+  return {
+    id: randomUUID(),
+    sessionId: deriveSessionId(headers),
+    agentId: headers['x-rind-agent-id'] ?? `llm-${provider.name}`,
+    provider: provider.name,
+    model: meta.model,
+    timestamp: Date.now(),
+    messageCount: meta.messageCount,
+    systemPromptLength: meta.systemPromptLength,
+    streaming: meta.isStreaming,
+    messages: meta.messages,
+    outcome: 'forwarded', // optimistic — updated to 'error' or 'blocked' if needed
+  };
+}
+
+// ─── Handler factory ──────────────────────────────────────────────────────────
+
+/**
+ * Build a Hono handler for a given LLM provider.
+ * Handles both streaming and non-streaming requests transparently.
+ */
+function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOptions, rateLimiter: RateLimiter) {
+  const { config, bus, policyEngine, logger, onResponseComplete } = opts;
+
+  return async (c: Context) => {
+    // ── 1. Parse request body ────────────────────────────────────────────────
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: { type: 'invalid_request', message: 'Request body must be valid JSON' } }, 400);
+    }
+
+    // ── 2. Build inbound headers map (lowercase keys) ────────────────────────
+    const inboundHeaders: Record<string, string> = {};
+    c.req.raw.headers.forEach((value, key) => {
+      inboundHeaders[key.toLowerCase()] = value;
+    });
+
+    // ── 3. Parse request metadata + build initial event ──────────────────────
+    let event: LlmCallEvent;
+    try {
+      event = buildInitialEvent(provider, inboundHeaders, body, config);
+    } catch (err) {
+      if (err instanceof ProviderParseError) {
+        return c.json({ error: { type: 'invalid_request', message: err.message } }, 400);
+      }
+      throw err;
+    }
+
+    // ── 3b. Request scanning (sync, pre-forward) ─────────────────────────────
+    // Scan outbound prompt for credentials and PII. Attaches threats to the event
+    // for audit/dashboard visibility. Does not block forwarding on its own — a
+    // policy rule with llmModel/llmProvider + DENY action is the enforcement path.
+    const requestThreats = scanLlmRequest(body);
+    if (requestThreats.length > 0) {
+      event = { ...event, requestThreats };
+      logger.warn({ model: event.model, threatCount: requestThreats.length }, 'LLM request threats detected');
+    }
+
+    // ── 4. Pre-forward policy check ──────────────────────────────────────────
+    const policyResult = policyEngine.evaluateLlm(event);
+    if (policyResult.action === 'DENY') {
+      const blockedEvent: LlmCallEvent = { ...event, outcome: 'blocked', matchedRule: policyResult.matchedRule?.name };
+      bus.emit('llm:blocked', { event: blockedEvent, reason: policyResult.reason ?? 'Policy DENY' });
+      logger.info({ model: event.model, rule: policyResult.matchedRule?.name }, 'LLM call blocked by policy');
+      return c.json(
+        { error: { type: 'policy_denied', message: policyResult.reason ?? 'Request blocked by policy' } },
+        403,
+      );
+    }
+
+    // ── 4b. LLM rate limiting (per-agent, per-provider) ─────────────────────
+    if (config.rateLimitPerAgentPerMinute != null) {
+      const rlResult = rateLimiter.check(event.agentId, `llm:${provider.name}`, {
+        limit: config.rateLimitPerAgentPerMinute,
+        windowMs: 60_000,
+        scope: 'per_tool',
+      });
+      if (!rlResult.allowed) {
+        const blockedEvent: LlmCallEvent = {
+          ...event,
+          outcome: 'blocked',
+          errorMessage: `Rate limit exceeded: ${config.rateLimitPerAgentPerMinute} LLM calls/min`,
+        };
+        bus.emit('llm:blocked', { event: blockedEvent, reason: 'Rate limit exceeded' });
+        return c.json(
+          { error: { type: 'rate_limit_exceeded', message: 'Too many LLM requests — slow down' } },
+          429,
+        );
+      }
+    }
+
+    // Emit request event (outcome = 'forwarded' optimistically)
+    bus.emit('llm:request', event);
+
+    // ── 5. Forward to upstream ────────────────────────────────────────────────
+    const upstreamBaseUrl =
+      provider.name === 'anthropic' ? config.anthropicUpstream
+      : provider.name === 'openai' ? config.openaiUpstream
+      : config.googleUpstream;
+
+    const inboundPath = c.req.path; // e.g. /llm/anthropic/v1/messages
+    const forwardStart = Date.now();
+
+    const result = await forwardLlmRequest(inboundPath, inboundHeaders, body, {
+      provider,
+      upstreamBaseUrl,
+      logLevel: config.logLevel,
+      createAccumulator: ACCUMULATOR_FACTORIES[provider.name],
+    });
+
+    // ── 6. Handle error from forwarding ─────────────────────────────────────
+    if (result.statusCode >= 500 && !result.stream) {
+      const errorEvent: LlmCallEvent = {
+        ...event,
+        outcome: 'error',
+        statusCode: result.statusCode,
+        errorMessage: (result.responseBody as Record<string, unknown> | undefined)?.['error']
+          ? JSON.stringify((result.responseBody as Record<string, unknown>)['error'])
+          : `Upstream returned ${result.statusCode}`,
+        totalDurationMs: result.durationMs,
+        ttfbMs: result.ttfbMs,
+      };
+      bus.emit('llm:response', errorEvent);
+      return new Response(JSON.stringify(result.responseBody), {
+        status: result.statusCode,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    // Forward upstream headers to client (status, content-type, etc.)
+    for (const [key, value] of Object.entries(result.upstreamHeaders)) {
+      c.header(key, value);
+    }
+
+    // ── 7a. Non-streaming response ───────────────────────────────────────────
+    if (!result.stream) {
+      const responseThreats = scanLlmResponse(result.meta?.responseText);
+      const inputTokens = result.meta?.inputTokens;
+      const outputTokens = result.meta?.outputTokens;
+      const enrichedEvent: LlmCallEvent = {
+        ...event,
+        statusCode: result.statusCode,
+        totalDurationMs: result.durationMs,
+        ttfbMs: result.ttfbMs,
+        inputTokens,
+        outputTokens,
+        estimatedCostUsd: (inputTokens != null && outputTokens != null)
+          ? calculateCost(event.model, inputTokens, outputTokens)
+          : undefined,
+        responseText: result.meta?.responseText,
+        ...(responseThreats.length > 0 ? { responseThreats } : {}),
+      };
+      if (responseThreats.length > 0) {
+        logger.warn({ model: event.model, threatCount: responseThreats.length }, 'LLM response threats detected');
+      }
+      bus.emit('llm:response', enrichedEvent);
+      if (
+        config.costAnomalyThresholdUsd != null &&
+        enrichedEvent.estimatedCostUsd != null &&
+        enrichedEvent.estimatedCostUsd > config.costAnomalyThresholdUsd
+      ) {
+        bus.emit('llm:cost-anomaly', { event: enrichedEvent, thresholdUsd: config.costAnomalyThresholdUsd });
+        logger.warn(
+          { model: event.model, cost: enrichedEvent.estimatedCostUsd, threshold: config.costAnomalyThresholdUsd },
+          'LLM cost anomaly detected',
+        );
+      }
+      onResponseComplete?.(enrichedEvent);
+      // Forward the response with the correct upstream status code.
+      // Using new Response() avoids Hono's constrained status type while preserving runtime correctness.
+      return new Response(JSON.stringify(result.responseBody), {
+        status: result.statusCode,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    // ── 7b. Streaming response ───────────────────────────────────────────────
+    // After stream drains, enrich the event with accumulated metadata + response scan
+    const capturedEvent = event;
+    const capturedTtfb = result.ttfbMs;
+    const capturedForwardStart = forwardStart;
+
+    result.streamMeta?.then((meta) => {
+      const responseThreats = scanLlmResponse(meta.responseText);
+      const inputTokens = meta.inputTokens > 0 ? meta.inputTokens : undefined;
+      const outputTokens = meta.outputTokens > 0 ? meta.outputTokens : undefined;
+      const enrichedEvent: LlmCallEvent = {
+        ...capturedEvent,
+        statusCode: result.statusCode,
+        totalDurationMs: Date.now() - capturedForwardStart,
+        ttfbMs: capturedTtfb,
+        inputTokens,
+        outputTokens,
+        estimatedCostUsd: (inputTokens != null && outputTokens != null)
+          ? calculateCost(capturedEvent.model, inputTokens, outputTokens)
+          : undefined,
+        responseText: meta.responseText,
+        ...(responseThreats.length > 0 ? { responseThreats } : {}),
+      };
+      if (responseThreats.length > 0) {
+        logger.warn({ model: capturedEvent.model, threatCount: responseThreats.length }, 'LLM response threats detected');
+      }
+      bus.emit('llm:response', enrichedEvent);
+      if (
+        config.costAnomalyThresholdUsd != null &&
+        enrichedEvent.estimatedCostUsd != null &&
+        enrichedEvent.estimatedCostUsd > config.costAnomalyThresholdUsd
+      ) {
+        bus.emit('llm:cost-anomaly', { event: enrichedEvent, thresholdUsd: config.costAnomalyThresholdUsd });
+        logger.warn(
+          { model: capturedEvent.model, cost: enrichedEvent.estimatedCostUsd, threshold: config.costAnomalyThresholdUsd },
+          'LLM cost anomaly detected',
+        );
+      }
+      onResponseComplete?.(enrichedEvent);
+    }).catch((err: unknown) => {
+      logger.error({ err, eventId: capturedEvent.id }, 'Failed to emit LLM stream response event');
+      // Emit an error event so the audit record is not silently dropped
+      bus.emit('llm:response', {
+        ...capturedEvent,
+        outcome: 'error',
+        errorMessage: err instanceof Error ? err.message : 'Stream pipeline error',
+        ttfbMs: capturedTtfb,
+        totalDurationMs: Date.now() - capturedForwardStart,
+      });
+    });
+
+    // Pipe the upstream stream to the client using Hono's stream helper
+    return stream(c, async (s) => {
+      const reader = result.stream!.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          await s.write(value);
+        }
+      } catch {
+        // Client disconnected — cancel the upstream so the TransformStream's cancel()
+        // handler fires, settling streamMeta with partial: true.
+        result.stream!.cancel().catch(() => {});
+      } finally {
+        reader.releaseLock();
+      }
+    });
+  };
+}
+
+// ─── Gateway factory ──────────────────────────────────────────────────────────
+
+export function llmGateway(opts: LlmGatewayOptions): Hono {
+  const app = new Hono();
+  // One rate limiter per gateway instance — avoids shared state across test suites.
+  const llmRateLimiter = new RateLimiter();
+
+  // ── Health ────────────────────────────────────────────────────────────────
+  app.get('/llm/health', (c) =>
+    c.json({
+      status: 'ok',
+      enabled: opts.config.enabled,
+      logLevel: opts.config.logLevel,
+    }),
+  );
+
+  // ── Anthropic ─────────────────────────────────────────────────────────────
+  const anthropicHandler = buildProviderHandler(anthropicProvider, opts, llmRateLimiter);
+  app.post('/llm/anthropic/*', anthropicHandler);
+  // Some clients send OPTIONS preflight
+  app.options('/llm/anthropic/*', (c) => {
+    c.header('access-control-allow-methods', 'POST, GET, OPTIONS');
+    c.header('access-control-allow-headers', '*');
+    return c.body(null, 204);
+  });
+
+  // ── OpenAI ────────────────────────────────────────────────────────────────
+  const openaiHandler = buildProviderHandler(openaiProvider, opts, llmRateLimiter);
+  app.post('/llm/openai/*', openaiHandler);
+  app.options('/llm/openai/*', (c) => {
+    c.header('access-control-allow-methods', 'POST, GET, OPTIONS');
+    c.header('access-control-allow-headers', '*');
+    return c.body(null, 204);
+  });
+
+  // ── Logs endpoint ─────────────────────────────────────────────────────────
+  // The ring buffer is wired in server.ts; the gateway only references it via
+  // an injected accessor to keep this file free of storage concerns.
+
+  return app;
+}
+
+// ─── Logs accessor interface ──────────────────────────────────────────────────
+// server.ts mounts its own /logs/llm-calls endpoint using the ring buffer directly.
+// This keeps the gateway decoupled from storage.

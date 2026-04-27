@@ -73,6 +73,9 @@ const PolicyRuleSchema = z.object({
     timeWindow: TimeWindowSchema.optional(),
     parameters: z.record(ParameterMatcherSchema).optional(), // D-016
     subcommand: z.array(z.string()).optional(), // Bash sub-command matching
+    // D-041: LLM proxy matching — glob patterns for model names, provider names
+    llmModel: z.array(z.string()).optional(),
+    llmProvider: z.array(z.string()).optional(),
   }),
   action: z.enum(['ALLOW', 'DENY', 'REQUIRE_APPROVAL', 'RATE_LIMIT']),
   approval: ApprovalSchema.optional(), // D-013

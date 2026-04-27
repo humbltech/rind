@@ -1,6 +1,9 @@
 // Shared types for the Rind MCP proxy
 // All events are structurally compatible with OpenTelemetry spans for future export
 
+export type { LlmCallEvent, LlmThreat, LlmThreatType, LlmLogLevel, LlmProxyConfig } from './transport/llm/types.js';
+export { defaultLlmProxyConfig } from './transport/llm/types.js';
+
 export type PolicyAction = 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL' | 'RATE_LIMIT';
 
 // ─── Tool call events ────────────────────────────────────────────────────────
@@ -170,6 +173,11 @@ export interface PolicyRule {
     // and matches if ANY extracted sub-command is in this list (case-insensitive).
     // "git status && npm publish" with subcommand: ['npm publish'] → matches.
     subcommand?: string[];
+    // LLM API proxy matching (D-041 scope clarification)
+    // Glob patterns for model names: ["claude-sonnet-*", "gpt-4o"]
+    llmModel?: string[];
+    // Provider names: ["anthropic", "openai", "google"]
+    llmProvider?: string[];
   };
   action: PolicyAction;
   // D-013: REQUIRE_APPROVAL metadata (parsed but async flow is Phase 2)
@@ -274,7 +282,11 @@ export interface AuditEntry {
     | 'scan:complete'
     | 'session:created'
     | 'session:killed'
-    | 'policy:mutation';
+    | 'policy:mutation'
+    | 'llm:request'
+    | 'llm:response'
+    | 'llm:blocked'
+    | 'llm:error';
   sessionId: string;
   agentId: string;
   serverId: string;
@@ -320,4 +332,6 @@ export interface ProxyConfig {
   upstreamTimeoutMs?: number; // fetch timeout for upstream MCP server (default: 30_000)
   // Hook: include actionable guidance in deny responses (default: true)
   hookSendGuidance?: boolean;
+  // LLM API proxy configuration (D-041 scope clarification)
+  llmProxy?: import('./transport/llm/types.js').LlmProxyConfig;
 }

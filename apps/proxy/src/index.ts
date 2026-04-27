@@ -18,6 +18,7 @@ import {
 } from './cli.js';
 import { runWrap } from './cli/wrap.js';
 import { runInit } from './cli/init.js';
+import { runUninit } from './cli/uninit.js';
 
 // ── Subcommand dispatch ────────────────────────────────────────────────────────
 

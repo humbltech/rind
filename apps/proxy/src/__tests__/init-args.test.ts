@@ -51,14 +51,29 @@ describe('parseInitArgs — valid inputs', () => {
     expect(result?.settingsPath).toBeUndefined();
   });
 
-  it('accepts --policy path', () => {
-    const result = parseInitArgs(argv('--policy', './custom.policy.yaml'));
-    expect(result?.policyPath).toBe('./custom.policy.yaml');
+  it('accepts --write-policy with an explicit path', () => {
+    const result = parseInitArgs(argv('--write-policy', './custom.policy.yaml'));
+    expect(result?.writePolicy).toBe('./custom.policy.yaml');
   });
 
-  it('defaults policyPath to ./rind.policy.yaml', () => {
+  it('accepts --write-policy without a path and defaults to ./rind.policy.yaml', () => {
+    const result = parseInitArgs(argv('--write-policy'));
+    expect(result?.writePolicy).toBe('./rind.policy.yaml');
+  });
+
+  it('defaults writePolicy to undefined (policy generation is opt-in)', () => {
     const result = parseInitArgs(argv());
-    expect(result?.policyPath).toBe('./rind.policy.yaml');
+    expect(result?.writePolicy).toBeUndefined();
+  });
+
+  it('defaults settingsScope to global', () => {
+    const result = parseInitArgs(argv());
+    expect(result?.settingsScope).toBe('global');
+  });
+
+  it('accepts --local flag', () => {
+    const result = parseInitArgs(argv('--local'));
+    expect(result?.settingsScope).toBe('local');
   });
 
   it('accepts --dry-run flag', () => {
@@ -77,7 +92,8 @@ describe('parseInitArgs — valid inputs', () => {
       '--rind-url', 'http://rind.internal',
       '--mcp-json', './.mcp.json',
       '--settings', './.claude/settings.json',
-      '--policy', './rind.yaml',
+      '--write-policy', './rind.yaml',
+      '--llm-proxy',
       '--dry-run',
     ));
     expect(result).not.toBeNull();
@@ -85,7 +101,8 @@ describe('parseInitArgs — valid inputs', () => {
     expect(result?.rindUrl).toBe('http://rind.internal');
     expect(result?.mcpJsonPath).toBe('./.mcp.json');
     expect(result?.settingsPath).toBe('./.claude/settings.json');
-    expect(result?.policyPath).toBe('./rind.yaml');
+    expect(result?.writePolicy).toBe('./rind.yaml');
+    expect(result?.llmProxy).toBe(true);
     expect(result?.dryRun).toBe(true);
   });
 });

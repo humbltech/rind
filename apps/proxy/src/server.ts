@@ -16,7 +16,7 @@ import { randomUUID } from 'node:crypto';
 
 const _require = createRequire(import.meta.url);
 const PROXY_VERSION: string = (_require('../package.json') as { version: string }).version;
-import type { ProxyConfig, ToolCallEvent, AuditEntry, PolicyRule } from './types.js';
+import type { ProxyConfig, ToolCallEvent, LlmCallEvent, AuditEntry, PolicyRule } from './types.js';
 import { runFullScan, listStoredSchemas, listAllScanResults, isServerQuarantined, getLastScanResult } from './scanner/index.js';
 import { intercept } from './interceptor.js';
 import { PolicyEngine } from './policy/engine.js';
@@ -38,6 +38,8 @@ import { discoverClaudeCodeContext, discoverMcpServers, resolveSessionName } fro
 import { UpstreamPool } from './transport/pool.js';
 import { createUpstreamClient } from './transport/upstream/factory.js';
 import { mcpGateway } from './transport/gateway.js';
+import { llmGateway } from './transport/llm/gateway.js';
+import { defaultLlmProxyConfig } from './transport/llm/types.js';
 import { z } from 'zod';
 
 // ─── Inline validation schemas ────────────────────────────────────────────────
@@ -69,6 +71,8 @@ const PolicyRuleSchema: z.ZodType<PolicyRule> = z.object({
       in: z.array(z.unknown()).optional(),
     })).optional(),
     subcommand: z.array(z.string()).optional(),
+    llmModel: z.array(z.string()).optional(),
+    llmProvider: z.array(z.string()).optional(),
   }),
   action: z.enum(['ALLOW', 'DENY', 'REQUIRE_APPROVAL', 'RATE_LIMIT']),
   approval: z.object({ timeout: z.string().optional(), onTimeout: z.enum(['DENY', 'ALLOW']).optional() }).optional(),
@@ -237,6 +241,55 @@ export function createProxyServer(config: ProxyConfig) {
     };
     app.route('/', mcpGateway(upstreamPool, gatewayInterceptorOpts, PROXY_VERSION));
     logger.info({ servers: Object.keys(config.servers ?? {}) }, 'MCP gateway mounted');
+  }
+
+  // ─── LLM API proxy gateway (D-041) ───────────────────────────────────────────
+  // Intercepts HTTP calls from Claude Code → Anthropic/OpenAI/Google.
+  // Enabled via config.llmProxy.enabled (set from RIND_LLM_PROXY=true in env).
+  // Bypass: unset ANTHROPIC_BASE_URL — no code change needed.
+  if (config.llmProxy?.enabled) {
+    const llmLogPath = config.auditLogPath
+      ? config.auditLogPath.replace(/\.jsonl$/, '-llm-events.jsonl')
+      : join(RIND_DATA_DIR, 'llm-events.jsonl');
+    mkdirSync(dirname(llmLogPath), { recursive: true });
+
+    const llmRingBuffer = new PersistentRingBuffer<LlmCallEvent>({
+      capacity: config.ringBufferSize ?? 10_000,
+      filePath: llmLogPath,
+      onError: (err) => logger.error({ err }, 'LLM event log write failed'),
+    });
+
+    // llm:request → initial entry (outcome='forwarded', no tokens yet)
+    // llm:response → enriched entry with tokens/cost/latency (update in-place)
+    // llm:blocked  → terminal entry (no prior request event pushed)
+    bus.on('llm:request', (event) => llmRingBuffer.push(event));
+    bus.on('llm:response', (event) => {
+      llmRingBuffer.update((e) => e.id === event.id, () => event);
+    });
+    bus.on('llm:blocked', ({ event }) => llmRingBuffer.push(event));
+
+    const llmConfig = { ...defaultLlmProxyConfig(), ...config.llmProxy };
+    app.route('/', llmGateway({ config: llmConfig, bus, policyEngine, logger }));
+    logger.info({ logLevel: llmConfig.logLevel }, 'LLM API proxy gateway mounted');
+
+    app.get('/logs/llm-calls', (c) => {
+      const { provider, model, outcome, since, until } = c.req.query();
+      let events = llmRingBuffer.toArray();
+
+      if (provider) events = events.filter((e) => e.provider === provider);
+      if (model) events = events.filter((e) => e.model === model);
+      if (outcome) events = events.filter((e) => e.outcome === outcome);
+      if (since) {
+        const ts = parseInt(since, 10);
+        if (!isNaN(ts)) events = events.filter((e) => e.timestamp >= ts);
+      }
+      if (until) {
+        const ts = parseInt(until, 10);
+        if (!isNaN(ts)) events = events.filter((e) => e.timestamp <= ts);
+      }
+
+      return c.json(events);
+    });
   }
 
   // ─── Status summary (D-026) ───────────────────────────────────────────────────

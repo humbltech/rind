@@ -5,7 +5,7 @@
 // D-016: input parameter matching — recursive key lookup with depth limit 5,
 //        supporting contains / regex / startsWith / numeric / in comparators.
 
-import type { ParameterMatcher, PolicyRule } from '../types.js';
+import type { LlmCallEvent, ParameterMatcher, PolicyRule } from '../types.js';
 
 export function matchesRule(
   rule: PolicyRule,
@@ -230,6 +230,73 @@ function isWithinHourRange(range: string, now: Date): boolean {
   const endMinutes = endH * 60 + endM;
 
   return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+}
+
+// ─── LLM rule matching (D-041) ────────────────────────────────────────────────
+
+/**
+ * Check whether a rule applies to an LLM call event.
+ * A rule matches LLM calls if it has llmModel or llmProvider in its match object.
+ * Rules with ONLY tool/toolPattern/subcommand/parameters are tool-call-only and are skipped.
+ * Rules with no match criteria at all (agent-only) match both tool calls and LLM calls.
+ * Time window matching applies to LLM calls the same as tool calls.
+ */
+export function matchesLlmRule(
+  rule: PolicyRule,
+  event: LlmCallEvent,
+): boolean {
+  // Agent matching
+  if (rule.agent !== '*' && rule.agent !== event.agentId) {
+    return false;
+  }
+
+  const match = rule.match;
+
+  // If the rule has tool-call-specific matchers but NO LLM matchers, skip it.
+  // "Tool-call-specific" = tool / toolPattern / subcommand / parameters.
+  const hasToolCriteria =
+    (match.tool && match.tool.length > 0) ||
+    match.toolPattern ||
+    (match.subcommand && match.subcommand.length > 0) ||
+    (match.parameters && Object.keys(match.parameters).length > 0);
+  const hasLlmCriteria =
+    (match.llmModel && match.llmModel.length > 0) ||
+    (match.llmProvider && match.llmProvider.length > 0);
+
+  // Rule has tool criteria but no LLM criteria → tool-call-only, skip
+  if (hasToolCriteria && !hasLlmCriteria) return false;
+
+  // LLM model matching (glob patterns, case-insensitive)
+  if (match.llmModel && match.llmModel.length > 0) {
+    const modelLower = event.model.toLowerCase();
+    const matched = match.llmModel.some((pattern) =>
+      matchGlob(pattern.toLowerCase(), modelLower),
+    );
+    if (!matched) return false;
+  }
+
+  // LLM provider matching (exact, case-insensitive)
+  if (match.llmProvider && match.llmProvider.length > 0) {
+    const providerLower = event.provider.toLowerCase();
+    const matched = match.llmProvider.some((p) => p.toLowerCase() === providerLower);
+    if (!matched) return false;
+  }
+
+  // Time window matching (same logic as tool calls)
+  if (match.timeWindow) {
+    const now = new Date();
+    const dayOfWeek = now.getUTCDay();
+
+    if (match.timeWindow.daysOfWeek) {
+      if (!match.timeWindow.daysOfWeek.includes(dayOfWeek)) return false;
+    }
+
+    if (match.timeWindow.hours) {
+      if (!isWithinHourRange(match.timeWindow.hours, now)) return false;
+    }
+  }
+
+  return true;
 }
 
 export type { PolicyRule };

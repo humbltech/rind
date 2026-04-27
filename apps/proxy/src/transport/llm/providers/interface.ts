@@ -1,0 +1,106 @@
+// LLM provider abstraction.
+// Each provider (Anthropic, OpenAI, Google) implements this interface.
+// The interface is deliberately narrow — only what the gateway needs to forward a request.
+// Pure functions, no I/O, fully testable.
+
+import type { LlmLogLevel } from '../types.js';
+
+// ─── Request / response metadata ─────────────────────────────────────────────
+
+export interface LlmRequestMeta {
+  /** Model name as sent by the client */
+  model: string;
+  /** Number of messages in the conversation */
+  messageCount: number;
+  /** Character count of the system prompt (0 if none) */
+  systemPromptLength: number;
+  /** Whether the client requested streaming */
+  isStreaming: boolean;
+  /**
+   * Full messages array — only populated when logLevel is 'full' or 'preview'.
+   * Caller decides whether to pass it; callee does not read logLevel.
+   */
+  messages?: unknown;
+}
+
+export interface LlmResponseMeta {
+  /** Model name from the response (may differ from request if provider substitutes) */
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  stopReason?: string;
+  /** Full response text — populated when logLevel allows content capture */
+  responseText?: string;
+  /** True if the stream was aborted before completion */
+  partial?: boolean;
+}
+
+// ─── Provider interface ───────────────────────────────────────────────────────
+
+export interface LlmProxyProvider {
+  readonly name: 'anthropic' | 'openai' | 'google';
+
+  /**
+   * Extract metadata from the inbound request body.
+   * Throws a ProviderParseError if the body is structurally invalid.
+   */
+  parseRequest(body: unknown, logLevel: LlmLogLevel): LlmRequestMeta;
+
+  /**
+   * Build the upstream URL from the inbound request path and the configured base URL.
+   * e.g. inboundPath='/llm/anthropic/v1/messages', baseUrl='https://api.anthropic.com'
+   *      → 'https://api.anthropic.com/v1/messages'
+   */
+  upstreamUrl(inboundPath: string, baseUrl: string): string;
+
+  /**
+   * Build the headers to forward to the upstream.
+   * Always strips 'host' and 'content-length' (will be recalculated).
+   * Preserves API key headers as-is for forwarding — never log these.
+   */
+  forwardHeaders(inbound: Record<string, string>): Record<string, string>;
+
+  /**
+   * Strip sensitive headers for logging. Returns a copy safe to write to disk.
+   * Redacts: x-api-key, authorization, cookie.
+   */
+  redactHeaders(headers: Record<string, string>): Record<string, string>;
+
+  /**
+   * Determine if this request uses streaming.
+   * Called on the raw body — must not throw.
+   */
+  isStreaming(body: unknown): boolean;
+
+  /**
+   * Parse a complete (non-streaming) response body into metadata.
+   * Throws a ProviderParseError if the body is structurally invalid.
+   */
+  parseResponse(body: unknown, logLevel: LlmLogLevel): LlmResponseMeta;
+}
+
+// ─── Error type ───────────────────────────────────────────────────────────────
+
+export class ProviderParseError extends Error {
+  public readonly provider: string;
+  public readonly parseErrorCause: unknown;
+
+  constructor(provider: string, message: string, cause?: unknown) {
+    super(`[${provider}] ${message}`);
+    this.name = 'ProviderParseError';
+    this.provider = provider;
+    this.parseErrorCause = cause;
+  }
+}
+
+// ─── Header redaction util (shared across providers) ─────────────────────────
+
+const SENSITIVE_HEADERS = new Set(['x-api-key', 'authorization', 'cookie', 'set-cookie']);
+
+export function redactSensitiveHeaders(headers: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    result[key] = SENSITIVE_HEADERS.has(key.toLowerCase()) ? '[REDACTED]' : value;
+  }
+  return result;
+}

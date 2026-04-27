@@ -6,7 +6,7 @@
 // Phase 2: webhook dispatcher, SSE push to dashboard.
 
 import { EventEmitter } from 'node:events';
-import type { ToolCallEvent, ToolResponseEvent, ToolErrorEvent, ScanResult, Session, AuditEntry } from './types.js';
+import type { ToolCallEvent, ToolResponseEvent, ToolErrorEvent, ScanResult, Session, AuditEntry, LlmCallEvent } from './types.js';
 
 // ─── Event map ───────────────────────────────────────────────────────────────
 
@@ -20,6 +20,11 @@ export interface RindEventMap {
   'session:created': Session;
   'session:killed': { sessionId: string; agentId: string };
   'audit': AuditEntry;
+  // LLM API proxy events (D-041 scope clarification)
+  'llm:request': LlmCallEvent;
+  'llm:response': LlmCallEvent;
+  'llm:blocked': { event: LlmCallEvent; reason: string };
+  'llm:cost-anomaly': { event: LlmCallEvent; thresholdUsd: number };
 }
 
 type EventHandler<K extends keyof RindEventMap> = (payload: RindEventMap[K]) => void;

@@ -10,10 +10,10 @@
 // the loop condition is met AND the rule's match criteria apply. The LoopDetector
 // is an optional dependency — if not provided, loop conditions are ignored.
 
-import type { PolicyAction, PolicyConfig, PolicyRule, ToolCallEvent } from '../types.js';
+import type { LlmCallEvent, PolicyAction, PolicyConfig, PolicyRule, ToolCallEvent } from '../types.js';
 import type { PolicyStore } from './store.js';
 import type { LoopDetector } from '../loop-detector.js';
-import { matchesRule } from './rules.js';
+import { matchesLlmRule, matchesRule } from './rules.js';
 
 // Stable sort: lower priority number = evaluated first. Rules without priority default to 50.
 function sortByPriority(rules: PolicyConfig['policies']): PolicyConfig['policies'] {
@@ -67,6 +67,20 @@ export class PolicyEngine {
         };
       }
 
+      return { action: rule.action, matchedRule: rule };
+    }
+    return { action: 'ALLOW' };
+  }
+
+  /**
+   * Evaluate an LLM call event against the loaded policy rules.
+   * Only rules with llmModel or llmProvider criteria (or agent-only rules) are considered.
+   * Loop detection does not apply to LLM calls. Default action is ALLOW.
+   */
+  evaluateLlm(event: LlmCallEvent): PolicyEvalResult {
+    for (const rule of this.rules) {
+      if (rule.enabled === false) continue;
+      if (!matchesLlmRule(rule, event)) continue;
       return { action: rule.action, matchedRule: rule };
     }
     return { action: 'ALLOW' };

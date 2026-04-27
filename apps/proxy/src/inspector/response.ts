@@ -7,7 +7,7 @@ import type { ResponseThreat } from '../types.js';
 
 // ─── Prompt injection patterns ────────────────────────────────────────────────
 
-const PROMPT_INJECTION_PATTERNS: Array<{ pattern: RegExp; label: string; severity: ResponseThreat['severity'] }> = [
+export const PROMPT_INJECTION_PATTERNS: Array<{ pattern: RegExp; label: string; severity: ResponseThreat['severity'] }> = [
   {
     pattern: /ignore\s+(previous|prior|all|above)/i,
     label: 'instruction override ("ignore previous instructions")',
@@ -42,7 +42,7 @@ const PROMPT_INJECTION_PATTERNS: Array<{ pattern: RegExp; label: string; severit
 
 // ─── Credential leak patterns ─────────────────────────────────────────────────
 
-const CREDENTIAL_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
+export const CREDENTIAL_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   {
     pattern: /(?:password|passwd)\s*[:=]\s*\S+/i,
     label: 'plaintext password',
@@ -107,7 +107,7 @@ const INDIRECT_INJECTION_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
 
 // ─── Suspicious redirect patterns ─────────────────────────────────────────────
 
-const REDIRECT_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
+export const REDIRECT_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   {
     pattern: /https?:\/\/(?!localhost|127\.0\.0\.1|::1)[^"'\s]{5,}/i,
     label: 'external URL (potential exfiltration endpoint)',
