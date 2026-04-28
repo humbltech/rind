@@ -5,70 +5,135 @@
 import { randomUUID } from 'node:crypto';
 import type { Session } from './types.js';
 
-const sessions = new Map<string, Session>();
+// ─── Interface ────────────────────────────────────────────────────────────────
 
-// D-014: hourly call/cost records — not part of the exported Session interface
+export interface ISessionStore {
+  create(agentId: string, sessionId?: string): Session;
+  get(sessionId: string): Session | undefined;
+  kill(sessionId: string): boolean;
+  isActive(sessionId: string): boolean;
+  list(): Session[];
+  incrementToolCall(sessionId: string): void;
+  addCost(sessionId: string, costUsd: number): void;
+  recordCall(sessionId: string, costUsd: number): void;
+  getHourlyStats(sessionId: string): { calls: number; costUsd: number };
+  reset(): void;
+}
+
+// ─── D-014: hourly call/cost records ─────────────────────────────────────────
+
 interface CallRecord {
   timestamp: number;
   costUsd: number;
 }
-const sessionCallLog = new Map<string, CallRecord[]>();
 
-// ─── Session lifecycle ────────────────────────────────────────────────────────
+// ─── Implementation ───────────────────────────────────────────────────────────
+
+export class InMemorySessionStore implements ISessionStore {
+  private sessions = new Map<string, Session>();
+  private sessionCallLog = new Map<string, CallRecord[]>();
+
+  create(agentId: string, sessionId?: string): Session {
+    const id = sessionId ?? randomUUID();
+    const session: Session = {
+      sessionId: id,
+      agentId,
+      startedAt: Date.now(),
+      active: true,
+      toolCallCount: 0,
+      estimatedCostUsd: 0,
+    };
+    this.sessions.set(id, session);
+    this.sessionCallLog.set(id, []);
+    return session;
+  }
+
+  get(sessionId: string): Session | undefined {
+    return this.sessions.get(sessionId);
+  }
+
+  kill(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    session.active = false;
+    return true;
+  }
+
+  isActive(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    // Unknown session IDs are allowed — the kill-switch only blocks sessions
+    // that were explicitly created and then explicitly killed via DELETE /sessions/:id.
+    if (!session) return true;
+    return session.active;
+  }
+
+  list(): Session[] {
+    return [...this.sessions.values()];
+  }
+
+  incrementToolCall(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (session) session.toolCallCount += 1;
+  }
+
+  addCost(sessionId: string, costUsd: number): void {
+    const session = this.sessions.get(sessionId);
+    if (session) session.estimatedCostUsd += costUsd;
+  }
+
+  recordCall(sessionId: string, costUsd: number): void {
+    const records = this.sessionCallLog.get(sessionId) ?? [];
+    records.push({ timestamp: Date.now(), costUsd });
+    this.sessionCallLog.set(sessionId, records);
+  }
+
+  getHourlyStats(sessionId: string): { calls: number; costUsd: number } {
+    const cutoff = Date.now() - 3_600_000;
+    const records = (this.sessionCallLog.get(sessionId) ?? []).filter((r) => r.timestamp > cutoff);
+    return {
+      calls: records.length,
+      costUsd: records.reduce((sum, r) => sum + r.costUsd, 0),
+    };
+  }
+
+  reset(): void {
+    this.sessions.clear();
+    this.sessionCallLog.clear();
+  }
+}
+
+// ─── Shared default instance ──────────────────────────────────────────────────
+
+const defaultStore = new InMemorySessionStore();
+
+// ─── Module-level function API (backward-compatible wrappers) ─────────────────
 
 export function createSession(agentId: string, sessionId?: string): Session {
-  const id = sessionId ?? randomUUID();
-  const session: Session = {
-    sessionId: id,
-    agentId,
-    startedAt: Date.now(),
-    active: true,
-    toolCallCount: 0,
-    estimatedCostUsd: 0,
-  };
-  sessions.set(id, session);
-  sessionCallLog.set(id, []);
-  return session;
+  return defaultStore.create(agentId, sessionId);
 }
 
 export function getSession(sessionId: string): Session | undefined {
-  return sessions.get(sessionId);
+  return defaultStore.get(sessionId);
 }
 
 export function killSession(sessionId: string): boolean {
-  const session = sessions.get(sessionId);
-  if (!session) return false;
-  session.active = false;
-  return true;
+  return defaultStore.kill(sessionId);
 }
 
 export function isSessionActive(sessionId: string): boolean {
-  const session = sessions.get(sessionId);
-  // Unknown session IDs are allowed — the kill-switch only blocks sessions
-  // that were explicitly created and then explicitly killed via DELETE /sessions/:id.
-  // A random UUID that was never registered is not a killed session.
-  if (!session) return true;
-  return session.active;
+  return defaultStore.isActive(sessionId);
 }
 
 export function listSessions(): Session[] {
-  return [...sessions.values()];
+  return defaultStore.list();
 }
 
-// ─── Counters ─────────────────────────────────────────────────────────────────
-
 export function incrementToolCall(sessionId: string): void {
-  const session = sessions.get(sessionId);
-  if (session) {
-    session.toolCallCount += 1;
-  }
+  defaultStore.incrementToolCall(sessionId);
 }
 
 export function addCost(sessionId: string, costUsd: number): void {
-  const session = sessions.get(sessionId);
-  if (session) {
-    session.estimatedCostUsd += costUsd;
-  }
+  defaultStore.addCost(sessionId, costUsd);
 }
 
 /**
@@ -76,9 +141,7 @@ export function addCost(sessionId: string, costUsd: number): void {
  * Called after successful forwarding, before returning the response.
  */
 export function recordCall(sessionId: string, costUsd: number): void {
-  const records = sessionCallLog.get(sessionId) ?? [];
-  records.push({ timestamp: Date.now(), costUsd });
-  sessionCallLog.set(sessionId, records);
+  defaultStore.recordCall(sessionId, costUsd);
 }
 
 /**
@@ -86,18 +149,10 @@ export function recordCall(sessionId: string, costUsd: number): void {
  * Used to enforce maxCallsPerHour and maxCostPerHour limits (D-014).
  */
 export function getHourlyStats(sessionId: string): { calls: number; costUsd: number } {
-  const cutoff = Date.now() - 3_600_000;
-  const records = (sessionCallLog.get(sessionId) ?? []).filter((r) => r.timestamp > cutoff);
-  return {
-    calls: records.length,
-    costUsd: records.reduce((sum, r) => sum + r.costUsd, 0),
-  };
+  return defaultStore.getHourlyStats(sessionId);
 }
-
-// ─── Test/simulation cleanup ──────────────────────────────────────────────────
 
 /** Reset all session state — used in tests and simulation to prevent state bleed between runs. */
 export function resetSessions(): void {
-  sessions.clear();
-  sessionCallLog.clear();
+  defaultStore.reset();
 }
