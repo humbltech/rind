@@ -152,6 +152,9 @@ importers:
       '@rind/core':
         specifier: workspace:*
         version: link:../sdk-core
+      yaml:
+        specifier: ^2.6.0
+        version: 2.8.3
       zod:
         specifier: ^3.24.0
         version: 3.25.76
