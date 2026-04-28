@@ -60,7 +60,7 @@ export function parseInitArgs(argv: string[]): InitArgs | null {
   let settingsPath: string | undefined;
   let settingsScope: 'global' | 'local' = 'global'; // default: write to ~/.claude/settings.json
   let dryRun        = false;
-  let llmProxy      = false;
+  let llmProxy      = true;   // on by default — matches the always-on LLM module
   let writePolicy: string | undefined;
 
   const USAGE = `Usage: rind-proxy init [options]
@@ -72,7 +72,7 @@ Options:
   --global                   Write settings to ~/.claude/settings.json (default)
   --local                    Write settings to .claude/settings.json in current directory
   --settings <path>          Explicit settings.json path (overrides --global/--local)
-  --llm-proxy                Set ANTHROPIC_BASE_URL so LLM calls route through Rind
+  --no-llm-proxy             Skip writing ANTHROPIC_BASE_URL / OPENAI_BASE_URL
   --write-policy [path]      Generate starter rind.policy.yaml (default: ./rind.policy.yaml)
   --dry-run                  Print what would change without writing any files
   --help                     Show this help message
@@ -86,8 +86,9 @@ Options:
         process.exit(0);
         break;
       case '--claude-code': claudeCode = true; break;
-      case '--dry-run':     dryRun = true; break;
-      case '--llm-proxy':   llmProxy = true; break;
+      case '--dry-run':       dryRun = true; break;
+      case '--no-llm-proxy': llmProxy = false; break;
+      case '--llm-proxy':    llmProxy = true; break; // explicit opt-in still accepted
       case '--global':      settingsScope = 'global'; break;
       case '--local':       settingsScope = 'local'; break;
       case '--rind-url':

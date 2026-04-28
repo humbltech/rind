@@ -35,6 +35,9 @@ export interface LlmCallEntry {
   referencedToolUseIds?: string[];
   parentLlmCallId?: string;
   conversationId?: string;
+  // Content — present when logLevel is 'full' or 'preview'
+  messages?: unknown;
+  responseText?: string;
 }
 
 // ─── Provider badge ───────────────────────────────────────────────────────────
@@ -153,8 +156,7 @@ function AgentLabel({ agentId, sessionId }: { agentId: string; sessionId: string
 
 function TableRow({ entry }: { entry: LlmCallEntry }) {
   const [expanded, setExpanded] = useState(false);
-  const hasDetail = !!entry.matchedRule || !!entry.errorMessage ||
-    (entry.requestThreats?.length ?? 0) > 0 || (entry.responseThreats?.length ?? 0) > 0;
+  const hasDetail = true; // every row has at least metadata to show
 
   return (
     <>
@@ -212,10 +214,70 @@ function TableRow({ entry }: { entry: LlmCallEntry }) {
   );
 }
 
+function MessageBlock({ messages }: { messages: unknown }) {
+  if (!messages) return null;
+  const lines = Array.isArray(messages)
+    ? messages.map((m: unknown) => {
+        if (typeof m !== 'object' || m === null) return String(m);
+        const msg = m as { role?: string; content?: unknown };
+        const role = msg.role ?? '?';
+        let text = '';
+        if (typeof msg.content === 'string') {
+          text = msg.content;
+        } else if (Array.isArray(msg.content)) {
+          text = msg.content
+            .map((b: unknown) => {
+              if (typeof b === 'object' && b !== null && 'text' in b) return (b as { text: string }).text;
+              if (typeof b === 'object' && b !== null && 'type' in b) return `[${(b as { type: string }).type}]`;
+              return '';
+            })
+            .join('');
+        }
+        return `${role}: ${text}`;
+      })
+    : [String(messages)];
+
+  return (
+    <div className="space-y-1">
+      <span className="text-dim text-[10px] uppercase tracking-wider">Prompt</span>
+      <div className="bg-[#0d0d0d] rounded border border-border p-2 max-h-48 overflow-auto space-y-1.5">
+        {lines.map((line, i) => {
+          const colonIdx = line.indexOf(': ');
+          if (colonIdx === -1) return <div key={i} className="text-foreground whitespace-pre-wrap break-words">{line}</div>;
+          const role = line.slice(0, colonIdx);
+          const content = line.slice(colonIdx + 2);
+          const roleColor = role === 'user' ? 'text-accent' : role === 'assistant' ? 'text-[#10a37f]' : 'text-muted';
+          return (
+            <div key={i}>
+              <span className={`${roleColor} font-semibold`}>{role}</span>
+              <span className="text-dim">: </span>
+              <span className="text-foreground whitespace-pre-wrap break-words">{content.slice(0, 2000)}{content.length > 2000 ? '…' : ''}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ResponseBlock({ text }: { text: string }) {
+  return (
+    <div className="space-y-1">
+      <span className="text-dim text-[10px] uppercase tracking-wider">Response</span>
+      <div className="bg-[#0d0d0d] rounded border border-border p-2 max-h-48 overflow-auto">
+        <span className="text-foreground whitespace-pre-wrap break-words">
+          {text.slice(0, 4000)}{text.length > 4000 ? '…' : ''}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function DetailPanel({ entry }: { entry: LlmCallEntry }) {
   const allThreats = [...(entry.requestThreats ?? []), ...(entry.responseThreats ?? [])];
   return (
-    <div className="space-y-2 text-[11px] font-mono text-muted">
+    <div className="space-y-3 text-[11px] font-mono text-muted">
+      {/* Conversation threading */}
       {entry.conversationId && (
         <div><span className="text-dim">conversation: </span><span className="text-foreground">{entry.conversationId.slice(0, 16)}</span>
           {entry.parentLlmCallId && <span className="text-dim ml-3">← {entry.parentLlmCallId.slice(0, 8)}</span>}
@@ -254,6 +316,12 @@ function DetailPanel({ entry }: { entry: LlmCallEntry }) {
             </div>
           ))}
         </div>
+      )}
+      {/* Prompt + response content */}
+      {entry.messages != null && <MessageBlock messages={entry.messages} />}
+      {entry.responseText && <ResponseBlock text={entry.responseText} />}
+      {entry.messages == null && !entry.responseText && (
+        <div className="text-dim italic">No content captured — logLevel is &apos;metadata&apos;</div>
       )}
     </div>
   );
