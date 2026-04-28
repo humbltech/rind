@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 import { z } from 'zod';
 import type { PolicyConfig } from '@rind/core';
-import { getPack, expandPackRules } from './packs.js';
+import { getPack, expandPackRules, listPacks } from './packs.js';
 
 // ─── Sub-schemas ──────────────────────────────────────────────────────────────
 
@@ -192,7 +192,7 @@ function expandPacks(
   if (unknownPacks.length > 0) {
     throw new Error(
       `Unknown policy pack(s): ${unknownPacks.join(', ')}.\n` +
-      `Available packs: ${['cli-protection', 'llm-secret-scan-v1', 'llm-pii-pseudonymize-v1', 'llm-injection-guard-v1'].join(', ')}`,
+      `Available packs: ${listPacks().map((p) => p.id).join(', ')}`,
     );
   }
 

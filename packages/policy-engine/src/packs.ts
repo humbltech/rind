@@ -474,7 +474,8 @@ const registry: PolicyPack[] = [
         field: 'pii.entities',
         label: 'PII entity types to pseudonymize',
         type: 'string',
-        default: 'EMAIL,PHONE,SIN,PERSON_NAME',
+        // PERSON_NAME requires ml_ner stage (Phase 2) — omitted from default.
+        default: 'EMAIL,PHONE,SIN,CREDIT_CARD',
       },
       {
         ruleIndex: 0,
@@ -497,7 +498,8 @@ const registry: PolicyPack[] = [
           },
         },
         pii: {
-          entities: ['EMAIL', 'PHONE', 'SIN', 'PERSON_NAME', 'CREDIT_CARD'],
+          // PERSON_NAME requires ml_ner stage (Phase 2) — not in regex-only Phase 1
+          entities: ['EMAIL', 'PHONE', 'SIN', 'CREDIT_CARD'],
           locale: 'en-CA',
           confidenceThreshold: 0.75,
         },
