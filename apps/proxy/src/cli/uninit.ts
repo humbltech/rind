@@ -20,7 +20,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
-import { parseClaudeSettings } from '../config/settings-json.js';
+import { parseClaudeSettings, isRindHookCommand, isRindEventHookCommand } from '../config/settings-json.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -125,9 +125,16 @@ export async function runUninit(argv: string[]): Promise<void> {
       if (!Array.isArray(list)) continue;
       const filtered = list.filter((entry) => {
         if (typeof entry !== 'object' || entry === null) return true;
+        // Each entry is a HookMatcher: { matcher, hooks: [{ type, command }] }
+        // Check every inner hook command — keep the entry only if none are Rind hooks.
         const e = entry as Record<string, unknown>;
-        const cmd = typeof e['command'] === 'string' ? e['command'] : '';
-        return !cmd.includes('/hook/evaluate') && !cmd.includes('/hook/event');
+        const innerHooks = Array.isArray(e['hooks']) ? (e['hooks'] as unknown[]) : [];
+        const hasRindCommand = innerHooks.some((h) => {
+          if (typeof h !== 'object' || h === null) return false;
+          const cmd = (h as Record<string, unknown>)['command'];
+          return typeof cmd === 'string' && (isRindHookCommand(cmd) || isRindEventHookCommand(cmd));
+        });
+        return !hasRindCommand;
       });
       if (filtered.length !== list.length) {
         process.stdout.write(`  - remove  ${type} Rind hook\n`);

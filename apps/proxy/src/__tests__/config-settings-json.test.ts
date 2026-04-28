@@ -9,6 +9,8 @@ import {
   buildHookCommand,
   buildEventHookCommand,
   mergeRindHook,
+  isRindHookCommand,
+  isRindEventHookCommand,
 } from '../config/settings-json.js';
 import type { ClaudeSettings } from '../config/settings-json.js';
 
@@ -97,6 +99,52 @@ describe('alreadyHasRindHook', () => {
       },
     };
     expect(alreadyHasRindHook(settings)).toBe(true);
+  });
+
+  it('returns true when using the bash-script form', () => {
+    const settings: ClaudeSettings = {
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: '',
+            hooks: [{ type: 'command', command: 'bash /home/user/rind/scripts/rind-hook.sh' }],
+          },
+        ],
+      },
+    };
+    expect(alreadyHasRindHook(settings)).toBe(true);
+  });
+});
+
+// ─── isRindHookCommand / isRindEventHookCommand ───────────────────────────────
+
+describe('isRindHookCommand', () => {
+  it('returns true for inline-curl form', () => {
+    expect(isRindHookCommand("curl -s -X POST 'http://localhost:7777/hook/evaluate' -d @-")).toBe(true);
+  });
+
+  it('returns true for bash-script form', () => {
+    expect(isRindHookCommand('bash /home/user/rind/scripts/rind-hook.sh')).toBe(true);
+  });
+
+  it('returns false for unrelated commands', () => {
+    expect(isRindHookCommand('my-other-hook')).toBe(false);
+    expect(isRindHookCommand('')).toBe(false);
+  });
+});
+
+describe('isRindEventHookCommand', () => {
+  it('returns true for inline-curl form', () => {
+    expect(isRindEventHookCommand("curl -s -X POST 'http://localhost:7777/hook/event' -d @- >/dev/null 2>&1")).toBe(true);
+  });
+
+  it('returns true for bash-script form', () => {
+    expect(isRindEventHookCommand('bash /home/user/rind/scripts/rind-event.sh')).toBe(true);
+  });
+
+  it('returns false for unrelated commands', () => {
+    expect(isRindEventHookCommand('my-other-hook')).toBe(false);
+    expect(isRindEventHookCommand('')).toBe(false);
   });
 });
 
@@ -270,6 +318,18 @@ describe('alreadyHasRindEventHooks', () => {
   it('returns true when all three event hooks are present', () => {
     const cmd = buildEventHookCommand(DEFAULT_URL);
     const entry = { matcher: '*', hooks: [{ type: 'command' as const, command: cmd }] };
+    const settings: ClaudeSettings = {
+      hooks: {
+        PostToolUse: [entry],
+        SubagentStart: [entry],
+        SubagentStop: [entry],
+      },
+    };
+    expect(alreadyHasRindEventHooks(settings)).toBe(true);
+  });
+
+  it('returns true when all three event hooks use the bash-script form', () => {
+    const entry = { matcher: '', hooks: [{ type: 'command' as const, command: 'bash /home/user/rind/scripts/rind-event.sh' }] };
     const settings: ClaudeSettings = {
       hooks: {
         PostToolUse: [entry],

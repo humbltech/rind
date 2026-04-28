@@ -38,9 +38,18 @@ export interface ClaudeSettings {
 /** The matcher for the wildcard PreToolUse hook that covers all tools. */
 const WILDCARD_MATCHER = '*';
 
-/** Substring that identifies a Rind hook command — present in any variation of the URL. */
-const RIND_HOOK_SIGNATURE = '/hook/evaluate';
-const RIND_EVENT_SIGNATURE = '/hook/event';
+/**
+ * Substrings that identify a Rind PreToolUse hook command.
+ * Matches both the inline-curl form (contains the URL path) and the
+ * bash-script form (contains the script filename).
+ */
+const RIND_HOOK_SIGNATURES = ['/hook/evaluate', 'rind-hook.sh'] as const;
+
+/**
+ * Substrings that identify a Rind observability hook command.
+ * Matches both the inline-curl form and the bash-script form.
+ */
+const RIND_EVENT_SIGNATURES = ['/hook/event', 'rind-event.sh'] as const;
 
 /** Observability hooks that fire non-blocking events to /hook/event. */
 const EVENT_HOOKS: readonly string[] = ['PostToolUse', 'SubagentStart', 'SubagentStop'] as const;
@@ -59,6 +68,26 @@ export function parseClaudeSettings(raw: unknown): ClaudeSettings {
   return {};
 }
 
+// ─── Command classifiers ──────────────────────────────────────────────────────
+
+/**
+ * Returns true when a command string is a Rind PreToolUse hook.
+ * Matches the inline-curl form (URL contains /hook/evaluate) and the
+ * bash-script form (command contains rind-hook.sh).
+ */
+export function isRindHookCommand(cmd: string): boolean {
+  return RIND_HOOK_SIGNATURES.some((sig) => cmd.includes(sig));
+}
+
+/**
+ * Returns true when a command string is a Rind observability hook.
+ * Matches the inline-curl form (URL contains /hook/event) and the
+ * bash-script form (command contains rind-event.sh).
+ */
+export function isRindEventHookCommand(cmd: string): boolean {
+  return RIND_EVENT_SIGNATURES.some((sig) => cmd.includes(sig));
+}
+
 // ─── Idempotency check ────────────────────────────────────────────────────────
 
 /**
@@ -68,7 +97,7 @@ export function parseClaudeSettings(raw: unknown): ClaudeSettings {
 export function alreadyHasRindHook(settings: ClaudeSettings): boolean {
   const matchers = settings.hooks?.PreToolUse ?? [];
   return matchers.some((m) =>
-    m.hooks.some((h) => h.type === 'command' && h.command.includes(RIND_HOOK_SIGNATURE)),
+    m.hooks.some((h) => h.type === 'command' && isRindHookCommand(h.command)),
   );
 }
 
@@ -129,13 +158,14 @@ export function buildEventHookCommand(rindUrl: string): string {
 }
 
 /**
- * Returns true when settings already have observability hooks pointing at /hook/event.
+ * Returns true when settings already have observability hooks for all three
+ * event types (PostToolUse, SubagentStart, SubagentStop).
  */
 export function alreadyHasRindEventHooks(settings: ClaudeSettings): boolean {
   return EVENT_HOOKS.every((hookName) => {
     const matchers = settings.hooks?.[hookName] ?? [];
     return matchers.some((m) =>
-      m.hooks.some((h) => h.type === 'command' && h.command.includes(RIND_EVENT_SIGNATURE)),
+      m.hooks.some((h) => h.type === 'command' && isRindEventHookCommand(h.command)),
     );
   });
 }
@@ -178,7 +208,7 @@ export function mergeRindHook(settings: ClaudeSettings, rindUrl: string): Claude
     for (const hookName of EVENT_HOOKS) {
       const existing = hooks[hookName] ?? [];
       const alreadyPresent = existing.some((m) =>
-        m.hooks.some((h) => h.type === 'command' && h.command.includes(RIND_EVENT_SIGNATURE)),
+        m.hooks.some((h) => h.type === 'command' && isRindEventHookCommand(h.command)),
       );
       if (!alreadyPresent) {
         hooks[hookName] = [eventEntry, ...existing];
