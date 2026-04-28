@@ -152,63 +152,176 @@ function AgentLabel({ agentId, sessionId }: { agentId: string; sessionId: string
   );
 }
 
-// ─── Table row ────────────────────────────────────────────────────────────────
+// ─── Conversation thread grouping ────────────────────────────────────────────
 
-function TableRow({ entry }: { entry: LlmCallEntry }) {
+interface LlmThread {
+  conversationId: string;
+  calls: LlmCallEntry[];      // chronological order
+  root: LlmCallEntry;         // first call (model, agent, provider)
+  latestTimestamp: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCostUsd: number;
+  worstOutcome: LlmCallEntry['outcome'];
+}
+
+function groupByConversation(entries: LlmCallEntry[]): LlmThread[] {
+  const map = new Map<string, LlmCallEntry[]>();
+  for (const entry of entries) {
+    const key = entry.conversationId ?? entry.id;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(entry);
+  }
+
+  const outcomeRank: Record<string, number> = { forwarded: 0, error: 1, blocked: 2 };
+
+  return Array.from(map.entries())
+    .map(([convId, calls]) => {
+      const sorted = [...calls].sort((a, b) => a.timestamp - b.timestamp);
+      const root = sorted.find((e) => e.id === e.conversationId) ?? sorted[0]!;
+      const worstOutcome = calls.reduce<LlmCallEntry['outcome']>(
+        (worst, e) => (outcomeRank[e.outcome] ?? 0) > (outcomeRank[worst] ?? 0) ? e.outcome : worst,
+        'forwarded',
+      );
+      return {
+        conversationId: convId,
+        calls: sorted,
+        root,
+        latestTimestamp: Math.max(...calls.map((e) => e.timestamp)),
+        totalInputTokens: calls.reduce((s, e) => s + (e.inputTokens ?? 0), 0),
+        totalOutputTokens: calls.reduce((s, e) => s + (e.outputTokens ?? 0), 0),
+        totalCostUsd: calls.reduce((s, e) => s + (e.estimatedCostUsd ?? 0), 0),
+        worstOutcome,
+      };
+    })
+    .sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+}
+
+// ─── Individual call row (indented, inside an expanded thread) ────────────────
+
+function CallRow({ entry, index }: { entry: LlmCallEntry; index: number }) {
   const [expanded, setExpanded] = useState(false);
-  const hasDetail = true; // every row has at least metadata to show
+  return (
+    <>
+      <tr
+        className="border-b border-border/50 hover:bg-overlay/40 transition-colors duration-75 cursor-pointer bg-overlay/20"
+        onClick={() => setExpanded((e) => !e)}
+      >
+        {/* indent + chevron */}
+        <td className="pl-8 pr-2 py-2 w-6">
+          {expanded
+            ? <ChevronDown size={11} className="text-dim" />
+            : <ChevronRight size={11} className="text-dim" />}
+        </td>
+        <td className="px-3 py-2 whitespace-nowrap">
+          <span className="text-[10px] font-mono text-dim">
+            Turn {index + 1} · <RelTime ts={entry.timestamp} />
+          </span>
+        </td>
+        <td className="px-3 py-2 max-w-[130px]" />
+        <td className="px-3 py-2">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[11px] text-muted truncate max-w-[180px]">{entry.model}</span>
+            {entry.streaming && <span className="text-[9px] text-dim bg-overlay px-1 rounded">stream</span>}
+            <ThreatIndicator entry={entry} />
+          </div>
+        </td>
+        <td className="px-3 py-2 text-center text-[11px] text-muted">{entry.messageCount}</td>
+        <td className="px-3 py-2"><Tokens entry={entry} /></td>
+        <td className="px-3 py-2"><Cost value={entry.estimatedCostUsd} /></td>
+        <td className="px-3 py-2"><Latency ttfbMs={entry.ttfbMs} totalMs={entry.totalDurationMs} /></td>
+        <td className="px-3 py-2 pr-4"><OutcomeBadge outcome={entry.outcome} /></td>
+      </tr>
+      {expanded && (
+        <tr className="bg-overlay/40 border-b border-border/50">
+          <td colSpan={9} className="pl-12 pr-6 py-3">
+            <DetailPanel entry={entry} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+// ─── Thread row (one per conversation) ───────────────────────────────────────
+
+function ThreadRow({ thread }: { thread: LlmThread }) {
+  const [expanded, setExpanded] = useState(false);
+  const { root, calls } = thread;
+  const multiTurn = calls.length > 1;
+  const hasTokens = thread.totalInputTokens > 0 || thread.totalOutputTokens > 0;
 
   return (
     <>
       <tr
         className="border-b border-border hover:bg-overlay/60 transition-colors duration-75 cursor-pointer"
-        onClick={() => hasDetail && setExpanded((e) => !e)}
+        onClick={() => setExpanded((e) => !e)}
       >
         <td className="pl-4 pr-2 py-2.5 w-6">
-          {hasDetail
-            ? expanded
-              ? <ChevronDown size={12} className="text-dim" />
-              : <ChevronRight size={12} className="text-dim" />
-            : null}
+          {expanded
+            ? <ChevronDown size={12} className="text-dim" />
+            : <ChevronRight size={12} className="text-dim" />}
         </td>
         <td className="px-3 py-2.5 whitespace-nowrap">
-          <RelTime ts={entry.timestamp} />
+          <RelTime ts={root.timestamp} />
         </td>
         <td className="px-3 py-2.5 max-w-[130px]">
-          <AgentLabel agentId={entry.agentId} sessionId={entry.sessionId} />
+          <AgentLabel agentId={root.agentId} sessionId={root.sessionId} />
         </td>
         <td className="px-3 py-2.5">
           <div className="flex items-center gap-2">
-            <ProviderBadge provider={entry.provider} />
-            <span className="font-mono text-[12px] text-foreground truncate max-w-[200px]" title={entry.model}>
-              {entry.model}
+            <ProviderBadge provider={root.provider} />
+            <span className="font-mono text-[12px] text-foreground truncate max-w-[180px]" title={root.model}>
+              {root.model}
             </span>
-            {entry.streaming && (
-              <span className="text-[9px] text-dim bg-overlay px-1 rounded">stream</span>
+            {multiTurn && (
+              <span className="text-[9px] font-mono bg-overlay text-muted px-1.5 py-0.5 rounded shrink-0">
+                {calls.length} turns
+              </span>
             )}
-            <ThreatIndicator entry={entry} />
+            <ThreatIndicator entry={root} />
           </div>
         </td>
-        <td className="px-3 py-2.5 text-center text-[11px] text-muted">{entry.messageCount}</td>
-        <td className="px-3 py-2.5">
-          <Tokens entry={entry} />
+        <td className="px-3 py-2.5 text-center text-[11px] text-muted">
+          {multiTurn
+            ? calls.reduce((s, e) => s + e.messageCount, 0)
+            : root.messageCount}
         </td>
         <td className="px-3 py-2.5">
-          <Cost value={entry.estimatedCostUsd} />
+          {hasTokens
+            ? <span className="font-mono text-[11px] text-foreground tabular-nums">
+                {thread.totalInputTokens.toLocaleString()}
+                <span className="text-dim mx-0.5">/</span>
+                {thread.totalOutputTokens.toLocaleString()}
+              </span>
+            : <span className="text-dim font-mono text-[11px]">—</span>}
         </td>
         <td className="px-3 py-2.5">
-          <Latency ttfbMs={entry.ttfbMs} totalMs={entry.totalDurationMs} />
+          <Cost value={thread.totalCostUsd > 0 ? thread.totalCostUsd : undefined} />
+        </td>
+        <td className="px-3 py-2.5">
+          {multiTurn
+            ? <span className="font-mono text-[11px] text-dim">
+                {((thread.latestTimestamp - root.timestamp) / 1000).toFixed(1)}s total
+              </span>
+            : <Latency ttfbMs={root.ttfbMs} totalMs={root.totalDurationMs} />}
         </td>
         <td className="px-3 py-2.5 pr-4">
-          <OutcomeBadge outcome={entry.outcome} />
+          <OutcomeBadge outcome={thread.worstOutcome} />
         </td>
       </tr>
-      {expanded && hasDetail && (
-        <tr className="bg-overlay/30 border-b border-border">
-          <td colSpan={9} className="px-6 py-3">
-            <DetailPanel entry={entry} />
-          </td>
-        </tr>
+      {expanded && (
+        <>
+          {multiTurn
+            ? calls.map((call, i) => <CallRow key={call.id} entry={call} index={i} />)
+            : (
+              <tr className="bg-overlay/30 border-b border-border">
+                <td colSpan={9} className="px-6 py-3">
+                  <DetailPanel entry={root} />
+                </td>
+              </tr>
+            )}
+        </>
       )}
     </>
   );
@@ -343,7 +456,7 @@ export function LlmCallTable({ entries, maxHeight = '420px' }: LlmCallTableProps
     );
   }
 
-  const sorted = [...entries].sort((a, b) => b.timestamp - a.timestamp);
+  const threads = groupByConversation(entries);
 
   return (
     <div className="overflow-auto rounded-lg border border-border" style={{ maxHeight }}>
@@ -362,8 +475,8 @@ export function LlmCallTable({ entries, maxHeight = '420px' }: LlmCallTableProps
           </tr>
         </thead>
         <tbody>
-          {sorted.map((entry) => (
-            <TableRow key={entry.id} entry={entry} />
+          {threads.map((thread) => (
+            <ThreadRow key={thread.conversationId} thread={thread} />
           ))}
         </tbody>
       </table>
