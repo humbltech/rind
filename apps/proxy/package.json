@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@rind/core": "workspace:*",
+    "@rind/policy-engine": "workspace:*",
     "@rind/storage": "workspace:*",
     "@hono/node-server": "^1.13.0",
     "@modelcontextprotocol/sdk": "^1.0.0",

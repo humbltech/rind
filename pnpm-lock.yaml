@@ -109,6 +109,9 @@ importers:
       '@rind/core':
         specifier: workspace:*
         version: link:../../packages/sdk-core
+      '@rind/policy-engine':
+        specifier: workspace:*
+        version: link:../../packages/policy-engine
       '@rind/storage':
         specifier: workspace:*
         version: link:../../packages/storage
