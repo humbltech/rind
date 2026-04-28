@@ -1,3 +1,3 @@
-// @rind/core — shared types
-// Phase 1 (Week 5): implement RindSpan, RindConfig, PolicyAction
-export {};
+// @rind/core — public API
+export * from './types.js';
+export * from './event-bus.js';
