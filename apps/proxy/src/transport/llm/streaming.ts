@@ -11,7 +11,7 @@
 //   - Malformed chunks are logged + skipped, never throw (streaming must not crash)
 
 import type { LlmResponseMeta } from './providers/interface.js';
-import type { ToolUseRef } from './types.js';
+import type { LlmLogLevel, ToolUseRef } from './types.js';
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 
@@ -101,7 +101,8 @@ export function parseSseChunk(raw: string): SseEvent[] {
  *   message_delta       → usage.output_tokens, delta.stop_reason
  *   message_stop        → stream complete
  */
-export function createAnthropicAccumulator(): StreamAccumulator {
+export function createAnthropicAccumulator(logLevel?: LlmLogLevel): StreamAccumulator {
+  const captureText = logLevel !== 'metadata';
   let model = '';
   let inputTokens = 0;
   let outputTokens = 0;
@@ -159,7 +160,7 @@ export function createAnthropicAccumulator(): StreamAccumulator {
           const index = typeof obj['index'] === 'number' ? obj['index'] : -1;
           const delta = obj['delta'] as Record<string, unknown> | undefined;
           if (delta) {
-            if (delta['type'] === 'text_delta' && typeof delta['text'] === 'string') {
+            if (delta['type'] === 'text_delta' && typeof delta['text'] === 'string' && captureText) {
               textParts.push(delta['text']);
             } else if (delta['type'] === 'input_json_delta' && typeof delta['partial_json'] === 'string') {
               toolUseByIndex.get(index)?.jsonParts.push(delta['partial_json']);
@@ -226,7 +227,8 @@ export function createAnthropicAccumulator(): StreamAccumulator {
  * Without it, we get token counts from the last chunk that has a usage field (some providers
  * include it in the final non-[DONE] chunk).
  */
-export function createOpenAIAccumulator(): StreamAccumulator {
+export function createOpenAIAccumulator(logLevel?: LlmLogLevel): StreamAccumulator {
+  const captureText = logLevel !== 'metadata';
   let model = '';
   let inputTokens = 0;
   let outputTokens = 0;
@@ -265,7 +267,7 @@ export function createOpenAIAccumulator(): StreamAccumulator {
         const choice = choices[0] as Record<string, unknown>;
         const delta = choice['delta'] as Record<string, unknown> | undefined;
         if (delta) {
-          if (typeof delta['content'] === 'string') {
+          if (typeof delta['content'] === 'string' && captureText) {
             textParts.push(delta['content']);
           }
         }

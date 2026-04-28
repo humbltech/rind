@@ -201,11 +201,15 @@ export async function forwardLlmRequest(
           sliceAt = lastLf + 2;
         }
 
-        const events = parseSseChunk(sliceAt >= 0 ? lineBuffer.slice(0, sliceAt) : lineBuffer);
-        lineBuffer = sliceAt >= 0 ? lineBuffer.slice(sliceAt) : lineBuffer;
-
-        for (const event of events) {
-          accumulator.onEvent(event.eventType, event.data);
+        // Only parse complete events (up to the last boundary).
+        // If no boundary found yet, leave lineBuffer accumulating — parsing
+        // an incomplete block on every chunk would produce duplicate partial events.
+        if (sliceAt >= 0) {
+          const events = parseSseChunk(lineBuffer.slice(0, sliceAt));
+          lineBuffer = lineBuffer.slice(sliceAt);
+          for (const event of events) {
+            accumulator.onEvent(event.eventType, event.data);
+          }
         }
       }
     },

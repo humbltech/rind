@@ -71,8 +71,11 @@ class ConversationTracker {
   /**
    * Look up the parent LLM call for a set of tool_use_ids referenced in a request.
    * Returns the first match found (all ids in a turn share the same parent call).
+   * Also evicts expired entries so pure text-only conversations (no tool calls)
+   * don't accumulate stale entries indefinitely.
    */
   resolve(toolUseIds: string[]): { llmCallId?: string; conversationId?: string } {
+    this.evict();
     const now = Date.now();
     for (const id of toolUseIds) {
       const entry = this.toolUseMap.get(id);
@@ -93,7 +96,7 @@ class ConversationTracker {
 
 // ─── Accumulator factory map ──────────────────────────────────────────────────
 
-const ACCUMULATOR_FACTORIES: Record<string, () => ReturnType<typeof createAnthropicAccumulator>> = {
+const ACCUMULATOR_FACTORIES: Record<string, typeof createAnthropicAccumulator> = {
   anthropic: createAnthropicAccumulator,
   openai: createOpenAIAccumulator,
 };
@@ -156,8 +159,74 @@ function buildInitialEvent(
  * Build a Hono handler for a given LLM provider.
  * Handles both streaming and non-streaming requests transparently.
  */
+// ─── Shared response enrichment ───────────────────────────────────────────────
+//
+// Both streaming and non-streaming paths produce the same enriched LlmCallEvent.
+// This closure captures the context needed so each path is a single call site.
+
+interface EnrichedEventTiming {
+  statusCode: number;
+  durationMs?: number;
+  ttfbMs?: number;
+}
+
+function makeEnricher(
+  config: LlmGatewayOptions['config'],
+  bus: LlmGatewayOptions['bus'],
+  logger: LlmGatewayOptions['logger'],
+  tracker: ConversationTracker,
+  onResponseComplete: LlmGatewayOptions['onResponseComplete'],
+) {
+  return function emitEnrichedEvent(
+    baseEvent: LlmCallEvent,
+    meta: import('./providers/interface.js').LlmResponseMeta,
+    timing: EnrichedEventTiming,
+  ): void {
+    const responseThreats = scanLlmResponse(meta.responseText);
+    const inputTokens = meta.inputTokens > 0 ? meta.inputTokens : undefined;
+    const outputTokens = meta.outputTokens > 0 ? meta.outputTokens : undefined;
+    const { toolUses } = meta;
+    const enrichedEvent: LlmCallEvent = {
+      ...baseEvent,
+      statusCode: timing.statusCode,
+      totalDurationMs: timing.durationMs,
+      ttfbMs: timing.ttfbMs,
+      inputTokens,
+      outputTokens,
+      estimatedCostUsd: (inputTokens != null && outputTokens != null)
+        ? calculateCost(baseEvent.model, inputTokens, outputTokens)
+        : undefined,
+      responseText: meta.responseText,
+      ...(toolUses && toolUses.length > 0 ? { toolUses } : {}),
+      ...(responseThreats.length > 0 ? { responseThreats } : {}),
+    };
+    if (toolUses && toolUses.length > 0) {
+      tracker.register(toolUses.map((t) => t.id), enrichedEvent.id, enrichedEvent.conversationId ?? enrichedEvent.id);
+    }
+    if (responseThreats.length > 0) {
+      logger.warn({ model: baseEvent.model, threatCount: responseThreats.length }, 'LLM response threats detected');
+    }
+    bus.emit('llm:response', enrichedEvent);
+    if (
+      config.costAnomalyThresholdUsd != null &&
+      enrichedEvent.estimatedCostUsd != null &&
+      enrichedEvent.estimatedCostUsd > config.costAnomalyThresholdUsd
+    ) {
+      bus.emit('llm:cost-anomaly', { event: enrichedEvent, thresholdUsd: config.costAnomalyThresholdUsd });
+      logger.warn(
+        { model: baseEvent.model, cost: enrichedEvent.estimatedCostUsd, threshold: config.costAnomalyThresholdUsd },
+        'LLM cost anomaly detected',
+      );
+    }
+    onResponseComplete?.(enrichedEvent);
+  };
+}
+
+// ─── Handler factory ──────────────────────────────────────────────────────────
+
 function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOptions, rateLimiter: RateLimiter, tracker: ConversationTracker) {
   const { config, bus, policyEngine, logger, onResponseComplete } = opts;
+  const emitEnrichedEvent = makeEnricher(config, bus, logger, tracker, onResponseComplete);
 
   return async (c: Context) => {
     // ── 1. Parse request body ────────────────────────────────────────────────
@@ -244,11 +313,13 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
       provider,
       upstreamBaseUrl,
       logLevel: config.logLevel,
-      createAccumulator: ACCUMULATOR_FACTORIES[provider.name],
+      createAccumulator: () => ACCUMULATOR_FACTORIES[provider.name]?.(config.logLevel) ?? createAnthropicAccumulator(config.logLevel),
     });
 
     // ── 6. Handle error from forwarding ─────────────────────────────────────
-    if (result.statusCode >= 500 && !result.stream) {
+    // Cover both 4xx (401 invalid key, 429 rate-limited) and 5xx (upstream down).
+    // Streaming errors (connection failures) are already caught above as 502/504.
+    if (!result.stream && result.statusCode >= 400) {
       const errorEvent: LlmCallEvent = {
         ...event,
         outcome: 'error',
@@ -273,46 +344,9 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
 
     // ── 7a. Non-streaming response ───────────────────────────────────────────
     if (!result.stream) {
-      const responseThreats = scanLlmResponse(result.meta?.responseText);
-      const inputTokens = result.meta?.inputTokens;
-      const outputTokens = result.meta?.outputTokens;
-      const toolUses = result.meta?.toolUses;
-      const enrichedEvent: LlmCallEvent = {
-        ...event,
-        statusCode: result.statusCode,
-        totalDurationMs: result.durationMs,
-        ttfbMs: result.ttfbMs,
-        inputTokens,
-        outputTokens,
-        estimatedCostUsd: (inputTokens != null && outputTokens != null)
-          ? calculateCost(event.model, inputTokens, outputTokens)
-          : undefined,
-        responseText: result.meta?.responseText,
-        ...(toolUses && toolUses.length > 0 ? { toolUses } : {}),
-        ...(responseThreats.length > 0 ? { responseThreats } : {}),
-      };
-      // Register generated tool_use blocks so subsequent requests can resolve their parent
-      if (toolUses && toolUses.length > 0) {
-        tracker.register(toolUses.map((t) => t.id), enrichedEvent.id, enrichedEvent.conversationId ?? enrichedEvent.id);
+      if (result.meta) {
+        emitEnrichedEvent(event, result.meta, { statusCode: result.statusCode, durationMs: result.durationMs, ttfbMs: result.ttfbMs });
       }
-      if (responseThreats.length > 0) {
-        logger.warn({ model: event.model, threatCount: responseThreats.length }, 'LLM response threats detected');
-      }
-      bus.emit('llm:response', enrichedEvent);
-      if (
-        config.costAnomalyThresholdUsd != null &&
-        enrichedEvent.estimatedCostUsd != null &&
-        enrichedEvent.estimatedCostUsd > config.costAnomalyThresholdUsd
-      ) {
-        bus.emit('llm:cost-anomaly', { event: enrichedEvent, thresholdUsd: config.costAnomalyThresholdUsd });
-        logger.warn(
-          { model: event.model, cost: enrichedEvent.estimatedCostUsd, threshold: config.costAnomalyThresholdUsd },
-          'LLM cost anomaly detected',
-        );
-      }
-      onResponseComplete?.(enrichedEvent);
-      // Forward the response with the correct upstream status code.
-      // Using new Response() avoids Hono's constrained status type while preserving runtime correctness.
       return new Response(JSON.stringify(result.responseBody), {
         status: result.statusCode,
         headers: { 'content-type': 'application/json' },
@@ -320,53 +354,23 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     }
 
     // ── 7b. Streaming response ───────────────────────────────────────────────
-    // After stream drains, enrich the event with accumulated metadata + response scan
+    // Enrich the ring buffer entry after the stream drains (fire-and-forget).
+    // Note: if two streaming responses overlap and both generate tool_use blocks,
+    // ConversationTracker uses last-writer-wins — acceptable since overlapping
+    // turns in the same conversation are rare and the conversationId is still correct.
     const capturedEvent = event;
     const capturedTtfb = result.ttfbMs;
     const capturedForwardStart = forwardStart;
+    const capturedStatusCode = result.statusCode;
 
     result.streamMeta?.then((meta) => {
-      const responseThreats = scanLlmResponse(meta.responseText);
-      const inputTokens = meta.inputTokens > 0 ? meta.inputTokens : undefined;
-      const outputTokens = meta.outputTokens > 0 ? meta.outputTokens : undefined;
-      const toolUses = meta.toolUses;
-      const enrichedEvent: LlmCallEvent = {
-        ...capturedEvent,
-        statusCode: result.statusCode,
-        totalDurationMs: Date.now() - capturedForwardStart,
+      emitEnrichedEvent(capturedEvent, meta, {
+        statusCode: capturedStatusCode,
+        durationMs: Date.now() - capturedForwardStart,
         ttfbMs: capturedTtfb,
-        inputTokens,
-        outputTokens,
-        estimatedCostUsd: (inputTokens != null && outputTokens != null)
-          ? calculateCost(capturedEvent.model, inputTokens, outputTokens)
-          : undefined,
-        responseText: meta.responseText,
-        ...(toolUses && toolUses.length > 0 ? { toolUses } : {}),
-        ...(responseThreats.length > 0 ? { responseThreats } : {}),
-      };
-      // Register generated tool_use blocks so subsequent requests can resolve their parent
-      if (toolUses && toolUses.length > 0) {
-        tracker.register(toolUses.map((t) => t.id), enrichedEvent.id, enrichedEvent.conversationId ?? enrichedEvent.id);
-      }
-      if (responseThreats.length > 0) {
-        logger.warn({ model: capturedEvent.model, threatCount: responseThreats.length }, 'LLM response threats detected');
-      }
-      bus.emit('llm:response', enrichedEvent);
-      if (
-        config.costAnomalyThresholdUsd != null &&
-        enrichedEvent.estimatedCostUsd != null &&
-        enrichedEvent.estimatedCostUsd > config.costAnomalyThresholdUsd
-      ) {
-        bus.emit('llm:cost-anomaly', { event: enrichedEvent, thresholdUsd: config.costAnomalyThresholdUsd });
-        logger.warn(
-          { model: capturedEvent.model, cost: enrichedEvent.estimatedCostUsd, threshold: config.costAnomalyThresholdUsd },
-          'LLM cost anomaly detected',
-        );
-      }
-      onResponseComplete?.(enrichedEvent);
+      });
     }).catch((err: unknown) => {
       logger.error({ err, eventId: capturedEvent.id }, 'Failed to emit LLM stream response event');
-      // Emit an error event so the audit record is not silently dropped
       bus.emit('llm:response', {
         ...capturedEvent,
         outcome: 'error',
