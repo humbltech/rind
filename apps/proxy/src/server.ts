@@ -24,9 +24,7 @@ import { InMemoryPolicyStore } from './policy/store.js';
 import { loadPolicyFile, emptyPolicyConfig } from './policy/loader.js';
 import { createSession, getSession, killSession, listSessions } from './session.js';
 import { RindEventBus } from './event-bus.js';
-import { RingBuffer } from './ring-buffer.js';
-import { PersistentRingBuffer } from './persistent-ring-buffer.js';
-import { AuditWriter } from './audit-writer.js';
+import { type IEventStore, type IAuditLog, JsonlEventStore, JsonlAuditLog } from '@rind/storage';
 import { LoopDetector } from './loop-detector.js';
 import { RateLimiter } from './rate-limiter.js';
 import { listPacks, getPack, expandPackRules, rulesFromPack, recommendPacks } from './policy/packs.js';
@@ -180,19 +178,19 @@ export function createProxyServer(config: ProxyConfig) {
 
   // ── Observability pipeline (D-018) ───────────────────────────────────────────
   // Tool call events are persisted to a JSONL file and reloaded on startup.
-  const ringBuffer = new PersistentRingBuffer<ToolCallEvent>({
+  const ringBuffer: IEventStore<ToolCallEvent> = new JsonlEventStore<ToolCallEvent>({
     capacity: config.ringBufferSize ?? 10_000,
     filePath: eventsLogPath,
     onError: (err) => logger.error({ err }, 'Event log write failed'),
   });
   // Hook events buffer — stores PostToolUse, SubagentStart/Stop for observability
-  const hookEventBuffer = new PersistentRingBuffer<ProcessedHookEvent>({
+  const hookEventBuffer: IEventStore<ProcessedHookEvent> = new JsonlEventStore<ProcessedHookEvent>({
     capacity: config.ringBufferSize ?? 10_000,
     filePath: hookEventsLogPath,
     onError: (err) => logger.error({ err }, 'Hook event log write failed'),
   });
 
-  const auditWriter = new AuditWriter(auditLogPath, (err) => {
+  const auditWriter: IAuditLog<AuditEntry> = new JsonlAuditLog<AuditEntry>(auditLogPath, (err) => {
     logger.error({ err }, 'Audit write failed');
   });
 
@@ -253,7 +251,7 @@ export function createProxyServer(config: ProxyConfig) {
       : join(RIND_DATA_DIR, 'llm-events.jsonl');
     mkdirSync(dirname(llmLogPath), { recursive: true });
 
-    const llmRingBuffer = new PersistentRingBuffer<LlmCallEvent>({
+    const llmRingBuffer: IEventStore<LlmCallEvent> = new JsonlEventStore<LlmCallEvent>({
       capacity: config.ringBufferSize ?? 10_000,
       filePath: llmLogPath,
       onError: (err) => logger.error({ err }, 'LLM event log write failed'),
@@ -1268,7 +1266,7 @@ export function createProxyServer(config: ProxyConfig) {
 function recordProxyOutcome(
   correlationId: string,
   interceptorResult: import('./interceptor.js').InterceptorResult,
-  ringBuffer: PersistentRingBuffer<ToolCallEvent>,
+  ringBuffer: IEventStore<ToolCallEvent>,
 ): void {
   // Derive the final outcome:
   // - If the call went through the approval queue, use the specific approval outcome.
