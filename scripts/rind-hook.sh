@@ -25,9 +25,9 @@ RIND_PROXY_URL="${RIND_PROXY_URL:-http://localhost:7777}"
 RIND_FAIL_OPEN="${RIND_FAIL_OPEN:-true}"
 # Max time to wait for the proxy response. Must be long enough for approval
 # holds (REQUIRE_APPROVAL blocks until approved/denied/timed out). Claude Code
-# hooks have a 600s timeout, so 300s gives plenty of room for approvals while
-# still failing before Claude Code kills the hook.
-RIND_MAX_TIME="${RIND_MAX_TIME:-300}"
+# hooks have a 600s hard limit, so 550s maximizes the approval window while
+# leaving 50s before Claude Code kills the hook. Override with RIND_MAX_TIME.
+RIND_MAX_TIME="${RIND_MAX_TIME:-550}"
 
 # Read the full hook payload from stdin
 payload=$(cat)

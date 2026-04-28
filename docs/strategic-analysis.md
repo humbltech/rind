@@ -1078,3 +1078,28 @@ Layer 5 ("Execution-layer control plane") now has partial coverage:
 - DPoP adds >50ms latency to proxy calls → optimize or find alternative proof-of-possession mechanism
 
 ---
+
+### D-046: Client Package Architecture — @rind/agent
+**Date**: April 28, 2026
+**Decision**: Create `packages/agent-client/` in the monorepo, published as `@rind/agent` on npm. This package is the developer-side client artifact — it contains Claude Code hook scripts and a `rind configure` CLI. It is strictly separate from `apps/proxy/` (cloud-hosted server).
+
+**Scope**:
+- `scripts/rind-hook.sh` — PreToolUse blocking hook (Mac/Linux)
+- `scripts/rind-event.sh` — PostToolUse/SubagentStart/Stop fire-and-forget hook (Mac/Linux)
+- `bin/rind configure` — Node.js CLI, OS-aware, writes absolute paths to developer's `.claude/settings.json`
+- Windows hook support: documented gap, deferred. `rind configure` will write a Node.js-based hook on Windows instead of bash.
+
+**Open question logged**: Does `rind scan` (free MCP scanner) live in `@rind/agent` or a separate `@rind/scan`? Default: same package unless scan needs a different open-source license.
+
+**Reasoning**:
+- Hook scripts are client-side artifacts — they belong on the developer's machine, not in the proxy server app
+- Cloud-hosted proxy means `RIND_PROXY_URL` points at `proxy.rind.sh/k/{api-key}`, not localhost
+- `npx @rind/agent configure` is zero-friction onboarding (no permanent install required)
+- Package name chosen for extensibility: D-040 Phase B (shell guard) and Phase C (VS Code setup) will also live here
+
+**Confidence**: 8/10 — two-way door, clear scope, strong precedent in dev tooling ecosystem
+**Kill Criteria**:
+- First 3 developer installs fail on Windows → prioritize Windows hook implementation immediately
+- `rind scan` requires a fully open-source license incompatible with `@rind/agent` → split into `@rind/scan`
+
+---
