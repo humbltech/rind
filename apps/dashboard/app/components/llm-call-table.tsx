@@ -163,6 +163,10 @@ interface LlmThread {
   totalOutputTokens: number;
   totalCostUsd: number;
   worstOutcome: LlmCallEntry['outcome'];
+  /** Unique tool names called across all turns, in order of first appearance */
+  toolNames: string[];
+  /** tool_use_id → tool name — for resolving referencedToolUseIds to names */
+  toolNameById: Map<string, string>;
 }
 
 function groupByConversation(entries: LlmCallEntry[]): LlmThread[] {
@@ -183,6 +187,21 @@ function groupByConversation(entries: LlmCallEntry[]): LlmThread[] {
         (worst, e) => (outcomeRank[e.outcome] ?? 0) > (outcomeRank[worst] ?? 0) ? e.outcome : worst,
         'forwarded',
       );
+
+      // Build id→name map and unique name list from all tool_use blocks across all turns
+      const toolNameById = new Map<string, string>();
+      const toolNamesSeen = new Set<string>();
+      const toolNames: string[] = [];
+      for (const call of sorted) {
+        for (const t of call.toolUses ?? []) {
+          toolNameById.set(t.id, t.name);
+          if (!toolNamesSeen.has(t.name)) {
+            toolNamesSeen.add(t.name);
+            toolNames.push(t.name);
+          }
+        }
+      }
+
       return {
         conversationId: convId,
         calls: sorted,
@@ -192,6 +211,8 @@ function groupByConversation(entries: LlmCallEntry[]): LlmThread[] {
         totalOutputTokens: calls.reduce((s, e) => s + (e.outputTokens ?? 0), 0),
         totalCostUsd: calls.reduce((s, e) => s + (e.estimatedCostUsd ?? 0), 0),
         worstOutcome,
+        toolNames,
+        toolNameById,
       };
     })
     .sort((a, b) => b.latestTimestamp - a.latestTimestamp);
@@ -199,7 +220,7 @@ function groupByConversation(entries: LlmCallEntry[]): LlmThread[] {
 
 // ─── Individual call row (indented, inside an expanded thread) ────────────────
 
-function CallRow({ entry, index }: { entry: LlmCallEntry; index: number }) {
+function CallRow({ entry, index, toolNameById }: { entry: LlmCallEntry; index: number; toolNameById: Map<string, string> }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <>
@@ -235,7 +256,7 @@ function CallRow({ entry, index }: { entry: LlmCallEntry; index: number }) {
       {expanded && (
         <tr className="bg-overlay/40 border-b border-border/50">
           <td colSpan={9} className="pl-12 pr-6 py-3">
-            <DetailPanel entry={entry} />
+            <DetailPanel entry={entry} toolNameById={toolNameById} />
           </td>
         </tr>
       )}
@@ -247,7 +268,7 @@ function CallRow({ entry, index }: { entry: LlmCallEntry; index: number }) {
 
 function ThreadRow({ thread }: { thread: LlmThread }) {
   const [expanded, setExpanded] = useState(false);
-  const { root, calls } = thread;
+  const { root, calls, toolNames, toolNameById } = thread;
   const multiTurn = calls.length > 1;
   const hasTokens = thread.totalInputTokens > 0 || thread.totalOutputTokens > 0;
 
@@ -269,17 +290,31 @@ function ThreadRow({ thread }: { thread: LlmThread }) {
           <AgentLabel agentId={root.agentId} sessionId={root.sessionId} />
         </td>
         <td className="px-3 py-2.5">
-          <div className="flex items-center gap-2">
-            <ProviderBadge provider={root.provider} />
-            <span className="font-mono text-[12px] text-foreground truncate max-w-[180px]" title={root.model}>
-              {root.model}
-            </span>
-            {multiTurn && (
-              <span className="text-[9px] font-mono bg-overlay text-muted px-1.5 py-0.5 rounded shrink-0">
-                {calls.length} turns
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <div className="flex items-center gap-2">
+              <ProviderBadge provider={root.provider} />
+              <span className="font-mono text-[12px] text-foreground truncate max-w-[180px]" title={root.model}>
+                {root.model}
               </span>
+              {multiTurn && (
+                <span className="text-[9px] font-mono bg-overlay text-muted px-1.5 py-0.5 rounded shrink-0">
+                  {calls.length} turns
+                </span>
+              )}
+              <ThreatIndicator entry={root} />
+            </div>
+            {toolNames.length > 0 && (
+              <div className="flex flex-wrap gap-1 ml-7">
+                {toolNames.slice(0, 8).map((name) => (
+                  <span key={name} className="text-[9px] font-mono text-accent bg-accent/10 px-1 rounded">
+                    {name}
+                  </span>
+                ))}
+                {toolNames.length > 8 && (
+                  <span className="text-[9px] font-mono text-dim">+{toolNames.length - 8} more</span>
+                )}
+              </div>
             )}
-            <ThreatIndicator entry={root} />
           </div>
         </td>
         <td className="px-3 py-2.5 text-center text-[11px] text-muted">
@@ -313,11 +348,11 @@ function ThreadRow({ thread }: { thread: LlmThread }) {
       {expanded && (
         <>
           {multiTurn
-            ? calls.map((call, i) => <CallRow key={call.id} entry={call} index={i} />)
+            ? calls.map((call, i) => <CallRow key={call.id} entry={call} index={i} toolNameById={toolNameById} />)
             : (
               <tr className="bg-overlay/30 border-b border-border">
                 <td colSpan={9} className="px-6 py-3">
-                  <DetailPanel entry={root} />
+                  <DetailPanel entry={root} toolNameById={toolNameById} />
                 </td>
               </tr>
             )}
@@ -386,30 +421,36 @@ function ResponseBlock({ text }: { text: string }) {
   );
 }
 
-function DetailPanel({ entry }: { entry: LlmCallEntry }) {
+function DetailPanel({ entry, toolNameById }: { entry: LlmCallEntry; toolNameById?: Map<string, string> }) {
   const allThreats = [...(entry.requestThreats ?? []), ...(entry.responseThreats ?? [])];
   return (
     <div className="space-y-3 text-[11px] font-mono text-muted">
-      {/* Conversation threading */}
-      {entry.conversationId && (
-        <div><span className="text-dim">conversation: </span><span className="text-foreground">{entry.conversationId.slice(0, 16)}</span>
-          {entry.parentLlmCallId && <span className="text-dim ml-3">← {entry.parentLlmCallId.slice(0, 8)}</span>}
-        </div>
-      )}
+      {/* Tools generated by this turn */}
       {entry.toolUses && entry.toolUses.length > 0 && (
         <div className="space-y-0.5">
-          <span className="text-dim">tool_uses generated:</span>
+          <span className="text-dim">tools requested:</span>
           {entry.toolUses.map((t) => (
             <div key={t.id} className="ml-4 flex items-center gap-2">
-              <span className="text-accent">{t.name}</span>
-              <span className="text-dim">{t.id.slice(0, 16)}</span>
+              <span className="text-accent font-semibold">{t.name}</span>
+              <span className="text-dim text-[10px]">{t.id.slice(0, 12)}</span>
             </div>
           ))}
         </div>
       )}
+      {/* Tool results consumed by this turn — resolve names where possible */}
       {entry.referencedToolUseIds && entry.referencedToolUseIds.length > 0 && (
-        <div><span className="text-dim">consuming tool_results: </span>
-          <span className="text-foreground">{entry.referencedToolUseIds.map((id) => id.slice(0, 12)).join(', ')}</span>
+        <div className="space-y-0.5">
+          <span className="text-dim">tool results consumed:</span>
+          {entry.referencedToolUseIds.map((id) => {
+            const name = toolNameById?.get(id);
+            return (
+              <div key={id} className="ml-4 flex items-center gap-2">
+                {name
+                  ? <span className="text-foreground font-semibold">{name}</span>
+                  : <span className="text-dim text-[10px]">{id.slice(0, 12)}</span>}
+              </div>
+            );
+          })}
         </div>
       )}
       {entry.matchedRule && (
