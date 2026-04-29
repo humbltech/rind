@@ -174,6 +174,7 @@ export function createProxyServer(config: ProxyConfig) {
       },
       onToolResponseEvent: () => {},
       blockOnCriticalResponseThreats: false,
+      layers: config.layers,
     };
     app.route('/', mcpGateway(upstreamPool, gatewayInterceptorOpts, PROXY_VERSION));
     logger.info({ servers: Object.keys(config.servers ?? {}) }, 'MCP gateway mounted');
@@ -205,7 +206,7 @@ export function createProxyServer(config: ProxyConfig) {
     bus.on('llm:blocked', ({ event }) => llmRingBuffer.push(event));
 
     const llmConfig = { ...defaultLlmProxyConfig(), ...config.llmProxy };
-    app.route('/', llmGateway({ config: llmConfig, bus, policyEngine, logger, forwardFn: config.llmForwardFn }));
+    app.route('/', llmGateway({ config: llmConfig, bus, policyEngine, logger, forwardFn: config.llmForwardFn, layers: config.layers }));
     logger.info({ logLevel: llmConfig.logLevel }, 'LLM API proxy gateway mounted');
 
     app.get('/logs/llm-calls', (c) => {
