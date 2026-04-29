@@ -60,7 +60,7 @@ export const echoleakExfiltration: Scenario = {
   name: 'EchoLeak — Indirect Prompt Injection',
   slug: 'echoleak-exfiltration',
   company: 'meridian',
-  deployment: 'llm-gateway',
+  deployment: 'direct-mcp',
   feature: 'Response Inspection + Exfil Blocking',
   incidentRef: 'CVE-2025-32711 (Microsoft 365 Copilot, 2025)',
   packIds: ['exfil-protection'],
