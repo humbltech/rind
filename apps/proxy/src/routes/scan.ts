@@ -5,7 +5,6 @@ import type { Logger } from 'pino';
 import { z } from 'zod';
 import { runFullScan } from '../scanner/index.js';
 import type { RindEventBus } from '../event-bus.js';
-import type { ProxyConfig } from '../types.js';
 import { emitAudit } from './helpers.js';
 
 const ScanBodySchema = z.object({
@@ -15,11 +14,10 @@ const ScanBodySchema = z.object({
 
 export interface ScanRouteDeps {
   bus: RindEventBus;
-  config: ProxyConfig;
   logger: Logger;
 }
 
-export function scanRoutes({ bus, config, logger }: ScanRouteDeps): Hono {
+export function scanRoutes({ bus, logger }: ScanRouteDeps): Hono {
   const app = new Hono();
 
   function handleScan(serverId: string, tools: Parameters<typeof runFullScan>[1], logLabel: string) {
