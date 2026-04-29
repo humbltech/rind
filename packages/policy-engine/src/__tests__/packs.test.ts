@@ -172,3 +172,39 @@ describe('llm-response-pii-redact-v1', () => {
     expect(pack.category).toBe('llm-safety');
   });
 });
+
+describe('listPacks', () => {
+  it('includes llm-model-restrict-v1', () => {
+    const ids = listPacks().map((p) => p.id);
+    expect(ids).toContain('llm-model-restrict-v1');
+  });
+});
+
+describe('llm-model-restrict-v1', () => {
+  it('has one rule with DENY action and llmModel match', () => {
+    const pack = getPack('llm-model-restrict-v1')!;
+    expect(pack).toBeDefined();
+    const rules = expandPackRules(pack);
+    expect(rules).toHaveLength(1);
+    const rule = rules[0]!;
+    expect(rule.action).toBe('DENY');
+    expect(Array.isArray((rule.match as { llmModel?: string[] }).llmModel)).toBe(true);
+  });
+
+  it('default rule includes claude-opus-4-6', () => {
+    const pack = getPack('llm-model-restrict-v1')!;
+    const rules = expandPackRules(pack);
+    const models = (rules[0]!.match as { llmModel?: string[] }).llmModel ?? [];
+    expect(models).toContain('claude-opus-4-6');
+  });
+
+  it('has failMode closed (blocked calls must not silently pass)', () => {
+    const pack = getPack('llm-model-restrict-v1')!;
+    const rules = expandPackRules(pack);
+    expect(rules[0]!.failMode).toBe('closed');
+  });
+
+  it('has llm-safety category', () => {
+    expect(getPack('llm-model-restrict-v1')!.category).toBe('llm-safety');
+  });
+});

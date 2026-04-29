@@ -575,6 +575,38 @@ const registry: PolicyPack[] = [
       },
     ],
   },
+
+  {
+    id: 'llm-model-restrict-v1',
+    version: '1.0.0',
+    name: 'LLM Model Restriction',
+    description: 'Blocks high-cost or policy-forbidden LLM models. Default: denies Claude Opus tiers. Customise the model list to match your org policy.',
+    category: 'llm-safety',
+    tags: ['llm', 'model', 'cost-control', 'policy', 'governance'],
+    severity: 'strict',
+    customizable: [
+      {
+        ruleIndex: 0,
+        field: 'match.llmModel',
+        label: 'Forbidden model names (exact match, comma-separated)',
+        type: 'string',
+        default: 'claude-opus-4-6,claude-opus-4-5',
+      },
+    ],
+    rules: [
+      {
+        name: 'llm-model-restrict-v1:block-forbidden-models',
+        agent: '*',
+        match: {
+          llmModel: ['claude-opus-4-6', 'claude-opus-4-5'],
+        },
+        action: 'DENY',
+        reason: 'Model not approved by organisation policy',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+    ],
+  },
 ];
 
 // ─── Registry API ─────────────────────────────────────────────────────────────
