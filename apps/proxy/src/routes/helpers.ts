@@ -3,7 +3,7 @@
 import type { RindEventBus } from '../event-bus.js';
 import type { IEventStore } from '@rind/storage';
 import type { InterceptorResult } from '../interceptor.js';
-import type { AuditEntry, ProxyConfig, ToolCallEvent } from '../types.js';
+import type { AuditEntry, ToolCallEvent } from '../types.js';
 
 export function emitAudit(
   bus: RindEventBus,
@@ -18,7 +18,7 @@ export function emitPolicyAudit(
   operation: 'rule-added' | 'rule-updated' | 'rule-removed' | 'rule-enabled' | 'rule-disabled' | 'config-replaced' | 'pack-enabled' | 'pack-disabled',
   target: string,
 ): void {
-  bus.emit('audit', {
+  const entry: AuditEntry = {
     timestamp: new Date().toISOString(),
     eventType: 'policy:mutation',
     sessionId: '',
@@ -26,7 +26,8 @@ export function emitPolicyAudit(
     serverId: '',
     action: 'ALLOW',
     reason: `policy:${operation}:${target}`,
-  } as AuditEntry);
+  };
+  bus.emit('audit', entry);
 }
 
 /** Parse a human-readable duration string (e.g. "30s", "2m", "5m") into milliseconds. */
