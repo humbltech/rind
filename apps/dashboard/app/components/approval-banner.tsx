@@ -5,20 +5,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ShieldAlert, Check, X, Clock } from 'lucide-react';
-
-interface PendingApproval {
-  id: string;
-  sessionId: string;
-  agentId: string;
-  toolName: string;
-  toolLabel?: string;
-  input: unknown;
-  reason: string;
-  ruleName?: string;
-  createdAt: number;
-  timeoutMs: number;
-  onTimeout: 'DENY' | 'ALLOW';
-}
+import type { PendingApproval } from '../lib/api.js';
+import { getApprovals, approveAction, denyAction } from '../lib/api.js';
 
 export function ApprovalBanner() {
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
@@ -30,12 +18,9 @@ export function ApprovalBanner() {
 
     async function poll() {
       try {
-        const res = await fetch('/api/proxy/approvals');
+        const data = await getApprovals();
         if (!active) return;
-        if (res.ok) {
-          const data: PendingApproval[] = await res.json();
-          setApprovals(data);
-        }
+        setApprovals(data);
       } catch {
         // Silently ignore — proxy may be down
       }
@@ -49,14 +34,14 @@ export function ApprovalBanner() {
   const handleApprove = useCallback(async (id: string) => {
     setResolving((s) => new Set(s).add(id));
     try {
-      await fetch(`/api/proxy/approvals/${id}/approve`, { method: 'POST' });
+      await approveAction(id);
     } catch { /* ignore */ }
   }, []);
 
   const handleDeny = useCallback(async (id: string) => {
     setResolving((s) => new Set(s).add(id));
     try {
-      await fetch(`/api/proxy/approvals/${id}/deny`, { method: 'POST' });
+      await denyAction(id);
     } catch { /* ignore */ }
   }, []);
 
