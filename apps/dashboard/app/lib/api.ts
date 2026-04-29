@@ -1,7 +1,7 @@
 // Typed API client for the Rind proxy server.
 // All fetch('/api/proxy/*') calls go through here — one place for endpoint URLs and response types.
 
-import type { ToolCallEvent, LlmCallEvent, ScanFinding, ScanResult, Session, PolicyRule, PolicyPack, PolicyRuleWithMeta } from '@rind/core';
+import type { ToolCallEvent, LlmCallEvent, ScanFinding, ScanResult, Session, PolicyRule, PolicyPack, PolicyRuleWithMeta, ResponseThreat } from '@rind/core';
 
 // ─── Re-export shared types ───────────────────────────────────────────────────
 // Components import from here rather than declaring duplicate interfaces.
@@ -162,13 +162,36 @@ export const getTimeline = (params?: { agentId?: string; since?: number; until?:
 };
 
 // ─── Hook events ──────────────────────────────────────────────────────────────
+
+/** Processed hook event from /logs/hook-events — mirrors ProcessedHookEvent in the proxy */
+export interface HookEvent {
+  eventType: string;
+  sessionId: string;
+  agentId: string;
+  correlationId?: string;
+  agentType?: string;
+  toolName?: string;
+  toolLabel?: string;
+  toolResponse?: unknown;
+  outputPreview?: string;
+  outputTruncated?: boolean;
+  outputSizeBytes?: number;
+  outputHash?: string;
+  threats?: ResponseThreat[];
+  prompt?: string;
+  stopReason?: string;
+  transcriptPath?: string;
+  cwd?: string;
+  timestamp: number;
+}
+
 export const getHookEvents = (params?: { session_id?: string; event_type?: string; agent_id?: string }) => {
   const q = new URLSearchParams();
   if (params?.session_id) q.set('session_id', params.session_id);
   if (params?.event_type) q.set('event_type', params.event_type);
   if (params?.agent_id) q.set('agent_id', params.agent_id);
   const qs = q.toString();
-  return get<unknown[]>(`/logs/hook-events${qs ? `?${qs}` : ''}`);
+  return get<HookEvent[]>(`/logs/hook-events${qs ? `?${qs}` : ''}`);
 };
 
 // ─── Scan results ─────────────────────────────────────────────────────────────
