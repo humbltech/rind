@@ -39,5 +39,11 @@ export class JsonlAuditLog<T> implements IAuditLog<T> {
       this.onError(err);
     }
     this.pending = false;
+    if (this.queue.length > 0) {
+      this.pending = true;
+      setImmediate(() => {
+        this.flush();
+      });
+    }
   }
 }
