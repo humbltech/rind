@@ -22,7 +22,6 @@ export const llmResponsePiiRedacted: Scenario = {
   demo: {
     userPrompt: 'What details do we have on customer ID 8821?',
     agentPreamble: "I'll look up customer 8821…",
-    agentBlockedResponse: '',
     agentUnprotectedResponse: 'Customer 8821: John Smith, SSN 987-65-4321, balance $12,400.',
   },
 

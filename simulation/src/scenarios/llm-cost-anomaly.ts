@@ -23,7 +23,6 @@ export const llmCostAnomaly: Scenario = {
   demo: {
     userPrompt: 'Process the full codebase diff and suggest improvements.',
     agentPreamble: "I'll analyse the entire diff…",
-    agentBlockedResponse: '',
     agentUnprotectedResponse: 'Analysis complete. 47 suggestions generated.',
   },
 
@@ -58,6 +57,9 @@ export const llmCostAnomaly: Scenario = {
     },
   }),
 
+  // Note: the llm:cost-anomaly event is emitted on the internal RindEventBus and is not
+  // observable over HTTP. The event emission is covered by unit tests in llm-gateway.test.ts.
+  // This scenario verifies the call is ALLOWED (not blocked) and recorded in the audit log.
   steps: [
     {
       label: 'Expensive LLM call is forwarded — cost anomaly emitted but call succeeds (200)',

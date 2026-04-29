@@ -22,7 +22,6 @@ export const llmPiiPseudonymized: Scenario = {
   demo: {
     userPrompt: 'Summarise account activity for customer john.doe@example.com.',
     agentPreamble: "I'll look up account activity…",
-    agentBlockedResponse: '',
     agentUnprotectedResponse: 'Account for john.doe@example.com shows 3 transactions this month.',
   },
 
@@ -74,6 +73,14 @@ export const llmPiiPseudonymized: Scenario = {
         max_tokens: 200,
         messages: [{ role: 'user', content: 'Summarise account activity for customer john.doe@example.com.' }],
       },
+      expect: { status: 200 },
+    },
+    {
+      // Confirms the forwardFn was actually called (i.e. pseudonymization didn't block)
+      // and the event was recorded with token counts.
+      label: 'Call appears in /logs/llm-calls confirming forward ran',
+      endpoint: '/logs/llm-calls',
+      method: 'GET',
       expect: { status: 200 },
     },
   ],

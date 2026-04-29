@@ -1,8 +1,7 @@
 // Simulation scenario types.
 // A scenario is the unit of human-testable value — it tells a story and verifies it technically.
 
-import type { PolicyConfig, ToolDefinition, LlmForwardFn } from '@rind/proxy';
-import type { LlmProxyConfig } from '@rind/core';
+import type { PolicyConfig, ToolDefinition, LlmForwardFn, LlmProxyConfig } from '@rind/proxy';
 
 export type CompanyId = 'meridian' | 'stackline' | 'fortress';
 export type DeploymentId = 'direct-mcp' | 'llm-gateway' | 'framework-sdk' | 'enterprise';
@@ -69,7 +68,7 @@ export interface Scenario {
   demo: {
     userPrompt: string; // What the "user" types: "Clean up the test data"
     agentPreamble: string; // Agent's thinking before tool call: "I'll help you clean up..."
-    agentBlockedResponse: string; // Agent reacts to Rind block: "I can't complete that action..."
+    agentBlockedResponse?: string; // Agent reacts to Rind block: "I can't complete that action..." (omit for non-blocking scenarios)
     agentUnprotectedResponse: string; // Agent when no Rind (damage): "Done! Table dropped."
   };
 

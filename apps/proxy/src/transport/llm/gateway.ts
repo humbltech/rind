@@ -51,8 +51,6 @@ export interface LlmGatewayOptions {
    * without making real network calls.
    */
   forwardFn?: LlmForwardFn;
-  /** Per-layer detection mode overrides. Default for all layers: 'block'. */
-  layers?: ProxyConfig['layers'];
 }
 
 // ─── Conversation tracker ─────────────────────────────────────────────────────
@@ -245,7 +243,7 @@ function makeEnricher(
 
 function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOptions, rateLimiter: RateLimiter, tracker: ConversationTracker) {
   const { config, bus, policyEngine, logger, onResponseComplete } = opts;
-  const llmScannerMode = opts.layers?.['llm-scanner']?.mode ?? 'block';
+  const llmScannerMode = 'block' as const;
   const emitEnrichedEvent = makeEnricher(config, bus, logger, tracker, onResponseComplete, llmScannerMode);
 
   return async (c: Context) => {

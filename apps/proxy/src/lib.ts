@@ -8,6 +8,7 @@ export { InMemoryPolicyStore } from './policy/store.js';
 export type { PolicyStore } from './policy/store.js';
 export type { ForwardLlmResult } from './transport/llm/forward.js';
 export type { LlmForwardFn } from './types.js';
+export type { LlmProxyConfig } from './transport/llm/types.js';
 export type {
   ProxyConfig,
   ForwardFn,
