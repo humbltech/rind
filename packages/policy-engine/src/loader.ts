@@ -57,7 +57,12 @@ const LoopConditionSchema = z.object({
 
 // D-036: rule metadata schema (authoring provenance, not used by engine)
 const PolicyRuleMetaSchema = z.object({
-  source: z.string(), // 'manual' | 'yaml' | 'pack:sql-protection' | 'ai-assisted'
+  source: z.union([
+    z.literal('manual'),
+    z.literal('yaml'),
+    z.string().startsWith('pack:'),
+    z.literal('ai-assisted'),
+  ]),
   createdAt: z.string(),
   modifiedFromPack: z.boolean().optional(),
 });
