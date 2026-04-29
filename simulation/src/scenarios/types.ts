@@ -1,7 +1,8 @@
 // Simulation scenario types.
 // A scenario is the unit of human-testable value — it tells a story and verifies it technically.
 
-import type { PolicyConfig, ToolDefinition } from '@rind/proxy';
+import type { PolicyConfig, ToolDefinition, LlmForwardFn } from '@rind/proxy';
+import type { LlmProxyConfig } from '@rind/core';
 
 export type CompanyId = 'meridian' | 'stackline' | 'fortress';
 export type DeploymentId = 'direct-mcp' | 'llm-gateway' | 'framework-sdk' | 'enterprise';
@@ -17,12 +18,17 @@ export type MockToolHandler = (input: unknown) => Promise<{ output: unknown }> |
 // ─── Scenario step ────────────────────────────────────────────────────────────
 
 export interface StepExpectation {
-  status: 200 | 403 | 201 | 404; // HTTP status from proxy
-  blocked?: boolean; // response.blocked === true
+  status: 200 | 403 | 201 | 404 | 429; // HTTP status from proxy — 429 for rate-limit
+  blocked?: boolean; // response.blocked === true (MCP tool-call path)
   action?: string; // response.action (DENY, BLOCKED_INJECTION, etc.)
   findingCategory?: string; // present in /scan response findings
   threatType?: string; // present in response events (PROMPT_INJECTION, etc.)
   passed?: boolean; // for /scan — result.passed
+  /**
+   * LLM gateway path: checks response.error?.type matches this string.
+   * Examples: 'policy_denied', 'rate_limit_exceeded', 'upstream_timeout'
+   */
+  errorType?: string;
 }
 
 export interface ScenarioStep {
@@ -72,6 +78,17 @@ export interface Scenario {
   toolHandlers: Record<string, MockToolHandler>; // tool name → response generator
   policy: PolicyConfig; // Rind policy to enforce during this scenario
   agentId: string; // The agent identity used in tool calls
+
+  /**
+   * Injectable LLM forward function for LLM proxy scenarios.
+   * When present: the scenario runner enables llmProxy in the server config
+   * and passes this fn as llmForwardFn. Each scenario controls exactly what
+   * canned response its LLM steps receive.
+   * Absent for all 11 existing MCP scenarios — zero breakage.
+   */
+  llmForwardFn?: LlmForwardFn;
+  /** Additional LLM proxy configuration for this scenario (merged with defaults). */
+  llmProxyConfig?: Partial<LlmProxyConfig>;
 
   // Ordered steps — run in sequence against the proxy
   steps: ScenarioStep[];
