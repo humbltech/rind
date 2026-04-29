@@ -245,6 +245,11 @@ function makeEnricher(
 
 function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOptions, rateLimiter: RateLimiter, tracker: ConversationTracker) {
   const { config, bus, policyEngine, logger, onResponseComplete } = opts;
+  // Note: for the LLM scanner, 'alert' and 'block' modes are functionally equivalent
+  // because scanLlmRequest/scanLlmResponse are observation-only — they attach threats
+  // to the LlmCallEvent but never block the request themselves. Blocking is handled by
+  // content policy rules (DENY/REDACT actions) evaluated separately. Only 'off' has
+  // a distinct effect: it skips scanning entirely (no threats recorded, no rules matched).
   const llmScannerMode = opts.layers?.['llm-scanner']?.mode ?? 'block';
   const emitEnrichedEvent = makeEnricher(config, bus, logger, tracker, onResponseComplete, llmScannerMode);
 
