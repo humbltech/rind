@@ -19,7 +19,7 @@ import { McpServerList, type McpServerInfo } from './components/mcp-server-list'
 import { InsightsPanel } from './components/insights-panel';
 import { ApprovalBanner } from './components/approval-banner';
 import { LlmCallTable, type LlmCallEntry } from './components/llm-call-table';
-import { getStatus, getToolCalls, getScanResults, getHookContext, getLlmCalls, type ProxyStatus, type ClaudeSession, type HookContext } from './lib/api.js';
+import { getStatus, getToolCalls, getScanResults, getHookContext, getLlmCalls, type ProxyStatus, type ClaudeSession, type HookContext } from './lib/api';
 
 // ─── Dashboard page ───────────────────────────────────────────────────────────
 

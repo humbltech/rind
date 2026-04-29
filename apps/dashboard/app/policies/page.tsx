@@ -14,7 +14,7 @@ import { PackGrid, type PackSummary } from '../components/pack-grid';
 import { PackPreviewSheet } from '../components/pack-preview-sheet';
 import { RuleList, type PolicyRuleRow } from '../components/rule-list';
 import { RuleBuilder } from '../components/rule-builder';
-import { getPacks, getPolicies, enablePack, disablePack, addRule, updateRule, deleteRule, toggleRule, type PackWithState } from '../lib/api.js';
+import { getPacks, getPolicies, enablePack, disablePack, addRule, updateRule, deleteRule, toggleRule, type PackWithState } from '../lib/api';
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 

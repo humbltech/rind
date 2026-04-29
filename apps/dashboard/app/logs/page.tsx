@@ -26,7 +26,7 @@ import type React from 'react';
 import { Sidebar } from '../components/sidebar';
 import type { ToolCallEntry } from '../components/tool-call-table';
 import { LlmCallTable, type LlmCallEntry } from '../components/llm-call-table';
-import { getToolCalls, getLlmCalls } from '../lib/api.js';
+import { getToolCalls, getLlmCalls } from '../lib/api';
 import {
   Search,
   ChevronDown,

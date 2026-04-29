@@ -5,8 +5,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ShieldAlert, Check, X, Clock } from 'lucide-react';
-import type { PendingApproval } from '../lib/api.js';
-import { getApprovals, approveAction, denyAction } from '../lib/api.js';
+import type { PendingApproval } from '../lib/api';
+import { getApprovals, approveAction, denyAction } from '../lib/api';
 
 export function ApprovalBanner() {
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);

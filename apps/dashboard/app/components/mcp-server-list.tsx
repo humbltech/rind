@@ -4,7 +4,7 @@
 'use client';
 
 import { Shield, Eye, Server, AlertTriangle, Lock, XCircle } from 'lucide-react';
-import type { McpConnectionStatus, McpServerInfo } from '../lib/api.js';
+import type { McpConnectionStatus, McpServerInfo } from '../lib/api';
 
 export type { McpConnectionStatus, McpServerInfo };
 
