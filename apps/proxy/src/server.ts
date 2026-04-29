@@ -322,5 +322,6 @@ export function createProxyServer(config: ProxyConfig) {
     app,
     logger,
     policyStore, // exposed for Phase 2 API mutations
+    sessionStore, // exposed for simulation test isolation
   };
 }

@@ -3,7 +3,6 @@
 // Only export what external consumers need.
 
 export { createProxyServer } from './server.js';
-export { resetSessions } from './session.js';
 export { clearSchemaStore } from './scanner/index.js';
 export { InMemoryPolicyStore } from './policy/store.js';
 export type { PolicyStore } from './policy/store.js';

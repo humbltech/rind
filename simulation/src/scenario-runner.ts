@@ -7,7 +7,7 @@
 //               Slower, requires the proxy to be running — used for live demos
 //               where dashboard visibility matters.
 
-import { createProxyServer, resetSessions, clearSchemaStore } from '@rind/proxy';
+import { createProxyServer, clearSchemaStore } from '@rind/proxy';
 import type {
   Scenario,
   ScenarioResult,
@@ -159,10 +159,10 @@ export async function runScenario(
   proxyUrl?: string,
   fixturePort = 3100,
 ): Promise<ScenarioResult> {
-  // Reset shared singleton state to prevent bleed between scenarios in the same process.
-  // Only needed for in-process mode — HTTP mode talks to an external process.
+  // Create a fresh proxy server for in-process mode: each call gets a new sessionStore.
+  // HTTP mode talks to an external process, so no reset needed.
+  // clearSchemaStore() removes cached MCP schemas between runs.
   if (!proxyUrl) {
-    resetSessions();
     clearSchemaStore();
   }
 
