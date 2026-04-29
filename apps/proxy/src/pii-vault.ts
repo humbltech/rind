@@ -11,7 +11,7 @@
 
 import { createHash } from 'node:crypto';
 import type { PiiDetectorConfig, PiiEntity, PIIAuditStats } from '@rind/core';
-import { PII_PATTERNS } from './transport/llm/request-scanner.js';
+import { piiPatternById } from './rules/llm-pii-patterns.rules.js';
 
 // ─── Internal entry ───────────────────────────────────────────────────────────
 
@@ -69,16 +69,16 @@ export interface PIIVault {
 // Phase 2 (requires ml_ner stage): PERSON_NAME, ADDRESS, PASSPORT,
 //   DATE_OF_BIRTH, HEALTH_CARD
 //
-// PII_PATTERNS order (from request-scanner.ts):
-//   [0] SSN, [1] CREDIT_CARD, [2] PHONE, [3] EMAIL
-
+// Build entity → RegExp map from PII_PATTERNS, keyed by id (not position).
+// piiPatternById is imported from rules/llm-pii-patterns.rules.ts — id type is
+// checked at compile time against the LlmPiiPatternId union.
 const ENTITY_PATTERN_MAP: Partial<Record<PiiEntity, RegExp>> = {
-  // From PII_PATTERNS (shared with passive scanner)
-  SSN:         PII_PATTERNS[0]!.pattern,
-  SIN:         PII_PATTERNS[0]!.pattern, // same digit structure; locale label differs
-  CREDIT_CARD: PII_PATTERNS[1]!.pattern,
-  PHONE:       PII_PATTERNS[2]!.pattern,
-  EMAIL:       PII_PATTERNS[3]!.pattern,
+  // From PII_PATTERNS (shared with passive scanner) — looked up by id, not position
+  SSN:         piiPatternById('llm-pii-001'),
+  SIN:         piiPatternById('llm-pii-001'), // same digit structure; locale label differs
+  CREDIT_CARD: piiPatternById('llm-pii-002'),
+  PHONE:       piiPatternById('llm-pii-003'),
+  EMAIL:       piiPatternById('llm-pii-004'),
   // Additional Phase 1 patterns (inline — not in passive scanner)
   IP_ADDRESS: /\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b/,
   IBAN:       /\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}(?:[A-Z0-9]{0,16})\b/,

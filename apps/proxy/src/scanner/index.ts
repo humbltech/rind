@@ -15,7 +15,15 @@ const schemaStore = new Map<string, ServerSchema>();
 // Used to quarantine servers that didn't pass — schemaStore only holds clean baselines.
 const lastScanResults = new Map<string, ScanResult & { tools: ToolDefinition[] }>();
 
-export function runFullScan(serverId: string, tools: ToolDefinition[]): ScanResult {
+export function runFullScan(
+  serverId: string,
+  tools: ToolDefinition[],
+  mode: 'block' | 'alert' | 'off' = 'block',
+): ScanResult {
+  if (mode === 'off') {
+    return { serverId, scannedAt: Date.now(), findings: [], passed: true };
+  }
+
   // Collect tool names from all OTHER registered servers for cross-server shadowing check (D-028)
   const externalToolNames: string[] = [];
   for (const [id, schema] of schemaStore) {
@@ -40,10 +48,13 @@ export function runFullScan(serverId: string, tools: ToolDefinition[]): ScanResu
   }
 
   // Compute pass/fail before deciding whether to update the stored baseline.
+  // In alert mode, always treat as passed (findings recorded but not enforced).
   // Only update the baseline on clean scans — this preserves the last-known-good
   // schema so drift is detectable on repeated scans of a poisoned/drifted server,
   // not just the first reconnect.
-  const passed = !findings.some((f) => f.severity === 'critical' || f.severity === 'high');
+  const passed = mode === 'alert'
+    ? true
+    : !findings.some((f) => f.severity === 'critical' || f.severity === 'high');
   const scannedAt = Date.now();
 
   const result: ScanResult = { serverId, scannedAt, findings, passed };

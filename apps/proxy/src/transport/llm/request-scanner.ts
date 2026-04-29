@@ -12,33 +12,12 @@
 
 import type { LlmThreat } from './types.js';
 import { CREDENTIAL_PATTERNS } from '../../inspector/response.js';
+import { PII_PATTERNS } from '../../rules/index.js';
+
+export { PII_PATTERNS } from '../../rules/index.js';
 
 // Maximum number of recent messages to scan (system + this many from the tail)
 const MAX_MESSAGES = 20;
-
-// ─── PII patterns ─────────────────────────────────────────────────────────────
-
-export const PII_PATTERNS: Array<{ pattern: RegExp; detail: string }> = [
-  {
-    // SSN: hyphenated (123-45-6789), space-separated (123 45 6789), or bare (123456789)
-    pattern: /\b(?:\d{3}-\d{2}-\d{4}|\d{3} \d{2} \d{4}|\d{9})\b/,
-    detail: 'Social Security Number (SSN)',
-  },
-  {
-    // Requires standard card separators (space or dash between groups of 4 digits).
-    // Avoids false positives on arbitrary long numeric IDs (order IDs, UUIDs, etc.).
-    pattern: /\b\d{4}[- ]\d{4}[- ]\d{4}[- ]\d{2,4}\b/,
-    detail: 'potential credit/debit card number',
-  },
-  {
-    pattern: /\b(?:\+?1[-.\s]?)?(?:\(\d{3}\)|\d{3})[-.\s]?\d{3}[-.\s]?\d{4}\b/,
-    detail: 'phone number',
-  },
-  {
-    pattern: /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/,
-    detail: 'email address',
-  },
-];
 
 // ─── Text extraction ──────────────────────────────────────────────────────────
 

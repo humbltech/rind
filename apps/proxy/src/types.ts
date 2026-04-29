@@ -50,4 +50,19 @@ export interface ProxyConfig {
   // Module enable flags — all on by default, disabled with --no-* CLI flags
   mcpProxyEnabled?: boolean;   // default true — disable with --no-mcp-proxy
   hooksEnabled?: boolean;      // default true — disable with --no-hooks
+  /**
+   * Per-layer detection mode overrides. Default for all layers: 'block' (current behavior).
+   * Configurable via rind.policy.yaml:
+   *   layers:
+   *     request-inspector:
+   *       mode: alert    # detect but don't block
+   *     response-inspector:
+   *       mode: block    # default
+   */
+  layers?: {
+    'request-inspector'?: { mode: 'block' | 'alert' | 'off' };
+    'response-inspector'?: { mode: 'block' | 'alert' | 'off' };
+    'server-scanner'?:     { mode: 'block' | 'alert' | 'off' };
+    'llm-scanner'?:        { mode: 'block' | 'alert' | 'off' };
+  };
 }

@@ -192,6 +192,7 @@ export function toolCallRoutes({
           }
         },
         blockOnCriticalResponseThreats: true,
+        layers: config.layers,
         onRequireApproval: async (evt, ruleName) => {
           const matchedPolicyRule = policyStore.get().policies.find((r) => r.name === ruleName);
           const approvalTimeoutMs = parseApprovalTimeout(matchedPolicyRule?.approval?.timeout) ?? 120_000;

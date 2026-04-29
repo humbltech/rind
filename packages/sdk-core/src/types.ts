@@ -218,6 +218,8 @@ export interface ToolCallEvent {
   cwd?: string;
   // Deterministic correlation ID linking PreToolUse → PostToolUse for the same call
   correlationId?: string;
+  // Request-side injection threats detected in alert mode (non-blocking)
+  requestThreats?: string[];
   // PostToolUse response data — enriched server-side when PostToolUse arrives
   response?: {
     outputPreview?: string;

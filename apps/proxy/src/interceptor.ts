@@ -14,7 +14,7 @@
 //   - Fail-closed (default): inspection/policy errors produce DENY
 //   - Fail-open: allowed per-rule via failMode: 'open'
 
-import type { ToolCallEvent, ToolResponseEvent, PolicyAction, PolicyRule } from './types.js';
+import type { ToolCallEvent, ToolResponseEvent, PolicyAction, PolicyRule, ProxyConfig } from './types.js';
 import { inspectRequest } from './inspector/request.js';
 import { inspectResponse } from './inspector/response.js';
 import type { ISessionStore } from './session.js';
@@ -65,6 +65,8 @@ export interface InterceptorOptions {
   // Skip request-side injection scanning. Set true for hook evaluate-only mode
   // where tool inputs are user-initiated (not attacker-controlled MCP inputs).
   skipRequestInspection?: boolean;
+  /** Per-layer detection mode overrides. Default for all layers: 'block'. */
+  layers?: ProxyConfig['layers'];
   // When set, called on REQUIRE_APPROVAL to wait for a human decision before
   // forwarding the call. If absent, REQUIRE_APPROVAL returns immediately
   // (backward-compat for evaluate-only hook path). Returns the decision and
@@ -103,17 +105,29 @@ export async function intercept(
   // Skipped for hook evaluate-only mode: tool inputs come from the user's own
   // coding agent, not from untrusted MCP tool definitions.
   if (!opts.skipRequestInspection) {
-    let requestResult: { allowed: boolean; reason?: string } | undefined;
-    try {
-      requestResult = inspectRequest(event);
-    } catch (err) {
-      opts.onToolCallEvent(event);
-      return blocked('BLOCKED_INJECTION', `Request inspection error: ${String(err)}`);
-    }
+    const reqMode = opts.layers?.['request-inspector']?.mode ?? 'block';
+    if (reqMode !== 'off') {
+      let requestResult: { allowed: boolean; reason?: string } | undefined;
+      try {
+        requestResult = inspectRequest(event);
+      } catch (err) {
+        if (reqMode === 'block') {
+          opts.onToolCallEvent(event);
+          return blocked('BLOCKED_INJECTION', `Request inspection error: ${String(err)}`);
+        }
+        // alert mode — inspection threw; record the anomaly on the event so it
+        // appears in the audit log emitted by onToolCallEvent at step 4.
+        event = { ...event, requestThreats: [`request inspection threw: ${String(err)}`] };
+      }
 
-    if (!requestResult.allowed) {
-      opts.onToolCallEvent(event);
-      return blocked('BLOCKED_INJECTION', requestResult.reason);
+      if (requestResult && !requestResult.allowed) {
+        if (reqMode === 'block') {
+          opts.onToolCallEvent(event);
+          return blocked('BLOCKED_INJECTION', requestResult.reason);
+        }
+        // alert mode — record detection on the event so onToolCallEvent emits it in step 4
+        event = { ...event, requestThreats: [requestResult.reason ?? 'injection detected (alert mode)'] };
+      }
     }
   }
 
@@ -255,11 +269,16 @@ export async function intercept(
 
   // ── 8. Response-side inspection ─────────────────────────────────────────────
   let responseThreats: ReturnType<typeof inspectResponse> = [];
-  try {
-    responseThreats = inspectResponse(output);
-  } catch {
-    // Response inspection error → fail closed (block response)
-    return blocked('BLOCKED_THREAT', `Response inspection failed — blocking for safety.`, matchedRule?.name ?? 'response-inspector');
+  const respMode = opts.layers?.['response-inspector']?.mode ?? 'block';
+  if (respMode !== 'off') {
+    try {
+      responseThreats = inspectResponse(output);
+    } catch {
+      // Response inspection error → fail closed in block mode, continue in alert mode
+      if (respMode === 'block') {
+        return blocked('BLOCKED_THREAT', `Response inspection failed — blocking for safety.`, matchedRule?.name ?? 'response-inspector');
+      }
+    }
   }
 
   const responseEvent: ToolResponseEvent = {
@@ -274,7 +293,7 @@ export async function intercept(
   opts.onToolResponseEvent(responseEvent);
 
   // ── 9. Block on critical response threats ────────────────────────────────────
-  if (opts.blockOnCriticalResponseThreats) {
+  if (respMode === 'block' && opts.blockOnCriticalResponseThreats) {
     const criticalThreats = responseThreats.filter((t) => t.severity === 'critical');
     if (criticalThreats.length > 0) {
       return blocked(

@@ -1,4 +1,4 @@
-// PII detector — wraps PII_PATTERNS from transport/llm/request-scanner.ts.
+// PII detector — wraps PII_PATTERNS from rules/llm-pii-patterns.rules.ts.
 //
 // Phase 1: regex-only pipeline.
 // Implemented entity types: SSN, SIN, CREDIT_CARD, PHONE, EMAIL, IP_ADDRESS, IBAN
@@ -7,22 +7,22 @@
 // Requesting an unimplemented entity type silently produces no matches.
 
 import type { PiiDetectorConfig, PiiEntity } from '@rind/core';
-import { PII_PATTERNS } from '../transport/llm/request-scanner.js';
+import { piiPatternById } from '../rules/llm-pii-patterns.rules.js';
 import type { DetectorRunResult } from './types.js';
 
 // ─── Entity → pattern ────────────────────────────────────────────────────────
 //
-// PII_PATTERNS order (from request-scanner.ts):
-//   [0] SSN, [1] CREDIT_CARD, [2] PHONE, [3] EMAIL
+// Patterns looked up by stable ID — not by position.
+// Adding or reordering entries in LLM_PII_PATTERNS will not silently break this.
 //
-// IP_ADDRESS and IBAN use inline patterns (not in passive scanner PII_PATTERNS).
+// IP_ADDRESS and IBAN use inline patterns (not in the shared PII_PATTERNS array).
 
 const ENTITY_PATTERN_MAP: Partial<Record<PiiEntity, RegExp>> = {
-  SSN:         PII_PATTERNS[0]!.pattern,
-  SIN:         PII_PATTERNS[0]!.pattern, // same digit structure; locale label differs
-  CREDIT_CARD: PII_PATTERNS[1]!.pattern,
-  PHONE:       PII_PATTERNS[2]!.pattern,
-  EMAIL:       PII_PATTERNS[3]!.pattern,
+  SSN:         piiPatternById('llm-pii-001'),
+  SIN:         piiPatternById('llm-pii-001'), // same digit structure; locale label differs
+  CREDIT_CARD: piiPatternById('llm-pii-002'),
+  PHONE:       piiPatternById('llm-pii-003'),
+  EMAIL:       piiPatternById('llm-pii-004'),
   IP_ADDRESS:  /\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b/,
   IBAN:        /\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}(?:[A-Z0-9]{0,16})\b/,
   // PERSON_NAME, ADDRESS, PASSPORT, DATE_OF_BIRTH, HEALTH_CARD: Phase 2 (ml_ner)

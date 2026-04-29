@@ -15,14 +15,15 @@ const ScanBodySchema = z.object({
 export interface ScanRouteDeps {
   bus: RindEventBus;
   logger: Logger;
+  serverScannerMode?: 'block' | 'alert' | 'off';
 }
 
-export function scanRoutes({ bus, logger }: ScanRouteDeps): Hono {
+export function scanRoutes({ bus, logger, serverScannerMode = 'block' }: ScanRouteDeps): Hono {
   const app = new Hono();
 
   function handleScan(serverId: string, tools: Parameters<typeof runFullScan>[1], logLabel: string) {
     logger.info({ serverId }, logLabel);
-    const result = runFullScan(serverId, tools);
+    const result = runFullScan(serverId, tools, serverScannerMode);
     const level = result.passed ? 'info' : 'warn';
     logger[level]({ serverId, findingCount: result.findings.length, passed: result.passed }, `${logLabel} complete`);
     bus.emit('scan:complete', result);
