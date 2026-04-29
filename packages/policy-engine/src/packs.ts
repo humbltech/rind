@@ -538,6 +538,43 @@ const registry: PolicyPack[] = [
       },
     ],
   },
+
+  {
+    id: 'llm-response-pii-redact-v1',
+    version: '1.0.0',
+    name: 'LLM Response PII Redactor',
+    description: 'Redacts PII (SSN, credit card, email, phone) in LLM responses before they reach the client. Uses failMode:open so scanner errors never block output.',
+    category: 'llm-safety',
+    tags: ['llm', 'pii', 'privacy', 'redaction', 'response', 'data-protection'],
+    severity: 'moderate',
+    customizable: [
+      {
+        ruleIndex: 0,
+        field: 'pii.entities',
+        label: 'PII entity types to redact in responses',
+        type: 'string',
+        default: 'EMAIL,PHONE,SSN,SIN,CREDIT_CARD',
+      },
+    ],
+    rules: [
+      {
+        name: 'llm-response-pii-redact-v1:redact-pii-in-response',
+        agent: '*',
+        match: {
+          content: {
+            scope: 'response',
+            detectors: ['pii'],
+          },
+        },
+        pii: {
+          entities: ['EMAIL', 'PHONE', 'SSN', 'SIN', 'CREDIT_CARD'],
+        },
+        action: 'REDACT',
+        failMode: 'open',
+        priority: PACK_PRIORITY,
+      },
+    ],
+  },
 ];
 
 // ─── Registry API ─────────────────────────────────────────────────────────────

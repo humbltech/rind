@@ -23,6 +23,11 @@ describe('listPacks', () => {
     expect(ids).toContain('llm-pii-pseudonymize-v1');
     expect(ids).toContain('llm-injection-guard-v1');
   });
+
+  it('includes llm-response-pii-redact-v1', () => {
+    const ids = listPacks().map((p) => p.id);
+    expect(ids).toContain('llm-response-pii-redact-v1');
+  });
 });
 
 describe('getPack', () => {
@@ -142,5 +147,28 @@ describe('cli-protection pack integration', () => {
     const engine = new PolicyEngine(store);
     const result = engine.evaluate(makeEvent('Bash', { command: 'ls -la' }));
     expect(result.action).toBe('ALLOW');
+  });
+});
+
+describe('llm-response-pii-redact-v1', () => {
+  it('has one rule with REDACT action and response scope', () => {
+    const pack = getPack('llm-response-pii-redact-v1')!;
+    expect(pack).toBeDefined();
+    const rules = expandPackRules(pack);
+    expect(rules).toHaveLength(1);
+    const rule = rules[0]!;
+    expect(rule.action).toBe('REDACT');
+    expect((rule.match as { content?: { scope: string } }).content?.scope).toBe('response');
+  });
+
+  it('has failMode open (never block on scanner error)', () => {
+    const pack = getPack('llm-response-pii-redact-v1')!;
+    const rules = expandPackRules(pack);
+    expect(rules[0]!.failMode).toBe('open');
+  });
+
+  it('has llm-safety category', () => {
+    const pack = getPack('llm-response-pii-redact-v1')!;
+    expect(pack.category).toBe('llm-safety');
   });
 });
