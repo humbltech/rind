@@ -13,7 +13,7 @@ import type { ProcessedHookEvent } from '../hooks/claude-code.js';
 import { HookRequestSchema, HookEventSchema, evaluateHook, processHookEvent, deriveToolLabel } from '../hooks/claude-code.js';
 import type { HookEvalOptions, HookEvalResult } from '../hooks/claude-code.js';
 import { discoverClaudeCodeContext, resolveSessionName } from '../hooks/claude-code-context.js';
-import { getSession, createSession } from '../session.js';
+import type { ISessionStore } from '../session.js';
 import { emitAudit, parseApprovalTimeout } from './helpers.js';
 
 export interface HookRouteDeps {
@@ -26,6 +26,7 @@ export interface HookRouteDeps {
   bus: RindEventBus;
   config: ProxyConfig;
   logger: Logger;
+  sessionStore: ISessionStore;
 }
 
 export function hookRoutes({
@@ -38,6 +39,7 @@ export function hookRoutes({
   bus,
   config,
   logger,
+  sessionStore,
 }: HookRouteDeps): Hono {
   const app = new Hono();
 
@@ -64,8 +66,8 @@ export function hookRoutes({
     // Auto-register session on first hook call from a session ID
     const sid = parsed.data.session_id;
     const agentId = parsed.data.agent_id ?? `hook:${sid}`;
-    if (!getSession(sid)) {
-      createSession(agentId, sid);
+    if (!sessionStore.get(sid)) {
+      sessionStore.create(agentId, sid);
     }
 
     // Hook evaluate is advisory — don't pass loop detector or rate limiter.
@@ -77,6 +79,7 @@ export function hookRoutes({
     let matchedRuleName: string | undefined;
     const evalResult: HookEvalResult = await evaluateHook(parsed.data, {
       policyEngine,
+      sessionStore,
       onToolCallEvent: (event, rule) => {
         matchedRuleName = rule?.name;
         emitAudit(bus, {
@@ -280,8 +283,8 @@ export function hookRoutes({
     // Auto-register session
     const sid = parsed.data.session_id;
     const agentId = parsed.data.agent_id ?? `hook:${sid}`;
-    if (!getSession(sid)) {
-      createSession(agentId, sid);
+    if (!sessionStore.get(sid)) {
+      sessionStore.create(agentId, sid);
     }
 
     logger.info(

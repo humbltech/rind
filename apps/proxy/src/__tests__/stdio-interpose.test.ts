@@ -21,6 +21,7 @@ import { PolicyEngine } from '../policy/engine.js';
 import { InMemoryPolicyStore } from '../policy/store.js';
 import { expandPackRules, getPack } from '../policy/packs.js';
 import type { InterceptorOptions } from '../interceptor.js';
+import { InMemorySessionStore } from '../session.js';
 import { JSON_RPC } from '../transport/types.js';
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
@@ -28,6 +29,7 @@ import { JSON_RPC } from '../transport/types.js';
 function makeAllowOpts(): InterceptorOptions {
   return {
     policyEngine: new PolicyEngine(new InMemoryPolicyStore({ policies: [] })),
+    sessionStore: new InMemorySessionStore(),
     onToolCallEvent: () => {},
     onToolResponseEvent: () => {},
     blockOnCriticalResponseThreats: false,
@@ -38,6 +40,7 @@ function makeCliProtectionOpts(): InterceptorOptions {
   const pack = getPack('cli-protection')!;
   return {
     policyEngine: new PolicyEngine(new InMemoryPolicyStore({ policies: expandPackRules(pack) })),
+    sessionStore: new InMemorySessionStore(),
     onToolCallEvent: () => {},
     onToolResponseEvent: () => {},
     blockOnCriticalResponseThreats: false,

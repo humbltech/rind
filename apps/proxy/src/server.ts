@@ -21,7 +21,7 @@ import { listStoredSchemas, listAllScanResults } from './scanner/index.js';
 import { PolicyEngine } from './policy/engine.js';
 import { InMemoryPolicyStore } from './policy/store.js';
 import { loadPolicyFile, emptyPolicyConfig } from './policy/loader.js';
-import { createSession, getSession, killSession, listSessions } from './session.js';
+import { InMemorySessionStore } from './session.js';
 import { RindEventBus } from './event-bus.js';
 import { type IEventStore, type IAuditLog, JsonlEventStore, JsonlAuditLog } from '@rind/storage';
 import { LoopDetector } from './loop-detector.js';
@@ -98,6 +98,8 @@ export function createProxyServer(config: ProxyConfig) {
   // Skip persisted rules when policy is provided in-memory (e.g. tests) — prevents
   // disk state from bleeding into isolated test environments.
   const policyStore = new InMemoryPolicyStore(policyConfig, config.policy ? undefined : policyPersistPath);
+  // ── Session store ─────────────────────────────────────────────────────────────
+  const sessionStore = new InMemorySessionStore();
   // ── Runtime safety (D-015) — loop detector is shared between interceptor and policy engine
   const loopDetector = new LoopDetector();
   // ── PreToolUse ↔ PostToolUse correlation tracker
@@ -156,6 +158,7 @@ export function createProxyServer(config: ProxyConfig) {
       policyEngine,
       loopDetector,
       rateLimiter,
+      sessionStore,
       onToolCallEvent: (event: ToolCallEvent, rule?: import('./types.js').PolicyRule) => {
         // bus.emit triggers the ring buffer subscriber — no direct push needed
         bus.emit('tool:call', event);
@@ -251,7 +254,7 @@ export function createProxyServer(config: ProxyConfig) {
 
   // ─── Status summary (D-026) ───────────────────────────────────────────────────
   app.get('/status', (c) => {
-    const sessions = listSessions();
+    const sessions = sessionStore.list();
     const events = ringBuffer.toArray();
     const schemas = listStoredSchemas();
     // Count critical/high findings across all registered servers as the threat signal
@@ -281,11 +284,11 @@ export function createProxyServer(config: ProxyConfig) {
 
   // ─── Route modules ────────────────────────────────────────────────────────────
   app.route('/', policyRoutes({ policyEngine, policyStore, bus, logger }));
-  app.route('/', sessionRoutes({ bus, config, logger }));
+  app.route('/', sessionRoutes({ bus, config, logger, sessionStore }));
   app.route('/', scanRoutes({ bus, config, logger }));
   app.route('/', logRoutes({ ringBuffer, hookEventBuffer }));
-  app.route('/', hookRoutes({ policyEngine, policyStore, approvalQueue, correlator, ringBuffer, hookEventBuffer, bus, config, logger }));
-  app.route('/', toolCallRoutes({ policyEngine, policyStore, loopDetector, rateLimiter, approvalQueue, ringBuffer, bus, config, logger }));
+  app.route('/', hookRoutes({ policyEngine, policyStore, approvalQueue, correlator, ringBuffer, hookEventBuffer, bus, config, logger, sessionStore }));
+  app.route('/', toolCallRoutes({ policyEngine, policyStore, loopDetector, rateLimiter, approvalQueue, ringBuffer, bus, config, logger, sessionStore }));
 
   return {
     start: async () => {

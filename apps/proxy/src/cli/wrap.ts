@@ -28,6 +28,7 @@ import { PolicyEngine } from '../policy/engine.js';
 import { InMemoryPolicyStore } from '../policy/store.js';
 import { LoopDetector } from '../loop-detector.js';
 import { RateLimiter } from '../rate-limiter.js';
+import { InMemorySessionStore } from '../session.js';
 import { StdioInterposer } from '../transport/stdio-interpose.js';
 
 // ─── Arg parsing ──────────────────────────────────────────────────────────────
@@ -162,6 +163,7 @@ export async function runWrap(argv: string[]): Promise<void> {
     policyEngine,
     loopDetector,
     rateLimiter,
+    sessionStore: new InMemorySessionStore(),
     onToolCallEvent: (event: import('../types.js').ToolCallEvent, rule?: import('../types.js').PolicyRule) => {
       logger.info({
         toolName: event.toolName,

@@ -17,7 +17,7 @@
 import type { ToolCallEvent, ToolResponseEvent, PolicyAction, PolicyRule } from './types.js';
 import { inspectRequest } from './inspector/request.js';
 import { inspectResponse } from './inspector/response.js';
-import { isSessionActive, incrementToolCall, addCost, recordCall, getSession, getHourlyStats } from './session.js';
+import type { ISessionStore } from './session.js';
 import type { PolicyEngine } from './policy/engine.js';
 import type { LoopDetector } from './loop-detector.js';
 import type { RateLimiter } from './rate-limiter.js';
@@ -58,6 +58,7 @@ export interface InterceptorOptions {
   policyEngine: PolicyEngine;
   loopDetector?: LoopDetector;
   rateLimiter?: RateLimiter;
+  sessionStore: ISessionStore;
   onToolCallEvent: (event: ToolCallEvent, matchedRule?: PolicyRule) => void;
   onToolResponseEvent: (event: ToolResponseEvent) => void;
   blockOnCriticalResponseThreats: boolean;
@@ -82,7 +83,7 @@ export async function intercept(
   opts: InterceptorOptions,
 ): Promise<{ output: unknown; interceptorResult: InterceptorResult }> {
   // ── 1. Session kill-switch ──────────────────────────────────────────────────
-  if (!isSessionActive(event.sessionId)) {
+  if (!opts.sessionStore.isActive(event.sessionId)) {
     return blocked('BLOCKED_SESSION_KILLED', `Session ${event.sessionId} has been terminated.`);
   }
 
@@ -228,12 +229,12 @@ export async function intercept(
 
   // ── 5. Cost/call limit check (D-014) ────────────────────────────────────────
   if (matchedRule?.limits) {
-    const limitBlock = checkCostLimits(event.sessionId, matchedRule.limits);
+    const limitBlock = checkCostLimits(event.sessionId, matchedRule.limits, opts.sessionStore);
     if (limitBlock) return limitBlock;
   }
 
   // ── 6. Forward to upstream MCP server ───────────────────────────────────────
-  incrementToolCall(event.sessionId);
+  opts.sessionStore.incrementToolCall(event.sessionId);
 
   let output: unknown;
   let durationMs: number;
@@ -248,9 +249,9 @@ export async function intercept(
   // ── 7. Record call for cost/hourly tracking (D-014) ─────────────────────────
   const costUsd = matchedRule?.costEstimate ?? 0;
   if (costUsd > 0) {
-    addCost(event.sessionId, costUsd);
+    opts.sessionStore.addCost(event.sessionId, costUsd);
   }
-  recordCall(event.sessionId, costUsd);
+  opts.sessionStore.recordCall(event.sessionId, costUsd);
 
   // ── 8. Response-side inspection ─────────────────────────────────────────────
   let responseThreats: ReturnType<typeof inspectResponse> = [];
@@ -305,8 +306,9 @@ function blocked(
 function checkCostLimits(
   sessionId: string,
   limits: NonNullable<PolicyRule['limits']>,
+  sessionStore: ISessionStore,
 ): { output: null; interceptorResult: InterceptorResult } | undefined {
-  const session = getSession(sessionId);
+  const session = sessionStore.get(sessionId);
 
   if (session && limits.maxCallsPerSession !== undefined) {
     if (session.toolCallCount >= limits.maxCallsPerSession) {
@@ -335,7 +337,7 @@ function checkCostLimits(
   }
 
   if (limits.maxCallsPerHour !== undefined || limits.maxCostPerHour !== undefined) {
-    const hourly = getHourlyStats(sessionId);
+    const hourly = sessionStore.getHourlyStats(sessionId);
 
     if (limits.maxCallsPerHour !== undefined && hourly.calls >= limits.maxCallsPerHour) {
       return {

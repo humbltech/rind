@@ -13,6 +13,7 @@ import type { InterceptorOptions } from '../interceptor.js';
 import { PolicyEngine } from '../policy/engine.js';
 import { InMemoryPolicyStore } from '../policy/store.js';
 import { expandPackRules, getPack } from '../policy/packs.js';
+import { InMemorySessionStore } from '../session.js';
 
 // ─── Test fixtures ────────────────────────────────────────────────────────────
 
@@ -24,6 +25,7 @@ function makeCliOpts(): InterceptorOptions {
   const store = new InMemoryPolicyStore({ policies: expandPackRules(pack) });
   return {
     policyEngine: new PolicyEngine(store),
+    sessionStore: new InMemorySessionStore(),
     onToolCallEvent: () => {},
     onToolResponseEvent: () => {},
     blockOnCriticalResponseThreats: false,
@@ -34,6 +36,7 @@ function makeCliOpts(): InterceptorOptions {
 function makeEmptyOpts(): InterceptorOptions {
   return {
     policyEngine: new PolicyEngine(new InMemoryPolicyStore({ policies: [] })),
+    sessionStore: new InMemorySessionStore(),
     onToolCallEvent: () => {},
     onToolResponseEvent: () => {},
     blockOnCriticalResponseThreats: false,

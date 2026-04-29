@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { intercept } from '../interceptor.js';
 import { PolicyEngine } from '../policy/engine.js';
 import { InMemoryPolicyStore } from '../policy/store.js';
+import { InMemorySessionStore } from '../session.js';
 import type { ToolCallEvent, PolicyConfig, ToolResponseEvent, PolicyRule } from '../types.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -26,11 +27,16 @@ const noopForward = async () => ({ output: 'ok', durationMs: 1 });
 const events: ToolCallEvent[] = [];
 const responses: ToolResponseEvent[] = [];
 
+const sessionStore = new InMemorySessionStore();
+// Ensure 'session-1' is always active for interceptor checks
+sessionStore.create('agent-1', 'session-1');
+
 function makeOpts(policyEngine: PolicyEngine) {
   events.length = 0;
   responses.length = 0;
   return {
     policyEngine,
+    sessionStore,
     onToolCallEvent: (e: ToolCallEvent, _rule?: PolicyRule) => { events.push(e); },
     onToolResponseEvent: (e: ToolResponseEvent) => { responses.push(e); },
     blockOnCriticalResponseThreats: false,

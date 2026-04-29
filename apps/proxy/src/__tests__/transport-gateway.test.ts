@@ -20,6 +20,7 @@ import type { InterceptorOptions } from '../interceptor.js';
 import { PolicyEngine } from '../policy/engine.js';
 import { InMemoryPolicyStore } from '../policy/store.js';
 import { expandPackRules, getPack } from '../policy/packs.js';
+import { InMemorySessionStore } from '../session.js';
 import type { UpstreamClient, ToolInfo } from '../transport/upstream/interface.js';
 import { JSON_RPC } from '../transport/types.js';
 import type { McpRequestMessage } from '../transport/types.js';
@@ -43,6 +44,7 @@ function makeUpstream(overrides: Partial<UpstreamClient> = {}): UpstreamClient {
 function makeAllowOpts(): InterceptorOptions {
   return {
     policyEngine: new PolicyEngine(new InMemoryPolicyStore({ policies: [] })),
+    sessionStore: new InMemorySessionStore(),
     onToolCallEvent: () => {},
     onToolResponseEvent: () => {},
     blockOnCriticalResponseThreats: false,
@@ -54,6 +56,7 @@ function makeCliProtectionOpts(): InterceptorOptions {
   const pack = getPack('cli-protection')!;
   return {
     policyEngine: new PolicyEngine(new InMemoryPolicyStore({ policies: expandPackRules(pack) })),
+    sessionStore: new InMemorySessionStore(),
     onToolCallEvent: () => {},
     onToolResponseEvent: () => {},
     blockOnCriticalResponseThreats: false,

@@ -12,6 +12,7 @@ import type { ApprovalQueue } from '../approval-queue.js';
 import type { RindEventBus } from '../event-bus.js';
 import type { ProxyConfig, ToolCallEvent } from '../types.js';
 import { intercept } from '../interceptor.js';
+import type { ISessionStore } from '../session.js';
 import { isServerQuarantined, getLastScanResult } from '../scanner/index.js';
 import { deriveToolLabel } from '../hooks/claude-code.js';
 import { emitAudit, parseApprovalTimeout, recordProxyOutcome } from './helpers.js';
@@ -26,6 +27,7 @@ export interface ToolCallRouteDeps {
   bus: RindEventBus;
   config: ProxyConfig;
   logger: Logger;
+  sessionStore: ISessionStore;
 }
 
 export function toolCallRoutes({
@@ -38,6 +40,7 @@ export function toolCallRoutes({
   bus,
   config,
   logger,
+  sessionStore,
 }: ToolCallRouteDeps): Hono {
   const app = new Hono();
 
@@ -141,6 +144,7 @@ export function toolCallRoutes({
         policyEngine,
         loopDetector,
         rateLimiter,
+        sessionStore,
         onToolCallEvent: (e, matchedRule) => {
           bus.emit('tool:call', e);
           logger.info(

@@ -7,7 +7,7 @@ import { PolicyEngine } from '../policy/engine.js';
 import { InMemoryPolicyStore } from '../policy/store.js';
 import { LoopDetector } from '../loop-detector.js';
 import { intercept } from '../interceptor.js';
-import { createSession } from '../session.js';
+import { InMemorySessionStore } from '../session.js';
 import type { ToolCallEvent, PolicyConfig, PolicyRule, ToolResponseEvent } from '../types.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -27,12 +27,15 @@ const noopForward = async () => ({ output: 'ok', durationMs: 1 });
 const events: ToolCallEvent[] = [];
 const responses: ToolResponseEvent[] = [];
 
+let sessionStore: InMemorySessionStore;
+
 function makeOpts(policyEngine: PolicyEngine, loopDetector: LoopDetector) {
   events.length = 0;
   responses.length = 0;
   return {
     policyEngine,
     loopDetector,
+    sessionStore,
     onToolCallEvent: (e: ToolCallEvent, _rule?: PolicyRule) => { events.push(e); },
     onToolResponseEvent: (e: ToolResponseEvent) => { responses.push(e); },
     blockOnCriticalResponseThreats: false,
@@ -60,7 +63,8 @@ describe('Policy-driven loop detection — exact', () => {
 
   beforeEach(() => {
     loopDetector = new LoopDetector();
-    createSession('agent-1', 'session-1');
+    sessionStore = new InMemorySessionStore();
+    sessionStore.create('agent-1', 'session-1');
   });
 
   it('allows calls below threshold', async () => {
@@ -143,7 +147,8 @@ describe('Policy-driven loop detection — consecutive', () => {
 
   beforeEach(() => {
     loopDetector = new LoopDetector();
-    createSession('agent-1', 'session-1');
+    sessionStore = new InMemorySessionStore();
+    sessionStore.create('agent-1', 'session-1');
   });
 
   it('allows below consecutive threshold', async () => {
@@ -203,7 +208,8 @@ describe('Policy-driven loop detection — subcommand', () => {
 
   beforeEach(() => {
     loopDetector = new LoopDetector();
-    createSession('agent-1', 'session-1');
+    sessionStore = new InMemorySessionStore();
+    sessionStore.create('agent-1', 'session-1');
   });
 
   it('blocks when same sub-command repeats across different compound commands', async () => {
@@ -245,7 +251,8 @@ describe('Policy-driven loop detection — no detector', () => {
   };
 
   beforeEach(() => {
-    createSession('agent-1', 'session-1');
+    sessionStore = new InMemorySessionStore();
+    sessionStore.create('agent-1', 'session-1');
   });
 
   it('skips loop rules when no detector is provided', async () => {
@@ -253,6 +260,7 @@ describe('Policy-driven loop detection — no detector', () => {
     const engine = new PolicyEngine(new InMemoryPolicyStore(config));
     const opts = {
       policyEngine: engine,
+      sessionStore,
       onToolCallEvent: () => {},
       onToolResponseEvent: () => {},
       blockOnCriticalResponseThreats: false,
@@ -301,7 +309,8 @@ describe('Policy-driven loop detection — mixed with regular rules', () => {
 
   beforeEach(() => {
     loopDetector = new LoopDetector();
-    createSession('agent-1', 'session-1');
+    sessionStore = new InMemorySessionStore();
+    sessionStore.create('agent-1', 'session-1');
   });
 
   it('regular DENY rule fires immediately without needing loop threshold', async () => {
