@@ -23,7 +23,7 @@ import { openaiProvider } from './providers/openai.js';
 import type { LlmProxyProvider } from './providers/interface.js';
 import { ProviderParseError } from './providers/interface.js';
 import { forwardLlmRequest } from './forward.js';
-import type { ForwardLlmOptions, ForwardLlmResult } from './forward.js';
+import type { ForwardLlmOptions } from './forward.js';
 import { createAnthropicAccumulator, createOpenAIAccumulator } from './streaming.js';
 import { scanLlmRequest } from './request-scanner.js';
 import { scanLlmResponse } from './response-scanner.js';
@@ -31,7 +31,7 @@ import { calculateCost } from './cost-calculator.js';
 import { evaluateLlmContent } from './content-policy.js';
 import { evaluateLlmResponseContent, patchResponseBodyWithRedaction } from './content-policy-response.js';
 import type { PIIVault } from '../../pii-vault.js';
-import type { LlmForwardFn } from '../../types.js';
+import type { LlmForwardFn, ProxyConfig } from '../../types.js';
 
 // ─── Gateway options ──────────────────────────────────────────────────────────
 
@@ -51,6 +51,8 @@ export interface LlmGatewayOptions {
    * without making real network calls.
    */
   forwardFn?: LlmForwardFn;
+  /** Per-layer detection mode overrides. Default for all layers: 'block'. */
+  layers?: ProxyConfig['layers'];
 }
 
 // ─── Conversation tracker ─────────────────────────────────────────────────────
@@ -187,6 +189,7 @@ function makeEnricher(
   logger: LlmGatewayOptions['logger'],
   tracker: ConversationTracker,
   onResponseComplete: LlmGatewayOptions['onResponseComplete'],
+  llmScannerMode: 'block' | 'alert' | 'off' = 'block',
 ) {
   return function emitEnrichedEvent(
     baseEvent: LlmCallEvent,
@@ -197,7 +200,7 @@ function makeEnricher(
     // Rehydrate LLM response — swap pseudonymization tokens back to original values
     const responseText = vault ? vault.rehydrate(meta.responseText ?? '') : meta.responseText;
     const rehydratedMeta = vault ? { ...meta, responseText } : meta;
-    const responseThreats = scanLlmResponse(rehydratedMeta.responseText);
+    const responseThreats = llmScannerMode !== 'off' ? scanLlmResponse(rehydratedMeta.responseText) : [];
     const inputTokens = rehydratedMeta.inputTokens > 0 ? rehydratedMeta.inputTokens : undefined;
     const outputTokens = rehydratedMeta.outputTokens > 0 ? rehydratedMeta.outputTokens : undefined;
     const { toolUses } = rehydratedMeta;
@@ -242,7 +245,8 @@ function makeEnricher(
 
 function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOptions, rateLimiter: RateLimiter, tracker: ConversationTracker) {
   const { config, bus, policyEngine, logger, onResponseComplete } = opts;
-  const emitEnrichedEvent = makeEnricher(config, bus, logger, tracker, onResponseComplete);
+  const llmScannerMode = opts.layers?.['llm-scanner']?.mode ?? 'block';
+  const emitEnrichedEvent = makeEnricher(config, bus, logger, tracker, onResponseComplete, llmScannerMode);
 
   return async (c: Context) => {
     // ── 1. Parse request body ────────────────────────────────────────────────
@@ -274,10 +278,12 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     // Scan outbound prompt for credentials and PII. Attaches threats to the event
     // for audit/dashboard visibility. Does not block forwarding on its own — a
     // policy rule with llmModel/llmProvider + DENY action is the enforcement path.
-    const requestThreats = scanLlmRequest(body);
-    if (requestThreats.length > 0) {
-      event = { ...event, requestThreats };
-      logger.warn({ model: event.model, threatCount: requestThreats.length }, 'LLM request threats detected');
+    if (llmScannerMode !== 'off') {
+      const requestThreats = scanLlmRequest(body);
+      if (requestThreats.length > 0) {
+        event = { ...event, requestThreats };
+        logger.warn({ model: event.model, threatCount: requestThreats.length }, 'LLM request threats detected');
+      }
     }
 
     // ── 3c. Content-based policy evaluation ──────────────────────────────────
