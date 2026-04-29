@@ -13,6 +13,9 @@ import { whatsappCrossServerShadow } from './whatsapp-cross-server-shadow.js';
 import { openclawRugPull } from './openclaw-rug-pull.js';
 import { perplexityDriveDeletion } from './perplexity-drive-deletion.js';
 import { llmPassthroughAndAudit } from './llm-passthrough-and-audit.js';
+import { llmBlockedByModelPolicy } from './llm-blocked-by-model-policy.js';
+import { llmPiiPseudonymized } from './llm-pii-pseudonymized.js';
+import { llmPromptInjectionBlocked } from './llm-prompt-injection-blocked.js';
 
 export const scenarios: Scenario[] = [
   replitDbDeletion,
@@ -28,6 +31,9 @@ export const scenarios: Scenario[] = [
   perplexityDriveDeletion,
   // LLM proxy scenarios
   llmPassthroughAndAudit,
+  llmBlockedByModelPolicy,
+  llmPiiPseudonymized,
+  llmPromptInjectionBlocked,
 ];
 
 export const scenariosBySlug = new Map<string, Scenario>(scenarios.map((s) => [s.slug, s]));
