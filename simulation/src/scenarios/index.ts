@@ -12,6 +12,7 @@ import { supabaseTicketInjection } from './supabase-ticket-injection.js';
 import { whatsappCrossServerShadow } from './whatsapp-cross-server-shadow.js';
 import { openclawRugPull } from './openclaw-rug-pull.js';
 import { perplexityDriveDeletion } from './perplexity-drive-deletion.js';
+import { llmPassthroughAndAudit } from './llm-passthrough-and-audit.js';
 
 export const scenarios: Scenario[] = [
   replitDbDeletion,
@@ -25,6 +26,8 @@ export const scenarios: Scenario[] = [
   whatsappCrossServerShadow,
   openclawRugPull,
   perplexityDriveDeletion,
+  // LLM proxy scenarios
+  llmPassthroughAndAudit,
 ];
 
 export const scenariosBySlug = new Map<string, Scenario>(scenarios.map((s) => [s.slug, s]));
