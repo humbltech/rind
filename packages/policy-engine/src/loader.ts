@@ -161,7 +161,7 @@ export const PolicyRuleSchema = z.object({
   dlp: DlpDetectorConfigSchema.optional(),
 });
 
-const PolicyConfigSchema = z.object({
+export const PolicyConfigSchema = z.object({
   // Named pack IDs to expand — resolved to rules at load time
   packs: z.array(z.string()).optional(),
   policies: z.array(PolicyRuleSchema).optional().default([]),

@@ -1,7 +1,7 @@
 // @rind/policy-engine — public API
 export type { PolicyStore } from './store.js';
 export { InMemoryPolicyStore } from './store.js';
-export { loadPolicyFile, emptyPolicyConfig, PolicyRuleSchema } from './loader.js';
+export { loadPolicyFile, emptyPolicyConfig, PolicyRuleSchema, PolicyConfigSchema } from './loader.js';
 export type { PolicyEvalResult, ILoopDetector } from './engine.js';
 export { PolicyEngine } from './engine.js';
 export { listPacks, getPack, expandPackRules, rulesFromPack, recommendPacks } from './packs.js';

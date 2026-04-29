@@ -13,9 +13,10 @@ import { emitPolicyAudit } from './helpers.js';
 
 // ─── Validation schemas ────────────────────────────────────────────────────────
 
-const PolicyConfigSchema = z.object({
-  packs: z.array(z.string()).optional(),
-  policies: z.array(PolicyRuleSchema).optional().default([]),
+// API-specific body schema — intentionally excludes `packs` (pack activation
+// is handled exclusively by the dedicated /packs/:packId/enable endpoint).
+const PolicyApiBodySchema = z.object({
+  policies: z.array(PolicyRuleSchema),
 });
 
 // ─── Route deps ───────────────────────────────────────────────────────────────
@@ -84,7 +85,7 @@ export function policyRoutes({ policyEngine, policyStore, bus, logger }: PolicyR
 
   app.put('/policies', async (c) => {
     const body = await c.req.json<unknown>();
-    const parsed = PolicyConfigSchema.safeParse(body);
+    const parsed = PolicyApiBodySchema.safeParse(body);
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
     policyStore.update(parsed.data);
     emitPolicyAudit(bus, 'config-replaced', '*');
@@ -93,7 +94,7 @@ export function policyRoutes({ policyEngine, policyStore, bus, logger }: PolicyR
 
   app.post('/policies/validate', async (c) => {
     const body = await c.req.json<unknown>();
-    const parsed = PolicyConfigSchema.safeParse(body);
+    const parsed = PolicyApiBodySchema.safeParse(body);
     if (!parsed.success) return c.json({ valid: false, error: parsed.error.flatten() }, 400);
     return c.json({ valid: true, ruleCount: parsed.data.policies.length });
   });
