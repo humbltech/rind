@@ -26,6 +26,7 @@ export interface PolicyRuleRow {
   agent: string;
   enabled?: boolean; // default true
   match: {
+    // Tool call match fields
     tool?: string[];
     toolPattern?: string;
     parameters?: Record<string, ParameterMatcherUI>;
@@ -34,12 +35,25 @@ export interface PolicyRuleRow {
       daysOfWeek?: number[];
       hours?: string;
     };
+    // LLM gateway match fields
+    llmModel?: string[];
+    llmProvider?: string[];
+    // LLM content match fields
+    content?: {
+      scope: 'request' | 'response' | 'both';
+      targets?: string[];
+      detectors: string[];
+    };
   };
   action: 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL' | 'RATE_LIMIT' | 'REDACT' | 'PSEUDONYMIZE';
   priority?: number;
   rateLimit?: { limit: number; window: string; scope: 'per_agent' | 'per_tool' | 'global' };
   failMode?: 'closed' | 'open';
   loop?: { type: 'exact' | 'consecutive' | 'subcommand'; threshold: number; window?: number };
+  // LLM content detector configs (from content rules)
+  pii?: { entities: string[]; locale?: string };
+  secrets?: { patterns?: string[] };
+  injection?: Record<string, never>;
   _meta?: {
     source: string;
     modifiedFromPack?: boolean;
@@ -168,7 +182,7 @@ const ACTION_STYLES: Record<PolicyRuleRow['action'], string> = {
 function ActionBadge({ action }: { action: PolicyRuleRow['action'] }) {
   return (
     <span className={['text-[10px] font-medium border rounded px-1.5 py-0.5 whitespace-nowrap', ACTION_STYLES[action]].join(' ')}>
-      {action.replace('_', ' ')}
+      {action.replaceAll('_', ' ')}
     </span>
   );
 }
@@ -213,6 +227,18 @@ function SourceBadge({ source, modified }: { source?: string; modified?: boolean
 
 function formatMatchLabel(match: PolicyRuleRow['match']): string {
   const parts: string[] = [];
+
+  // LLM gateway fields
+  if (match.llmModel?.length) parts.push(`model: ${match.llmModel.join(', ')}`);
+  if (match.llmProvider?.length) parts.push(`provider: ${match.llmProvider.join(', ')}`);
+
+  // LLM content fields
+  if (match.content) {
+    const label = `content: ${match.content.detectors.join(', ')}`;
+    parts.push(match.content.scope !== 'both' ? `${label} [${match.content.scope}]` : label);
+  }
+
+  // Tool call fields
   if (match.toolPattern) parts.push(match.toolPattern);
   else if (match.tool?.length) parts.push(match.tool.join(', '));
   if (match.subcommand?.length) parts.push(`subcmd: ${match.subcommand.join(', ')}`);
@@ -225,6 +251,7 @@ function formatMatchLabel(match: PolicyRuleRow['match']): string {
       else if (matcher.lt !== undefined) parts.push(`${key} < ${matcher.lt}`);
     }
   }
+
   return parts.length > 0 ? parts.join(' + ') : '*';
 }
 

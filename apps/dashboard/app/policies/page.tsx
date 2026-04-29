@@ -104,6 +104,49 @@ const PACK_CATEGORIES: { id: PackSummary['category']; label: string }[] = [
   { id: 'communication',    label: 'Communication' },
 ];
 
+function CategoryHeader({ label, packs, onToggle }: {
+  label: string;
+  packs: PackSummary[];
+  onToggle: (id: string, enable: boolean) => Promise<void>;
+}) {
+  const [toggling, setToggling] = useState(false);
+  const enabledCount = packs.filter((p) => p.enabled).length;
+  const allEnabled = enabledCount === packs.length;
+
+  async function handleCategoryToggle() {
+    if (toggling) return;
+    setToggling(true);
+    try {
+      if (allEnabled) {
+        await Promise.allSettled(packs.map((p) => onToggle(p.id, false)));
+      } else {
+        await Promise.allSettled(packs.filter((p) => !p.enabled).map((p) => onToggle(p.id, true)));
+      }
+    } finally {
+      setToggling(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-dim">
+        {label}
+      </p>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-dim">{enabledCount} of {packs.length} enabled</span>
+        <button
+          type="button"
+          onClick={handleCategoryToggle}
+          disabled={toggling}
+          className="text-[10px] px-2 py-0.5 rounded border border-border text-dim hover:text-foreground hover:border-border-muted transition-colors disabled:opacity-50"
+        >
+          {allEnabled ? 'Disable all' : 'Enable all'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PackSection({ packs, onToggle, onPreview }: {
   packs: PackSummary[];
   onToggle: (id: string, enable: boolean) => Promise<void>;
@@ -129,9 +172,7 @@ function PackSection({ packs, onToggle, onPreview }: {
         {grouped.map(({ label, packs: categoryPacks }) => (
           <Fragment key={label}>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-dim mb-3">
-                {label}
-              </p>
+              <CategoryHeader label={label} packs={categoryPacks} onToggle={onToggle} />
               <PackGrid packs={categoryPacks} onToggle={onToggle} onPreview={onPreview} />
             </div>
           </Fragment>
