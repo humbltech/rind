@@ -48,8 +48,14 @@ const RIND_HOOK_SIGNATURES = ['/hook/evaluate', 'rind-hook.sh'] as const;
 /**
  * Substrings that identify a Rind observability hook command.
  * Matches both the inline-curl form and the bash-script form.
+ *
+ * IMPORTANT: use "/hook/event'" (with closing single-quote) as the curl
+ * signature, NOT "/hook/event" alone.  The evaluate-endpoint URL contains
+ * "/hook/evaluate", which starts with the 11-character prefix "/hook/event".
+ * The closing quote that buildEventHookCommand always emits is the shortest
+ * suffix that distinguishes the event URL from the evaluate URL.
  */
-const RIND_EVENT_SIGNATURES = ['/hook/event', 'rind-event.sh'] as const;
+const RIND_EVENT_SIGNATURES = ["/hook/event'", 'rind-event.sh'] as const;
 
 /** Observability hooks that fire non-blocking events to /hook/event. */
 const EVENT_HOOKS: readonly string[] = ['PostToolUse', 'SubagentStart', 'SubagentStop'] as const;

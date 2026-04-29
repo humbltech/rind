@@ -123,20 +123,26 @@ export async function runUninit(argv: string[]): Promise<void> {
     for (const type of hookTypes) {
       const list = hooks[type];
       if (!Array.isArray(list)) continue;
-      const filtered = list.filter((entry) => {
-        if (typeof entry !== 'object' || entry === null) return true;
-        // Each entry is a HookMatcher: { matcher, hooks: [{ type, command }] }
-        // Check every inner hook command — keep the entry only if none are Rind hooks.
-        const e = entry as Record<string, unknown>;
-        const innerHooks = Array.isArray(e['hooks']) ? (e['hooks'] as unknown[]) : [];
-        const hasRindCommand = innerHooks.some((h) => {
-          if (typeof h !== 'object' || h === null) return false;
-          const cmd = (h as Record<string, unknown>)['command'];
-          return typeof cmd === 'string' && (isRindHookCommand(cmd) || isRindEventHookCommand(cmd));
-        });
-        return !hasRindCommand;
-      });
-      if (filtered.length !== list.length) {
+      let hookTypeChanged = false;
+      const filtered = list
+        .map((entry) => {
+          if (typeof entry !== 'object' || entry === null) return entry;
+          // Each entry is a HookMatcher: { matcher, hooks: [{ type, command }] }
+          // Strip only the Rind inner commands; preserve any non-Rind commands
+          // that share the same matcher entry so user hooks are never lost.
+          const e = entry as Record<string, unknown>;
+          const innerHooks = Array.isArray(e['hooks']) ? (e['hooks'] as unknown[]) : [];
+          const survivingHooks = innerHooks.filter((h) => {
+            if (typeof h !== 'object' || h === null) return true;
+            const cmd = (h as Record<string, unknown>)['command'];
+            return !(typeof cmd === 'string' && (isRindHookCommand(cmd) || isRindEventHookCommand(cmd)));
+          });
+          if (survivingHooks.length === innerHooks.length) return entry; // nothing removed
+          hookTypeChanged = true;
+          return survivingHooks.length === 0 ? null : { ...e, hooks: survivingHooks };
+        })
+        .filter((entry) => entry !== null);
+      if (hookTypeChanged || filtered.length !== list.length) {
         process.stdout.write(`  - remove  ${type} Rind hook\n`);
         if (filtered.length === 0) {
           delete hooks[type];

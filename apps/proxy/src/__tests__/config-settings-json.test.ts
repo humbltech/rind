@@ -146,6 +146,13 @@ describe('isRindEventHookCommand', () => {
     expect(isRindEventHookCommand('my-other-hook')).toBe(false);
     expect(isRindEventHookCommand('')).toBe(false);
   });
+
+  it('returns false for a PreToolUse evaluate command (regression: /hook/evaluate starts with /hook/event)', () => {
+    // "/hook/evaluate" contains the substring "/hook/event" — the classifier must
+    // not misidentify an evaluate hook as an event hook.
+    const evaluateCmd = buildHookCommand('http://localhost:7777');
+    expect(isRindEventHookCommand(evaluateCmd)).toBe(false);
+  });
 });
 
 // ─── buildHookCommand ─────────────────────────────────────────────────────────
@@ -305,6 +312,22 @@ describe('buildEventHookCommand', () => {
 
   it('rejects non-HTTP URLs', () => {
     expect(() => buildEventHookCommand('ftp://evil.com')).toThrow();
+  });
+});
+
+// ─── isRindHookCommand / isRindEventHookCommand cross-contamination ───────────
+
+describe('classifier cross-contamination', () => {
+  it('isRindHookCommand does not match an event-hook command', () => {
+    const eventCmd = buildEventHookCommand('http://localhost:7777');
+    // rind-event.sh does not match rind-hook.sh; /hook/event does not contain /hook/evaluate
+    expect(isRindHookCommand(eventCmd)).toBe(false);
+  });
+
+  it('isRindEventHookCommand does not match a PreToolUse evaluate command', () => {
+    // /hook/evaluate begins with /hook/event — the classifier must not misclassify it
+    const evaluateCmd = buildHookCommand('http://localhost:7777');
+    expect(isRindEventHookCommand(evaluateCmd)).toBe(false);
   });
 });
 
