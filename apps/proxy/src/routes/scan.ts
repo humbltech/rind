@@ -22,30 +22,21 @@ export interface ScanRouteDeps {
 export function scanRoutes({ bus, config, logger }: ScanRouteDeps): Hono {
   const app = new Hono();
 
+  function handleScan(serverId: string, tools: Parameters<typeof runFullScan>[1], logLabel: string) {
+    logger.info({ serverId }, logLabel);
+    const result = runFullScan(serverId, tools);
+    const level = result.passed ? 'info' : 'warn';
+    logger[level]({ serverId, findingCount: result.findings.length, passed: result.passed }, `${logLabel} complete`);
+    bus.emit('scan:complete', result);
+    emitAudit(bus, { eventType: 'scan:complete', sessionId: '', agentId: '', serverId, action: result.passed ? 'ALLOW' : 'DENY' });
+    return result;
+  }
+
   app.post('/scan', async (c) => {
     const parsed = ScanBodySchema.safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
     const { serverId, tools } = parsed.data;
-    logger.info({ serverId }, 'Scan-on-connect triggered');
-
-    const result = runFullScan(serverId, tools as Parameters<typeof runFullScan>[1]);
-
-    const level = result.passed ? 'info' : 'warn';
-    logger[level](
-      { serverId, findingCount: result.findings.length, passed: result.passed },
-      'Scan complete',
-    );
-
-    bus.emit('scan:complete', result);
-    emitAudit(bus, {
-      eventType: 'scan:complete',
-      sessionId: '',
-      agentId: '',
-      serverId,
-      action: result.passed ? 'ALLOW' : 'DENY',
-    });
-
-    return c.json(result);
+    return c.json(handleScan(serverId, tools as Parameters<typeof runFullScan>[1], 'Scan-on-connect'));
   });
 
   // ─── Continuous re-scan (D-030) ───────────────────────────────────────────────
@@ -53,26 +44,7 @@ export function scanRoutes({ bus, config, logger }: ScanRouteDeps): Hono {
     const parsed = ScanBodySchema.safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
     const { serverId, tools } = parsed.data;
-    logger.info({ serverId }, 'Re-scan triggered (rug pull detection)');
-
-    const result = runFullScan(serverId, tools as Parameters<typeof runFullScan>[1]);
-
-    const level = result.passed ? 'info' : 'warn';
-    logger[level](
-      { serverId, findingCount: result.findings.length, passed: result.passed },
-      'Re-scan complete',
-    );
-
-    bus.emit('scan:complete', result);
-    emitAudit(bus, {
-      eventType: 'scan:complete',
-      sessionId: '',
-      agentId: '',
-      serverId,
-      action: result.passed ? 'ALLOW' : 'DENY',
-    });
-
-    return c.json(result);
+    return c.json(handleScan(serverId, tools as Parameters<typeof runFullScan>[1], 'Re-scan (rug pull detection)'));
   });
 
   return app;
