@@ -16,6 +16,13 @@ describe('listPacks', () => {
     expect(ids).toContain('filesystem-protection');
     expect(ids).toContain('exfil-protection');
   });
+
+  it('includes all three LLM safety packs', () => {
+    const ids = listPacks().map((p) => p.id);
+    expect(ids).toContain('llm-secret-scan-v1');
+    expect(ids).toContain('llm-pii-pseudonymize-v1');
+    expect(ids).toContain('llm-injection-guard-v1');
+  });
 });
 
 describe('getPack', () => {
@@ -69,6 +76,54 @@ describe('recommendPacks', () => {
 
   it('returns empty for unrelated tools', () => {
     expect(recommendPacks(['get_weather', 'lookup_address'])).toHaveLength(0);
+  });
+});
+
+describe('LLM safety packs', () => {
+  it('llm-secret-scan-v1 has failMode open and scope request', () => {
+    const pack = getPack('llm-secret-scan-v1')!;
+    expect(pack).toBeDefined();
+    expect(pack.category).toBe('llm-safety');
+    for (const rule of pack.rules) {
+      expect(rule.failMode).toBe('open');
+      expect(rule.match.content?.scope).toBe('request');
+    }
+  });
+
+  it('llm-injection-guard-v1 has failMode open and scope request', () => {
+    const pack = getPack('llm-injection-guard-v1')!;
+    expect(pack).toBeDefined();
+    expect(pack.category).toBe('llm-safety');
+    for (const rule of pack.rules) {
+      expect(rule.failMode).toBe('open');
+      expect(rule.match.content?.scope).toBe('request');
+    }
+  });
+
+  it('llm-pii-pseudonymize-v1 has failMode open and scope both', () => {
+    const pack = getPack('llm-pii-pseudonymize-v1')!;
+    expect(pack).toBeDefined();
+    expect(pack.category).toBe('llm-safety');
+    for (const rule of pack.rules) {
+      expect(rule.failMode).toBe('open');
+      expect(rule.match.content?.scope).toBe('both');
+    }
+  });
+
+  it('llm-pii-pseudonymize-v1 entities do not include PERSON_NAME', () => {
+    const pack = getPack('llm-pii-pseudonymize-v1')!;
+    for (const rule of pack.rules) {
+      expect(rule.pii?.entities ?? []).not.toContain('PERSON_NAME');
+    }
+  });
+
+  it('all three LLM safety packs have severity and description', () => {
+    for (const id of ['llm-secret-scan-v1', 'llm-pii-pseudonymize-v1', 'llm-injection-guard-v1'] as const) {
+      const pack = getPack(id)!;
+      expect(pack.severity).toBeTruthy();
+      expect(pack.description.length).toBeGreaterThan(0);
+      expect(pack.rules.length).toBeGreaterThan(0);
+    }
   });
 });
 

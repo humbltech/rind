@@ -27,6 +27,8 @@ import { createAnthropicAccumulator, createOpenAIAccumulator } from './streaming
 import { scanLlmRequest } from './request-scanner.js';
 import { scanLlmResponse } from './response-scanner.js';
 import { calculateCost } from './cost-calculator.js';
+import { evaluateLlmContent } from './content-policy.js';
+import type { PIIVault } from '../../pii-vault.js';
 
 // ─── Gateway options ──────────────────────────────────────────────────────────
 
@@ -181,11 +183,15 @@ function makeEnricher(
     baseEvent: LlmCallEvent,
     meta: import('./providers/interface.js').LlmResponseMeta,
     timing: EnrichedEventTiming,
+    vault?: PIIVault,
   ): void {
-    const responseThreats = scanLlmResponse(meta.responseText);
-    const inputTokens = meta.inputTokens > 0 ? meta.inputTokens : undefined;
-    const outputTokens = meta.outputTokens > 0 ? meta.outputTokens : undefined;
-    const { toolUses } = meta;
+    // Rehydrate LLM response — swap pseudonymization tokens back to original values
+    const responseText = vault ? vault.rehydrate(meta.responseText ?? '') : meta.responseText;
+    const rehydratedMeta = vault ? { ...meta, responseText } : meta;
+    const responseThreats = scanLlmResponse(rehydratedMeta.responseText);
+    const inputTokens = rehydratedMeta.inputTokens > 0 ? rehydratedMeta.inputTokens : undefined;
+    const outputTokens = rehydratedMeta.outputTokens > 0 ? rehydratedMeta.outputTokens : undefined;
+    const { toolUses } = rehydratedMeta;
     const enrichedEvent: LlmCallEvent = {
       ...baseEvent,
       statusCode: timing.statusCode,
@@ -196,7 +202,7 @@ function makeEnricher(
       estimatedCostUsd: (inputTokens != null && outputTokens != null)
         ? calculateCost(baseEvent.model, inputTokens, outputTokens)
         : undefined,
-      responseText: meta.responseText,
+      responseText: rehydratedMeta.responseText,
       ...(toolUses && toolUses.length > 0 ? { toolUses } : {}),
       ...(responseThreats.length > 0 ? { responseThreats } : {}),
     };
@@ -206,6 +212,7 @@ function makeEnricher(
     if (responseThreats.length > 0) {
       logger.warn({ model: baseEvent.model, threatCount: responseThreats.length }, 'LLM response threats detected');
     }
+    vault?.dispose();
     bus.emit('llm:response', enrichedEvent);
     if (
       config.costAnomalyThresholdUsd != null &&
@@ -264,12 +271,45 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
       logger.warn({ model: event.model, threatCount: requestThreats.length }, 'LLM request threats detected');
     }
 
+    // ── 3c. Content-based policy evaluation ──────────────────────────────────
+    // Evaluates rules with match.content (PII, secrets, injection, DLP).
+    // May block the request, pseudonymize, or redact the body before forwarding.
+    const contentRules = policyEngine.getContentRules();
+    const contentResult = await evaluateLlmContent(body, event, contentRules);
+
+    if (contentResult.action === 'DENY') {
+      const blockedEvent: LlmCallEvent = {
+        ...event,
+        outcome: 'blocked',
+        matchedRule: contentResult.matchedRule,
+        contentInspection: contentResult.inspection,
+      };
+      bus.emit('llm:blocked', { event: blockedEvent, reason: contentResult.reason ?? 'Content policy DENY' });
+      logger.info({ model: event.model, rule: contentResult.matchedRule }, 'LLM call blocked by content policy');
+      return c.json(
+        { error: { type: 'policy_denied', message: contentResult.reason ?? 'Request blocked by policy' } },
+        403,
+      );
+    }
+
+    // Attach content inspection audit to event (no PII values)
+    if (contentResult.inspection.detectorsRan.length > 0) {
+      event = { ...event, contentInspection: contentResult.inspection };
+    }
+
+    // Use sanitized body for all downstream steps (may be mutated by PSEUDONYMIZE/REDACT)
+    const forwardBody = contentResult.sanitizedBody;
+    // Vault reference for rehydration — undefined when no pseudonymization occurred
+    let activeVault: PIIVault | undefined = contentResult.vault;
+
     // ── 4. Pre-forward policy check ──────────────────────────────────────────
     const policyResult = policyEngine.evaluateLlm(event);
     if (policyResult.action === 'DENY') {
       const blockedEvent: LlmCallEvent = { ...event, outcome: 'blocked', matchedRule: policyResult.matchedRule?.name };
       bus.emit('llm:blocked', { event: blockedEvent, reason: policyResult.reason ?? 'Policy DENY' });
       logger.info({ model: event.model, rule: policyResult.matchedRule?.name }, 'LLM call blocked by policy');
+      activeVault?.dispose();
+      activeVault = undefined;
       return c.json(
         { error: { type: 'policy_denied', message: policyResult.reason ?? 'Request blocked by policy' } },
         403,
@@ -290,6 +330,8 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
           errorMessage: `Rate limit exceeded: ${config.rateLimitPerAgentPerMinute} LLM calls/min`,
         };
         bus.emit('llm:blocked', { event: blockedEvent, reason: 'Rate limit exceeded' });
+        activeVault?.dispose();
+        activeVault = undefined;
         return c.json(
           { error: { type: 'rate_limit_exceeded', message: 'Too many LLM requests — slow down' } },
           429,
@@ -309,7 +351,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     const inboundPath = c.req.path; // e.g. /llm/anthropic/v1/messages
     const forwardStart = Date.now();
 
-    const result = await forwardLlmRequest(inboundPath, inboundHeaders, body, {
+    const result = await forwardLlmRequest(inboundPath, inboundHeaders, forwardBody, {
       provider,
       upstreamBaseUrl,
       logLevel: config.logLevel,
@@ -331,6 +373,8 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
         ttfbMs: result.ttfbMs,
       };
       bus.emit('llm:response', errorEvent);
+      activeVault?.dispose();
+      activeVault = undefined;
       return new Response(JSON.stringify(result.responseBody), {
         status: result.statusCode,
         headers: { 'content-type': 'application/json' },
@@ -345,7 +389,12 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     // ── 7a. Non-streaming response ───────────────────────────────────────────
     if (!result.stream) {
       if (result.meta) {
-        emitEnrichedEvent(event, result.meta, { statusCode: result.statusCode, durationMs: result.durationMs, ttfbMs: result.ttfbMs });
+        emitEnrichedEvent(event, result.meta, { statusCode: result.statusCode, durationMs: result.durationMs, ttfbMs: result.ttfbMs }, activeVault);
+        activeVault = undefined; // vault disposed inside emitEnrichedEvent
+      } else {
+        // No parsed meta (e.g. unexpected upstream format) — dispose vault to prevent leak
+        activeVault?.dispose();
+        activeVault = undefined;
       }
       return new Response(JSON.stringify(result.responseBody), {
         status: result.statusCode,
@@ -362,14 +411,17 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     const capturedTtfb = result.ttfbMs;
     const capturedForwardStart = forwardStart;
     const capturedStatusCode = result.statusCode;
+    const capturedVault = activeVault;
+    activeVault = undefined; // ownership transferred to stream closure
 
     result.streamMeta?.then((meta) => {
       emitEnrichedEvent(capturedEvent, meta, {
         statusCode: capturedStatusCode,
         durationMs: Date.now() - capturedForwardStart,
         ttfbMs: capturedTtfb,
-      });
+      }, capturedVault);
     }).catch((err: unknown) => {
+      capturedVault?.dispose();
       logger.error({ err, eventId: capturedEvent.id }, 'Failed to emit LLM stream response event');
       bus.emit('llm:response', {
         ...capturedEvent,

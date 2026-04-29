@@ -97,6 +97,8 @@ export interface LlmCallEvent {
   // ── Scanning ──────────────────────────────────────────────────────────────
   requestThreats?: LlmThreat[];
   responseThreats?: LlmThreat[];
+  /** Content inspection audit — populated when content-based policy rules ran */
+  contentInspection?: ContentInspectionAudit;
 
   // ── Outcome ───────────────────────────────────────────────────────────────
   outcome: 'forwarded' | 'blocked' | 'error';
@@ -176,7 +178,13 @@ export function defaultLlmProxyConfig(env?: string): LlmProxyConfig {
 
 // ─── Policy action ───────────────────────────────────────────────────────────
 
-export type PolicyAction = 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL' | 'RATE_LIMIT';
+export type PolicyAction =
+  | 'ALLOW'
+  | 'DENY'
+  | 'REQUIRE_APPROVAL'
+  | 'RATE_LIMIT'
+  | 'REDACT'        // replace matched content with [REDACTED], pass through
+  | 'PSEUDONYMIZE'; // replace with vault token, rehydrate after LLM responds
 
 // ─── Tool call events ────────────────────────────────────────────────────────
 
@@ -326,6 +334,161 @@ export interface LoopCondition {
   window?: number;
 }
 
+// ─── LLM content detection ───────────────────────────────────────────────────
+
+/**
+ * Shared detection strategy mixin — all detector configs extend this.
+ * Defines the pipeline of detection stages to run in order.
+ * Phase 1: only 'regex' is implemented. 'ml_ner' and 'llm_judge' are
+ * forward-compatible stubs that fail open and log a warning.
+ */
+export interface DetectionStrategy {
+  /**
+   * Ordered pipeline of detection stages.
+   * Each stage runs only if the previous stage confidence < advanceThreshold.
+   * Default: ['regex']
+   */
+  pipeline?: ('regex' | 'ml_ner' | 'llm_judge')[];
+  /**
+   * Confidence threshold below which the next pipeline stage is invoked.
+   * Default: 0.7
+   */
+  advanceThreshold?: number;
+  /** Config for llm_judge stage — required if pipeline includes 'llm_judge' */
+  llmJudge?: {
+    model?: string;         // defaults to proxy's own LLM config
+    threshold?: number;     // confidence required to trigger action, default 0.85
+    timeoutMs?: number;     // default 5000
+    failMode?: 'open' | 'closed'; // on timeout: open = skip stage, closed = block; default 'open'
+  };
+  /** Config for ml_ner stage — required if pipeline includes 'ml_ner' */
+  mlModel?: {
+    endpoint?: string;      // HTTP inference endpoint
+    modelId?: string;       // local model identifier
+    timeoutMs?: number;
+    failMode?: 'open' | 'closed'; // default 'open'
+  };
+}
+
+/** Result returned by each detector stage */
+export interface DetectionResult {
+  triggered: boolean;
+  confidence: number;       // 0–1
+  stage: 'regex' | 'ml_ner' | 'llm_judge';
+  matchedPattern?: string;  // pattern name or regex string that matched
+  entityType?: string;      // for PII detections
+}
+
+/** Which LLM content detectors can be configured on a rule */
+export type LlmDetector = 'pii' | 'secret' | 'prompt_injection' | 'dlp';
+
+/** Specifies which part of the LLM conversation to inspect */
+export interface LlmContentMatch {
+  /** Which direction to inspect */
+  scope: 'request' | 'response' | 'both';
+  /** Which message roles to scan (default: all roles) */
+  targets?: ('system' | 'user' | 'assistant')[];
+  /** Which detector types to run */
+  detectors: LlmDetector[];
+}
+
+/** PII entity types recognised by the PII detector */
+export type PiiEntity =
+  | 'EMAIL'
+  | 'PHONE'
+  | 'SIN'           // Canada Social Insurance Number
+  | 'SSN'           // US Social Security Number
+  | 'CREDIT_CARD'
+  | 'IBAN'
+  | 'PASSPORT'
+  | 'PERSON_NAME'
+  | 'ADDRESS'
+  | 'IP_ADDRESS'
+  | 'DATE_OF_BIRTH'
+  | 'HEALTH_CARD';
+
+/** Config for the 'pii' detector — used when match.content.detectors includes 'pii' */
+export interface PiiDetectorConfig extends DetectionStrategy {
+  entities: PiiEntity[];
+  locale?: string;              // e.g. 'en-CA' — affects SIN vs SSN, postal format
+  confidenceThreshold?: number; // 0–1, default 0.7
+}
+
+/** Built-in secret pattern names */
+export type BuiltinSecretPattern =
+  | 'openai_key'
+  | 'anthropic_key'
+  | 'aws_access_key'
+  | 'github_token'
+  | 'stripe_key'
+  | 'jwt'
+  | 'private_key'
+  | 'bearer_token'
+  | 'generic_api_key';
+
+/** Config for the 'secret' detector */
+export interface SecretDetectorConfig extends DetectionStrategy {
+  /** Which built-in patterns to run. If omitted, all built-in patterns apply. */
+  patterns?: BuiltinSecretPattern[];
+  /** Additional custom regex patterns */
+  custom?: { name: string; regex: string }[];
+}
+
+/** Config for the 'prompt_injection' detector */
+export interface InjectionDetectorConfig extends DetectionStrategy {}
+
+/** Config for the 'dlp' detector — user-defined data loss prevention patterns */
+export interface DlpDetectorConfig extends DetectionStrategy {
+  patterns: { name: string; regex: string; severity: 'critical' | 'high' | 'medium' }[];
+}
+
+// ─── Content inspection audit types (no PII values) ──────────────────────────
+
+/** A single detection match — safe for the main audit log (no original values) */
+export interface DetectorMatchAudit {
+  /** Token or pattern name: "EMAIL_1", "openai_key", "role_override_attempt" */
+  label: string;
+  /** Entity or pattern type: "EMAIL", "openai_key", "PROMPT_INJECTION" */
+  type: string;
+  confidence: number;
+  stage: 'regex' | 'ml_ner' | 'llm_judge';
+}
+
+/** Per-detector summary for one content inspection pass */
+export interface DetectorAuditResult {
+  detector: LlmDetector;
+  decidedBy: 'regex' | 'ml_ner' | 'llm_judge';
+  matchCount: number;
+  maxConfidence: number;
+  action: PolicyAction;
+  durationMs: number;
+  /** Safe for audit log — contains no original PII values */
+  matches: DetectorMatchAudit[];
+}
+
+/**
+ * PII pseudonymization stats — safe for production audit log.
+ * No original values. Hash is salted per-request (non-reversible).
+ */
+export interface PIIAuditStats {
+  tokenCount: number;
+  entityTypeBreakdown: Record<string, number>; // { EMAIL: 2, PHONE: 1 }
+  /**
+   * Salted hashes for deduplication (Tier 2).
+   * Hash = sha256(requestId + entityType + originalValue) — request-scoped, non-reversible.
+   */
+  valueHashes?: { hash: string; entityType: PiiEntity; occurrences: number }[];
+  rehydrated: boolean;
+}
+
+/** Content inspection summary attached to LlmCallEvent — no PII values */
+export interface ContentInspectionAudit {
+  detectorsRan: LlmDetector[];
+  results: DetectorAuditResult[];
+  inspectionDurationMs: number;
+  pseudonymization?: PIIAuditStats;
+}
+
 // ─── Policy ──────────────────────────────────────────────────────────────────
 
 export interface PolicyRule {
@@ -350,6 +513,10 @@ export interface PolicyRule {
     llmModel?: string[];
     // Provider names: ["anthropic", "openai", "google"]
     llmProvider?: string[];
+    // LLM content-based matching — inspects prompt/response body.
+    // When set, the rule runs through the content detection pipeline
+    // instead of (or in addition to) metadata matching.
+    content?: LlmContentMatch;
   };
   action: PolicyAction;
   // D-013: REQUIRE_APPROVAL metadata (parsed but async flow is Phase 2)
@@ -377,6 +544,13 @@ export interface PolicyRule {
   priority?: number;
   // Policy-driven loop detection — rule's action fires only when the loop condition is met
   loop?: LoopCondition;
+  // ── LLM content detector configs ──────────────────────────────────────────
+  // Only relevant when match.content is set. Each field configures the
+  // corresponding detector listed in match.content.detectors.
+  pii?: PiiDetectorConfig;
+  secrets?: SecretDetectorConfig;
+  injection?: InjectionDetectorConfig;
+  dlp?: DlpDetectorConfig;
 }
 
 export interface PolicyConfig {
@@ -409,7 +583,12 @@ export interface PackCustomization {
   default: unknown;
 }
 
-export type PackCategory = 'data-protection' | 'infrastructure' | 'compliance' | 'communication';
+export type PackCategory =
+  | 'data-protection'
+  | 'infrastructure'
+  | 'compliance'
+  | 'communication'
+  | 'llm-safety'; // prompt injection, PII-in-prompt, secret scanning
 export type PackSeverity = 'strict' | 'moderate' | 'permissive';
 
 export interface PolicyPack {

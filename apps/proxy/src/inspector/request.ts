@@ -9,7 +9,7 @@ export interface RequestInspectionResult {
 }
 
 // Patterns to detect prompt injection in tool call arguments
-const INPUT_INJECTION_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
+export const INPUT_INJECTION_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /ignore\s+(previous|prior|all|above)/i, label: 'instruction override in argument' },
   { pattern: /system\s*:/i, label: 'SYSTEM: directive in argument' },
   { pattern: /<\/?(?:system|assistant|user|prompt|instruction)>/i, label: 'role injection tag in argument' },

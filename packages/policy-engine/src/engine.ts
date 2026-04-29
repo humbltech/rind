@@ -82,13 +82,19 @@ export class PolicyEngine {
   }
 
   /**
-   * Evaluate an LLM call event against the loaded policy rules.
+   * Evaluate an LLM call event against metadata-only policy rules.
    * Only rules with llmModel or llmProvider criteria (or agent-only rules) are considered.
+   * Rules with match.content are explicitly excluded — they are evaluated separately
+   * by evaluateLlmContent() in the content policy pipeline (gateway step 3c).
+   * Without this exclusion a content DENY rule would block ALL matching provider
+   * requests regardless of actual content, because matchesLlmRule's agent-only
+   * fallback returns true for any rule lacking tool/LLM criteria.
    * Loop detection does not apply to LLM calls. Default action is ALLOW.
    */
   evaluateLlm(event: LlmCallEvent): PolicyEvalResult {
     for (const rule of this.rules) {
       if (rule.enabled === false) continue;
+      if (rule.match.content != null) continue; // handled by evaluateLlmContent
       if (!matchesLlmRule(rule, event)) continue;
       return { action: rule.action, matchedRule: rule };
     }

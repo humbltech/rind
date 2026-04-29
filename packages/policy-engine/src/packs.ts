@@ -589,6 +589,8 @@ export function rulesFromPack(
  * Match is prefix-based (requiredTools entries are prefixes of tool names).
  */
 export function recommendPacks(discoveredToolNames: string[]): PolicyPack[] {
+  // LLM safety packs (llm-secret-scan-v1, llm-pii-pseudonymize-v1, llm-injection-guard-v1)
+  // have no requiredTools — they are manually enabled by users and never auto-recommended.
   return registry.filter((pack) => {
     if (!pack.requiredTools?.length) return false;
     return pack.requiredTools.some((prefix) =>

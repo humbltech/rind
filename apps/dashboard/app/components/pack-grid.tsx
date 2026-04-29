@@ -5,7 +5,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Database, Terminal, FolderOpen, Shield, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Database, Terminal, FolderOpen, Shield, CheckCircle2, AlertCircle, Bot, Eye } from 'lucide-react';
 
 // ─── Types (mirrors proxy PolicyPack shape) ───────────────────────────────────
 
@@ -13,7 +13,7 @@ export interface PackSummary {
   id: string;
   name: string;
   description: string;
-  category: 'data-protection' | 'infrastructure' | 'compliance' | 'communication';
+  category: 'data-protection' | 'infrastructure' | 'compliance' | 'communication' | 'llm-safety';
   severity: 'strict' | 'moderate' | 'permissive';
   enabled: boolean;
   // Customized = pack is enabled but some rules were edited or removed
@@ -26,11 +26,12 @@ export interface PackSummary {
 interface PackGridProps {
   packs: PackSummary[];
   onToggle: (packId: string, enable: boolean) => Promise<void>;
+  onPreview?: (packId: string) => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function PackGrid({ packs, onToggle }: PackGridProps) {
+export function PackGrid({ packs, onToggle, onPreview }: PackGridProps) {
   if (packs.length === 0) {
     return (
       <div className="text-sm text-muted py-8 text-center">
@@ -42,7 +43,7 @@ export function PackGrid({ packs, onToggle }: PackGridProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
       {packs.map((pack) => (
-        <PackCard key={pack.id} pack={pack} onToggle={onToggle} />
+        <PackCard key={pack.id} pack={pack} onToggle={onToggle} onPreview={onPreview} />
       ))}
     </div>
   );
@@ -50,7 +51,7 @@ export function PackGrid({ packs, onToggle }: PackGridProps) {
 
 // ─── Pack card ────────────────────────────────────────────────────────────────
 
-function PackCard({ pack, onToggle }: { pack: PackSummary; onToggle: PackGridProps['onToggle'] }) {
+function PackCard({ pack, onToggle, onPreview }: { pack: PackSummary; onToggle: PackGridProps['onToggle']; onPreview?: (id: string) => void }) {
   const [loading, setLoading] = useState(false);
 
   async function handleToggle() {
@@ -101,22 +102,35 @@ function PackCard({ pack, onToggle }: { pack: PackSummary; onToggle: PackGridPro
         <p className="mt-1 text-xs text-muted leading-relaxed">{pack.description}</p>
       </div>
 
-      {/* Footer: severity + rule count */}
+      {/* Footer: severity + rule count + preview */}
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-border-subtle">
         <span className={['text-[10px] font-medium uppercase tracking-wide', severityColor].join(' ')}>
           {pack.severity}
         </span>
-        {pack.enabled && pack.activeRuleCount !== undefined && pack.totalRuleCount !== undefined && (
-          <span className="text-[10px] text-dim font-mono">
-            {pack.activeRuleCount} of {pack.totalRuleCount} rules
-          </span>
-        )}
-        {pack.enabled && !pack.customized && (
-          <CheckCircle2 size={12} className="text-accent shrink-0" />
-        )}
-        {pack.customized && (
-          <AlertCircle size={12} className="text-warning shrink-0" />
-        )}
+        <div className="flex items-center gap-2">
+          {pack.enabled && pack.activeRuleCount !== undefined && pack.totalRuleCount !== undefined && (
+            <span className="text-[10px] text-dim font-mono">
+              {pack.activeRuleCount} of {pack.totalRuleCount} rules
+            </span>
+          )}
+          {pack.enabled && !pack.customized && (
+            <CheckCircle2 size={12} className="text-accent shrink-0" />
+          )}
+          {pack.customized && (
+            <AlertCircle size={12} className="text-warning shrink-0" />
+          )}
+          {onPreview && (
+            <button
+              type="button"
+              onClick={() => onPreview(pack.id)}
+              className="flex items-center gap-1 text-[10px] text-dim hover:text-foreground transition-colors"
+              aria-label={`View rules for ${pack.name}`}
+            >
+              <Eye size={10} />
+              View rules
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -156,6 +170,7 @@ const CATEGORY_ICONS: Record<PackSummary['category'], typeof Shield> = {
   'infrastructure':  Terminal,
   'compliance':      Shield,
   'communication':   FolderOpen,
+  'llm-safety':      Bot,
 };
 
 const SEVERITY_COLORS: Record<PackSummary['severity'], string> = {

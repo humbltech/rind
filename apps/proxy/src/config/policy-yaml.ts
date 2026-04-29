@@ -38,9 +38,14 @@ packs:
   - cli-protection
 
   # Uncomment to enable additional packs:
-  # - data-exfiltration    # Blocks data exfil via curl, wget, netcat
-  # - secrets-protection   # Blocks reading .env, ~/.ssh/*, AWS credentials
-  # - infra-protection     # Blocks DNS/firewall changes, kernel parameters
+  # - data-exfiltration        # Blocks data exfil via curl, wget, netcat
+  # - secrets-protection       # Blocks reading .env, ~/.ssh/*, AWS credentials
+  # - infra-protection         # Blocks DNS/firewall changes, kernel parameters
+
+  # LLM safety packs (requires llmProxy.enabled: true):
+  # - llm-injection-guard-v1   # Blocks prompt injection attempts in outbound LLM calls
+  # - llm-secret-scan-v1       # Blocks API keys/tokens from reaching LLM providers
+  # - llm-pii-pseudonymize-v1  # Replaces PII with tokens before LLM, rehydrates response
 
 # ── Custom rules ──────────────────────────────────────────────────────────────
 #

@@ -28,6 +28,7 @@ export class JsonlEventStore<T> implements IEventStore<T> {
   private readonly mem: InMemoryEventStore<T>;
   private readonly filePath: string;
   private readonly onError: (err: unknown) => void;
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(opts: JsonlEventStoreOptions) {
     this.mem = new InMemoryEventStore<T>(opts.capacity);
@@ -38,13 +39,13 @@ export class JsonlEventStore<T> implements IEventStore<T> {
   push(item: T): void {
     this.mem.push(item);
     const line = JSON.stringify(item) + '\n';
-    appendFile(this.filePath, line, 'utf-8').catch((err: unknown) => this.onError(err));
+    this.enqueueWrite(() => appendFile(this.filePath, line, 'utf-8'));
   }
 
   update(predicate: (item: T) => boolean, updater: (item: T) => T): boolean {
     const found = this.mem.update(predicate, updater);
     if (found) {
-      this.compact().catch((err: unknown) => this.onError(err));
+      this.enqueueWrite(() => this.compact());
     }
     return found;
   }
@@ -75,6 +76,10 @@ export class JsonlEventStore<T> implements IEventStore<T> {
     } catch {
       return 0;
     }
+  }
+
+  private enqueueWrite(fn: () => Promise<void>): void {
+    this.writeChain = this.writeChain.then(fn).catch((err: unknown) => this.onError(err));
   }
 
   private async compact(): Promise<void> {
