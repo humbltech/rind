@@ -28,6 +28,11 @@ describe('listPacks', () => {
     const ids = listPacks().map((p) => p.id);
     expect(ids).toContain('llm-response-pii-redact-v1');
   });
+
+  it('includes llm-model-restrict-v1', () => {
+    const ids = listPacks().map((p) => p.id);
+    expect(ids).toContain('llm-model-restrict-v1');
+  });
 });
 
 describe('getPack', () => {
@@ -170,13 +175,6 @@ describe('llm-response-pii-redact-v1', () => {
   it('has llm-safety category', () => {
     const pack = getPack('llm-response-pii-redact-v1')!;
     expect(pack.category).toBe('llm-safety');
-  });
-});
-
-describe('listPacks', () => {
-  it('includes llm-model-restrict-v1', () => {
-    const ids = listPacks().map((p) => p.id);
-    expect(ids).toContain('llm-model-restrict-v1');
   });
 });
 

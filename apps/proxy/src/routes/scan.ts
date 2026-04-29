@@ -9,7 +9,7 @@ import { emitAudit } from './helpers.js';
 
 const ScanBodySchema = z.object({
   serverId: z.string().min(1),
-  tools: z.array(z.unknown()),
+  tools: z.array(z.object({ name: z.string() }).passthrough()),
 });
 
 export interface ScanRouteDeps {
