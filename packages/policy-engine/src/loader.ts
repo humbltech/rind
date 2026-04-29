@@ -126,7 +126,7 @@ const LlmContentMatchSchema = z.object({
 
 // ─── Full policy rule schema ──────────────────────────────────────────────────
 
-const PolicyRuleSchema = z.object({
+export const PolicyRuleSchema = z.object({
   name: z.string(),
   agent: z.string().default('*'),
   enabled: z.boolean().default(true),

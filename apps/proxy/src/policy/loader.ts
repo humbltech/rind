@@ -1,1 +1,1 @@
-export { loadPolicyFile, emptyPolicyConfig } from '@rind/policy-engine';
+export { loadPolicyFile, emptyPolicyConfig, PolicyRuleSchema } from '@rind/policy-engine';

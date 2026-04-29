@@ -5,67 +5,17 @@ import type { Logger } from 'pino';
 import { z } from 'zod';
 import type { PolicyEngine } from '../policy/engine.js';
 import type { InMemoryPolicyStore } from '../policy/store.js';
+import { PolicyRuleSchema } from '../policy/loader.js';
 import { listPacks, getPack, expandPackRules, rulesFromPack, recommendPacks } from '../policy/packs.js';
 import { listStoredSchemas } from '../scanner/index.js';
 import type { RindEventBus } from '../event-bus.js';
-import type { PolicyRule } from '../types.js';
 import { emitPolicyAudit } from './helpers.js';
 
 // ─── Validation schemas ────────────────────────────────────────────────────────
 
-const PolicyRuleSchema: z.ZodType<PolicyRule> = z.object({
-  name: z.string(),
-  agent: z.string().default('*'),
-  enabled: z.boolean().default(true),
-  match: z.object({
-    tool: z.array(z.string()).optional(),
-    toolPattern: z.string().optional(),
-    timeWindow: z
-      .object({
-        daysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
-        hours: z.string().regex(/^\d{2}:\d{2}-\d{2}:\d{2}$/).optional(),
-      })
-      .optional(),
-    parameters: z.record(z.object({
-      contains: z.array(z.string()).optional(),
-      regex: z.string().optional(),
-      startsWith: z.string().optional(),
-      gt: z.number().optional(),
-      lt: z.number().optional(),
-      gte: z.number().optional(),
-      lte: z.number().optional(),
-      eq: z.unknown().optional(),
-      in: z.array(z.unknown()).optional(),
-    })).optional(),
-    subcommand: z.array(z.string()).optional(),
-    llmModel: z.array(z.string()).optional(),
-    llmProvider: z.array(z.string()).optional(),
-  }),
-  action: z.enum(['ALLOW', 'DENY', 'REQUIRE_APPROVAL', 'RATE_LIMIT']),
-  approval: z.object({ timeout: z.string().optional(), onTimeout: z.enum(['DENY', 'ALLOW']).optional() }).optional(),
-  costEstimate: z.number().nonnegative().optional(),
-  limits: z.object({
-    maxCallsPerSession: z.number().int().positive().optional(),
-    maxCallsPerHour: z.number().int().positive().optional(),
-    maxCostPerSession: z.number().nonnegative().optional(),
-    maxCostPerHour: z.number().nonnegative().optional(),
-  }).optional(),
-  rateLimit: z.object({
-    limit: z.number().int().positive(),
-    window: z.string().regex(/^\d+(s|m|h|d)$/),
-    scope: z.enum(['per_agent', 'per_tool', 'global']),
-  }).optional(),
-  failMode: z.enum(['closed', 'open']).default('closed'),
-  priority: z.number().int().min(0).default(50),
-  loop: z.object({
-    type: z.enum(['exact', 'consecutive', 'subcommand']),
-    threshold: z.number().int().min(2),
-    window: z.number().int().min(2).default(30),
-  }).optional(),
-}) as z.ZodType<PolicyRule>;
-
 const PolicyConfigSchema = z.object({
-  policies: z.array(PolicyRuleSchema),
+  packs: z.array(z.string()).optional(),
+  policies: z.array(PolicyRuleSchema).optional().default([]),
 });
 
 // ─── Route deps ───────────────────────────────────────────────────────────────
