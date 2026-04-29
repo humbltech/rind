@@ -11,19 +11,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { Plus } from 'lucide-react';
 import { Sidebar } from '../components/sidebar';
 import { PackGrid, type PackSummary } from '../components/pack-grid';
+import { PackPreviewSheet } from '../components/pack-preview-sheet';
 import { RuleList, type PolicyRuleRow } from '../components/rule-list';
 import { RuleBuilder } from '../components/rule-builder';
-
-// ─── Raw API shapes ───────────────────────────────────────────────────────────
-
-interface ApiPack {
-  id: string;
-  name: string;
-  description: string;
-  category: PackSummary['category'];
-  severity: PackSummary['severity'];
-  rules: { name: string }[];
-}
+import { getPacks, getPolicies, enablePack, disablePack, addRule, updateRule, deleteRule, toggleRule, type PackWithState } from '../lib/api.js';
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -32,40 +23,29 @@ export default function PoliciesPage() {
   const [editingRule, setEditingRule]     = useState<PolicyRuleRow | null | undefined>(undefined);
   // undefined = closed, null = new rule, PolicyRuleRow = edit existing
 
+  const [previewingPackId, setPreviewingPackId] = useState<string | null>(null);
+
   const packSummaries = derivePacks(packs, rules);
 
   async function handlePackToggle(packId: string, enable: boolean) {
-    const method = enable ? 'POST' : 'DELETE';
-    const res = await fetch(`/api/proxy/packs/${packId}/enable`, { method });
-    if (!res.ok) throw new Error(await extractError(res));
+    if (enable) await enablePack(packId);
+    else await disablePack(packId);
     reload();
   }
 
   async function handleRuleDelete(name: string) {
-    const res = await fetch(`/api/proxy/policies/rules/${encodeURIComponent(name)}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error(await extractError(res));
+    await deleteRule(name);
     reload();
   }
 
   async function handleRuleToggle(name: string) {
-    const res = await fetch(`/api/proxy/policies/rules/${encodeURIComponent(name)}/toggle`, { method: 'PATCH' });
-    if (!res.ok) throw new Error(await extractError(res));
+    await toggleRule(name);
     reload();
   }
 
   async function handleRuleSave(rule: PolicyRuleRow) {
-    const isEdit = editingRule != null;
-    const url    = isEdit
-      ? `/api/proxy/policies/rules/${encodeURIComponent(editingRule.name)}`
-      : '/api/proxy/policies/rules';
-
-    const res = await fetch(url, {
-      method:  isEdit ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(rule),
-    });
-
-    if (!res.ok) throw new Error(await extractError(res));
+    if (editingRule != null) await updateRule(editingRule.name, rule);
+    else await addRule(rule);
     reload();
   }
 
@@ -75,7 +55,7 @@ export default function PoliciesPage() {
       <main className="flex-1 overflow-auto">
         <div className="max-w-[1400px] mx-auto px-8 py-8 space-y-10">
           <PageTitle connected={isConnected} />
-          <PackSection   packs={packSummaries} onToggle={handlePackToggle} />
+          <PackSection   packs={packSummaries} onToggle={handlePackToggle} onPreview={setPreviewingPackId} />
           <RulesSection  rules={rules} onDelete={handleRuleDelete} onEdit={setEditingRule} onNew={() => setEditingRule(null)} onToggle={handleRuleToggle} />
         </div>
       </main>
@@ -85,6 +65,13 @@ export default function PoliciesPage() {
           initial={editingRule}
           onSave={handleRuleSave}
           onClose={() => setEditingRule(undefined)}
+        />
+      )}
+
+      {previewingPackId && (
+        <PackPreviewSheet
+          packId={previewingPackId}
+          onClose={() => setPreviewingPackId(null)}
         />
       )}
     </div>
@@ -108,14 +95,18 @@ function PageTitle({ connected }: { connected: boolean }) {
   );
 }
 
-function PackSection({ packs, onToggle }: { packs: PackSummary[]; onToggle: (id: string, enable: boolean) => Promise<void> }) {
+function PackSection({ packs, onToggle, onPreview }: {
+  packs: PackSummary[];
+  onToggle: (id: string, enable: boolean) => Promise<void>;
+  onPreview: (id: string) => void;
+}) {
   return (
     <section>
       <SectionLabel>Policy packs</SectionLabel>
       <p className="mt-1 mb-4 text-xs text-dim">
         One-click bundles — enable a pack to activate its rules immediately.
       </p>
-      <PackGrid packs={packs} onToggle={onToggle} />
+      <PackGrid packs={packs} onToggle={onToggle} onPreview={onPreview} />
     </section>
   );
 }
@@ -159,7 +150,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 //   Enabled   — pack rules present and count matches pack total
 //   Customized — pack rules present but count < pack total (some deleted/edited)
 
-function derivePacks(apiPacks: ApiPack[], rules: PolicyRuleRow[]): PackSummary[] {
+function derivePacks(apiPacks: PackWithState[], rules: PolicyRuleRow[]): PackSummary[] {
   return apiPacks.map((pack) => {
     const packRules    = rules.filter((r) => r._meta?.source === `pack:${pack.id}`);
     const activeCount  = packRules.length;
@@ -184,7 +175,7 @@ function derivePacks(apiPacks: ApiPack[], rules: PolicyRuleRow[]): PackSummary[]
 // ─── Data polling hook ────────────────────────────────────────────────────────
 
 function usePolicyData() {
-  const [packs, setPacks]           = useState<ApiPack[]>([]);
+  const [packs, setPacks]           = useState<PackWithState[]>([]);
   const [rules, setRules]           = useState<PolicyRuleRow[]>([]);
   const [isConnected, setConnected] = useState(false);
   const [version, setVersion]       = useState(0);
@@ -197,21 +188,16 @@ function usePolicyData() {
 
     async function poll() {
       try {
-        const [packsRes, rulesRes] = await Promise.all([
-          fetch('/api/proxy/packs'),
-          fetch('/api/proxy/policies'),
+        const [packsData, rulesData] = await Promise.all([
+          getPacks(),
+          getPolicies(),
         ]);
 
         if (!active) return;
 
-        if (packsRes.ok) setPacks(await packsRes.json());
-        if (rulesRes.ok) {
-          const data = await rulesRes.json();
-          // Proxy returns { policies: [] } — unwrap if needed
-          setRules(Array.isArray(data) ? data : (data.policies ?? []));
-        }
-
-        setConnected(packsRes.ok);
+        setPacks(packsData);
+        setRules(rulesData.policies);
+        setConnected(true);
       } catch {
         if (active) setConnected(false);
       }
@@ -225,13 +211,3 @@ function usePolicyData() {
   return { packs, rules, isConnected, reload };
 }
 
-// ─── Utility ──────────────────────────────────────────────────────────────────
-
-async function extractError(res: Response): Promise<string> {
-  try {
-    const body = await res.json();
-    return body.error ?? `HTTP ${res.status}`;
-  } catch {
-    return `HTTP ${res.status}`;
-  }
-}

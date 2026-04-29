@@ -32,13 +32,14 @@ export type McpProtectionState = 'proxied' | 'observed' | 'registered';
 
 export interface McpServerInfo {
   id: string;
-  name: string;
+  source: 'user-settings' | 'plugin' | 'cloud-ai';
+  transport: 'stdio' | 'http';
   command?: string;
-  args?: string[];
-  env?: Record<string, string>;
+  url?: string;
+  pluginName?: string;
+  enabled: boolean;
   connectionStatus: McpConnectionStatus;
-  protectionState?: McpProtectionState;
-  transport?: string;
+  protectionState: McpProtectionState;
 }
 
 export interface ClaudeSession {
@@ -180,7 +181,7 @@ export const getHookContext = () => get<HookContext>('/hook/context');
 export const getSessions = () => get<Session[]>('/sessions');
 
 // ─── Policies ────────────────────────────────────────────────────────────────
-export const getPolicies = () => get<{ policies: PolicyRule[] }>('/policies');
+export const getPolicies = () => get<{ policies: PolicyRuleWithMeta[] }>('/policies');
 export const addRule = (rule: PolicyRule) => post<{ added: boolean; rule: PolicyRule }>('/policies/rules', rule);
 export const updateRule = (name: string, rule: PolicyRule) => put<{ updated: boolean; rule: PolicyRule }>(`/policies/rules/${encodeURIComponent(name)}`, rule);
 export const toggleRule = (name: string) => patch<{ toggled: boolean; name: string; enabled: boolean }>(`/policies/rules/${encodeURIComponent(name)}/toggle`);

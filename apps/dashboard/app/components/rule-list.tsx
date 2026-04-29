@@ -35,11 +35,11 @@ export interface PolicyRuleRow {
       hours?: string;
     };
   };
-  action: 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL' | 'RATE_LIMIT';
+  action: 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL' | 'RATE_LIMIT' | 'REDACT' | 'PSEUDONYMIZE';
   priority?: number;
-  rateLimit?: { limit: number; window: string; scope: string };
-  failMode?: string;
-  loop?: { type: string; threshold: number; window?: number };
+  rateLimit?: { limit: number; window: string; scope: 'per_agent' | 'per_tool' | 'global' };
+  failMode?: 'closed' | 'open';
+  loop?: { type: 'exact' | 'consecutive' | 'subcommand'; threshold: number; window?: number };
   _meta?: {
     source: string;
     modifiedFromPack?: boolean;
@@ -161,6 +161,8 @@ const ACTION_STYLES: Record<PolicyRuleRow['action'], string> = {
   DENY:             'text-critical border-critical/30 bg-critical/8',
   REQUIRE_APPROVAL: 'text-warning border-warning/30 bg-warning/8',
   RATE_LIMIT:       'text-muted border-border bg-overlay',
+  REDACT:           'text-muted border-border bg-overlay',
+  PSEUDONYMIZE:     'text-muted border-border bg-overlay',
 };
 
 function ActionBadge({ action }: { action: PolicyRuleRow['action'] }) {

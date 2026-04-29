@@ -26,6 +26,7 @@ import type React from 'react';
 import { Sidebar } from '../components/sidebar';
 import type { ToolCallEntry } from '../components/tool-call-table';
 import { LlmCallTable, type LlmCallEntry } from '../components/llm-call-table';
+import { getToolCalls, getLlmCalls } from '../lib/api.js';
 import {
   Search,
   ChevronDown,
@@ -1212,23 +1213,15 @@ function useLogData() {
 
     async function poll() {
       try {
-        const [callsRes, llmRes] = await Promise.all([
-          fetch('/api/proxy/logs/tool-calls'),
-          fetch('/api/proxy/logs/llm-calls'),
+        const [calls, llm] = await Promise.all([
+          getToolCalls(),
+          getLlmCalls(),
         ]);
         if (!active) return;
 
-        if (callsRes.ok) {
-          const calls: ToolCallEntry[] = await callsRes.json();
-          setToolCalls(calls);
-          setIsConnected(true);
-        } else {
-          setIsConnected(false);
-        }
-        if (llmRes.ok) {
-          const calls: LlmCallEntry[] = await llmRes.json();
-          setLlmCalls(calls);
-        }
+        setToolCalls(calls);
+        setLlmCalls(llm);
+        setIsConnected(true);
       } catch {
         if (active) setIsConnected(false);
       }

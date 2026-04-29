@@ -4,20 +4,9 @@
 'use client';
 
 import { Shield, Eye, Server, AlertTriangle, Lock, XCircle } from 'lucide-react';
+import type { McpConnectionStatus, McpServerInfo } from '../lib/api.js';
 
-export type McpConnectionStatus = 'connected' | 'registered' | 'needs-auth' | 'disabled' | 'failed';
-
-export interface McpServerInfo {
-  id: string;
-  source: 'user-settings' | 'plugin' | 'cloud-ai';
-  transport: 'stdio' | 'http';
-  command?: string;
-  url?: string;
-  pluginName?: string;
-  enabled: boolean;
-  connectionStatus: McpConnectionStatus;
-  protectionState: 'proxied' | 'observed' | 'registered';
-}
+export type { McpConnectionStatus, McpServerInfo };
 
 interface McpServerListProps {
   servers: McpServerInfo[];

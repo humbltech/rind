@@ -19,28 +19,7 @@ import { McpServerList, type McpServerInfo } from './components/mcp-server-list'
 import { InsightsPanel } from './components/insights-panel';
 import { ApprovalBanner } from './components/approval-banner';
 import { LlmCallTable, type LlmCallEntry } from './components/llm-call-table';
-
-// ─── Data shapes from the proxy API ───────────────────────────────────────────
-
-interface ProxyStatus {
-  sessions:  { total: number; active: number };
-  toolCalls: { total: number };
-  threats:   { total: number };
-  servers:   { total: number };
-}
-
-interface ClaudeSession {
-  sessionId: string;
-  name?: string;
-  cwd?: string;
-  pid?: number;
-  startedAt?: number;
-}
-
-interface HookContext {
-  mcpServers: McpServerInfo[];
-  activeSessions: ClaudeSession[];
-}
+import { getStatus, getToolCalls, getScanResults, getHookContext, getLlmCalls, type ProxyStatus, type ClaudeSession, type HookContext } from './lib/api.js';
 
 // ─── Dashboard page ───────────────────────────────────────────────────────────
 
@@ -433,26 +412,22 @@ function useProxyData() {
 
     async function poll() {
       try {
-        const [statusRes, logsRes, scanRes, ctxRes, llmRes] = await Promise.all([
-          fetch('/api/proxy/status'),
-          fetch('/api/proxy/logs/tool-calls'),
-          fetch('/api/proxy/scan/results'),
-          fetch('/api/proxy/hook/context'),
-          fetch('/api/proxy/logs/llm-calls'),
+        const [status, calls, scan, ctx, llm] = await Promise.all([
+          getStatus(),
+          getToolCalls(),
+          getScanResults(),
+          getHookContext(),
+          getLlmCalls(),
         ]);
 
         if (!active) return;
 
-        if (statusRes.ok) setStatus(await statusRes.json());
-        if (logsRes.ok) {
-          const calls: ToolCallEntry[] = await logsRes.json();
-          setToolCalls(calls);
-        }
-        if (scanRes.ok)   setScanResults(await scanRes.json());
-        if (ctxRes.ok)    setHookContext(await ctxRes.json());
-        if (llmRes.ok)    setLlmCalls(await llmRes.json());
-
-        setIsConnected(statusRes.ok);
+        setStatus(status);
+        setToolCalls(calls);
+        setScanResults(scan);
+        setHookContext(ctx);
+        setLlmCalls(llm);
+        setIsConnected(true);
       } catch {
         if (active) setIsConnected(false);
       }

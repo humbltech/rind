@@ -690,7 +690,7 @@ function parseRawToRule(text: string): PolicyRuleRow {
     match: (parsed.match as PolicyRuleRow['match']) ?? {},
     action: parsed.action as PolicyRuleRow['action'],
     priority: typeof parsed.priority === 'number' ? parsed.priority : 50,
-    failMode: (parsed.failMode as string) ?? 'closed',
+    failMode: (parsed.failMode as 'closed' | 'open') ?? 'closed',
     rateLimit: parsed.rateLimit as PolicyRuleRow['rateLimit'],
     _meta: { source: 'manual' },
   };
@@ -786,6 +786,8 @@ const ACTION_ACTIVE: Record<PolicyRuleRow['action'], string> = {
   ALLOW:            'bg-accent/10 border-accent/40 text-accent',
   REQUIRE_APPROVAL: 'bg-warning/10 border-warning/40 text-warning',
   RATE_LIMIT:       'bg-overlay border-border text-foreground',
+  REDACT:           'bg-overlay border-border text-foreground',
+  PSEUDONYMIZE:     'bg-overlay border-border text-foreground',
 };
 
 const ACTION_HINTS: Record<PolicyRuleRow['action'], string> = {
@@ -793,4 +795,6 @@ const ACTION_HINTS: Record<PolicyRuleRow['action'], string> = {
   ALLOW:            'Always permit',
   REQUIRE_APPROVAL: 'Pause for review',
   RATE_LIMIT:       'Cap call frequency',
+  REDACT:           'Replace matched content',
+  PSEUDONYMIZE:     'Vault and rehydrate',
 };
