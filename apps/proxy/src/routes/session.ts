@@ -33,7 +33,7 @@ export function sessionRoutes({ bus, config, logger }: SessionRouteDeps): Hono {
       agentId: session.agentId,
       serverId: '',
       action: 'ALLOW',
-    }, config);
+    });
     return c.json(session, 201);
   });
 
@@ -53,7 +53,7 @@ export function sessionRoutes({ bus, config, logger }: SessionRouteDeps): Hono {
       agentId: session?.agentId ?? 'unknown',
       serverId: '',
       action: 'ALLOW',
-    }, config);
+    });
     return c.json({ killed: true, sessionId });
   });
 

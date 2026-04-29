@@ -8,12 +8,9 @@ import type { AuditEntry, ProxyConfig, ToolCallEvent } from '../types.js';
 export function emitAudit(
   bus: RindEventBus,
   fields: Omit<AuditEntry, 'timestamp'>,
-  config: ProxyConfig,
 ): void {
-  bus.emit('audit', {
-    timestamp: new Date().toISOString(),
-    ...fields,
-  } as AuditEntry);
+  const entry: AuditEntry = { timestamp: new Date().toISOString(), ...fields };
+  bus.emit('audit', entry);
 }
 
 export function emitPolicyAudit(

@@ -43,7 +43,7 @@ export function scanRoutes({ bus, config, logger }: ScanRouteDeps): Hono {
       agentId: '',
       serverId,
       action: result.passed ? 'ALLOW' : 'DENY',
-    }, config);
+    });
 
     return c.json(result);
   });
@@ -70,7 +70,7 @@ export function scanRoutes({ bus, config, logger }: ScanRouteDeps): Hono {
       agentId: '',
       serverId,
       action: result.passed ? 'ALLOW' : 'DENY',
-    }, config);
+    });
 
     return c.json(result);
   });

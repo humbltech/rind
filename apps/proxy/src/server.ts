@@ -167,7 +167,7 @@ export function createProxyServer(config: ProxyConfig) {
           toolName: event.toolName,
           action: 'evaluated',
           policyRule: rule?.name,
-        }, config);
+        });
       },
       onToolResponseEvent: () => {},
       blockOnCriticalResponseThreats: false,

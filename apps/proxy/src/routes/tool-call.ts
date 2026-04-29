@@ -156,7 +156,7 @@ export function toolCallRoutes({
             toolName: e.toolName,
             policyRule: matchedRule?.name,
             input: e.input,
-          }, config);
+          });
         },
         onToolResponseEvent: (e) => {
           bus.emit('tool:response', e);
@@ -179,7 +179,7 @@ export function toolCallRoutes({
               toolName: e.toolName,
               threats: e.threats,
               ...(config.auditIncludeOutput ? { output: e.output } : {}),
-            }, config);
+            });
           } else {
             logger.debug(
               { sessionId: e.sessionId, toolName: e.toolName, durationMs: e.durationMs },
@@ -298,7 +298,7 @@ export function toolCallRoutes({
         toolName: event.toolName,
         reason: interceptorResult.reason,
         input: event.input,
-      }, config);
+      });
 
       const responseBody: Record<string, unknown> = {
         blocked: true,

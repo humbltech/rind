@@ -6,7 +6,8 @@ import type { IAuditLog } from './interfaces.js';
  *
  * Every append is deferred past the current event-loop tick via setImmediate
  * so the proxy response is sent before the disk write begins.
- * I/O errors are reported via onError and never thrown.
+ * I/O errors are reported via onError and never thrown. Delivery is
+ * best-effort: entries in a batch that fails to write are dropped.
  *
  * Future backends (SQLite, cloud) implement IAuditLog<T> and are swapped
  * at the single wiring point in server.ts.

@@ -87,7 +87,7 @@ export function hookRoutes({
           toolName: event.toolName,
           action: 'evaluated',
           policyRule: rule?.name,
-        }, config);
+        });
       },
       onToolResponseEvent: () => {
         // Hook is evaluate-only — no upstream response to emit
