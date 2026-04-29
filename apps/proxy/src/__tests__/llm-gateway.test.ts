@@ -199,12 +199,16 @@ const BASE_CONFIG: LlmProxyConfig = {
   googleUpstream:    'https://generativelanguage.googleapis.com',
 };
 
-function makeGateway(rules: PolicyRule[] = [PII_PSEUDONYMIZE_RULE], config: Partial<LlmProxyConfig> = {}) {
+function makeGateway(
+  rules: PolicyRule[] = [PII_PSEUDONYMIZE_RULE],
+  config: Partial<LlmProxyConfig> = {},
+  forwardFn?: typeof forwardLlmRequest,
+) {
   const store = new InMemoryPolicyStore({ policies: rules });
   const policyEngine = new PolicyEngine(store);
   const bus = new RindEventBus();
   const logger = pino({ level: 'silent' });
-  const app = llmGateway({ config: { ...BASE_CONFIG, ...config }, bus, policyEngine, logger });
+  const app = llmGateway({ config: { ...BASE_CONFIG, ...config }, bus, policyEngine, logger, forwardFn });
   return { app, bus, policyEngine };
 }
 
@@ -605,5 +609,21 @@ describe('llmGateway — response-side content policy', () => {
 
     // Rule is scope:request only — response passes through unchanged
     expect(res.status).toBe(200);
+  });
+});
+
+describe('llmGateway — injected forwardFn', () => {
+  beforeEach(() => mockForward.mockReset());
+
+  it('uses injected forwardFn when provided, does not call module-level mock', async () => {
+    const injectedForward = vi.fn<typeof forwardLlmRequest>().mockResolvedValue(
+      makeForwardResult('injected response'),
+    );
+    const { app } = makeGateway([], {}, injectedForward);
+
+    const res = await postToGateway(app, makeAnthropicBody('test'));
+    expect(res.status).toBe(200);
+    expect(mockForward).not.toHaveBeenCalled();
+    expect(injectedForward).toHaveBeenCalledOnce();
   });
 });

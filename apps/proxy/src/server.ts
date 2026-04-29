@@ -205,7 +205,7 @@ export function createProxyServer(config: ProxyConfig) {
     bus.on('llm:blocked', ({ event }) => llmRingBuffer.push(event));
 
     const llmConfig = { ...defaultLlmProxyConfig(), ...config.llmProxy };
-    app.route('/', llmGateway({ config: llmConfig, bus, policyEngine, logger }));
+    app.route('/', llmGateway({ config: llmConfig, bus, policyEngine, logger, forwardFn: config.llmForwardFn }));
     logger.info({ logLevel: llmConfig.logLevel }, 'LLM API proxy gateway mounted');
 
     app.get('/logs/llm-calls', (c) => {

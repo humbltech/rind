@@ -4,6 +4,7 @@
 export * from '@rind/core';
 
 import type { PolicyConfig } from '@rind/core';
+import type { ForwardLlmOptions, ForwardLlmResult } from './transport/llm/forward.js';
 
 // ─── Proxy-only types ─────────────────────────────────────────────────────────
 // These reference proxy-internal transport types and cannot move to @rind/core.
@@ -13,6 +14,14 @@ export type ForwardFn = (
   toolName: string,
   input: unknown,
 ) => Promise<{ output: unknown; durationMs: number }>;
+
+// Injectable LLM forward function — used in simulation and tests.
+export type LlmForwardFn = (
+  inboundPath: string,
+  inboundHeaders: Record<string, string>,
+  body: unknown,
+  opts: ForwardLlmOptions,
+) => Promise<ForwardLlmResult>;
 
 export interface ProxyConfig {
   port: number;
@@ -36,6 +45,8 @@ export interface ProxyConfig {
   hookSendGuidance?: boolean;
   // LLM API proxy configuration (D-041 scope clarification)
   llmProxy?: Partial<import('./transport/llm/types.js').LlmProxyConfig>;
+  /** Injectable LLM forward function — used in simulation and tests. */
+  llmForwardFn?: LlmForwardFn;
   // Module enable flags — all on by default, disabled with --no-* CLI flags
   mcpProxyEnabled?: boolean;   // default true — disable with --no-mcp-proxy
   hooksEnabled?: boolean;      // default true — disable with --no-hooks

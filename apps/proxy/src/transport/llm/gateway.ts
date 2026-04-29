@@ -23,6 +23,7 @@ import { openaiProvider } from './providers/openai.js';
 import type { LlmProxyProvider } from './providers/interface.js';
 import { ProviderParseError } from './providers/interface.js';
 import { forwardLlmRequest } from './forward.js';
+import type { ForwardLlmOptions, ForwardLlmResult } from './forward.js';
 import { createAnthropicAccumulator, createOpenAIAccumulator } from './streaming.js';
 import { scanLlmRequest } from './request-scanner.js';
 import { scanLlmResponse } from './response-scanner.js';
@@ -30,6 +31,7 @@ import { calculateCost } from './cost-calculator.js';
 import { evaluateLlmContent } from './content-policy.js';
 import { evaluateLlmResponseContent, patchResponseBodyWithRedaction } from './content-policy-response.js';
 import type { PIIVault } from '../../pii-vault.js';
+import type { LlmForwardFn } from '../../types.js';
 
 // ─── Gateway options ──────────────────────────────────────────────────────────
 
@@ -43,6 +45,12 @@ export interface LlmGatewayOptions {
    * Does not block the response — fire and forget.
    */
   onResponseComplete?: (event: LlmCallEvent) => void;
+  /**
+   * Injectable forward function — replaces the real HTTP forwarding.
+   * Used in simulation scenarios and tests to inject canned LLM responses
+   * without making real network calls.
+   */
+  forwardFn?: LlmForwardFn;
 }
 
 // ─── Conversation tracker ─────────────────────────────────────────────────────
@@ -352,7 +360,8 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     const inboundPath = c.req.path; // e.g. /llm/anthropic/v1/messages
     const forwardStart = Date.now();
 
-    const result = await forwardLlmRequest(inboundPath, inboundHeaders, forwardBody, {
+    const forward = opts.forwardFn ?? forwardLlmRequest;
+    const result = await forward(inboundPath, inboundHeaders, forwardBody, {
       provider,
       upstreamBaseUrl,
       logLevel: config.logLevel,
