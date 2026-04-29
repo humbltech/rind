@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createSession,
   getSession,
@@ -6,9 +6,13 @@ import {
   isSessionActive,
   incrementToolCall,
   listSessions,
+  resetSessions,
 } from '../session.js';
 
 describe('session management', () => {
+  beforeEach(() => {
+    resetSessions();
+  });
   it('creates an active session', () => {
     const session = createSession('agent-test');
     expect(session.active).toBe(true);

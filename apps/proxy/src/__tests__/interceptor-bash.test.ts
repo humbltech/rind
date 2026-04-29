@@ -27,9 +27,7 @@ const noopForward = async () => ({ output: 'ok', durationMs: 1 });
 const events: ToolCallEvent[] = [];
 const responses: ToolResponseEvent[] = [];
 
-const sessionStore = new InMemorySessionStore();
-// Ensure 'session-1' is always active for interceptor checks
-sessionStore.create('agent-1', 'session-1');
+let sessionStore: InMemorySessionStore;
 
 function makeOpts(policyEngine: PolicyEngine) {
   events.length = 0;
@@ -71,12 +69,10 @@ const blockDestructiveBash: PolicyConfig = {
   ],
 };
 
-// Need to init sessions for kill-switch check
-import { createSession } from '../session.js';
-
 describe('Interceptor — Bash sub-command expansion', () => {
   beforeEach(() => {
-    createSession('agent-1', 'session-1');
+    sessionStore = new InMemorySessionStore();
+    sessionStore.create('agent-1', 'session-1');
   });
 
   it('blocks compound command when any sub-command matches DENY', async () => {
