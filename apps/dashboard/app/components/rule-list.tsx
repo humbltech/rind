@@ -256,10 +256,16 @@ function formatMatchLabel(match: PolicyRuleRow['match']): string {
 }
 
 const PACK_DISPLAY_NAMES: Record<string, string> = {
-  'sql-protection':        'SQL',
-  'shell-protection':      'Shell',
-  'filesystem-protection': 'Filesystem',
-  'exfil-protection':      'Exfil',
+  'sql-protection':               'SQL',
+  'shell-protection':             'Shell',
+  'filesystem-protection':        'Filesystem',
+  'exfil-protection':             'Exfil',
+  'cli-protection':               'CLI',
+  'llm-secret-scan-v1':           'LLM Secret Scan',
+  'llm-pii-pseudonymize-v1':      'LLM PII Pseudonymize',
+  'llm-injection-guard-v1':       'LLM Injection Guard',
+  'llm-response-pii-redact-v1':   'LLM Response Redact',
+  'llm-model-restrict-v1':        'LLM Model Restrict',
 };
 
 // ─── Toggle switch ───────────────────────────────────────────────────────

@@ -499,6 +499,9 @@ const registry: PolicyPack[] = [
         },
         pii: {
           // PERSON_NAME requires ml_ner stage (Phase 2) — not in regex-only Phase 1
+          // SSN intentionally omitted: SIN and SSN share the same regex (llm-pii-001).
+          // Including both would double-tokenize the same 9-digit number.
+          // If you need SSN detection (US market), replace SIN with SSN in entities.
           entities: ['EMAIL', 'PHONE', 'SIN', 'CREDIT_CARD'],
           locale: 'en-CA',
           confidenceThreshold: 0.75,
