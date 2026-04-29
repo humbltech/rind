@@ -4,7 +4,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { X, Bot, Database, Terminal, Shield, FolderOpen, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, Bot, Database, Terminal, Shield, FolderOpen, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 
 // ─── API shape ────────────────────────────────────────────────────────────────
 
@@ -178,6 +178,18 @@ export function PackPreviewSheet({ packId, onClose }: PackPreviewSheetProps) {
 
           {pack && pack.rules.length === 0 && (
             <p className="text-xs text-dim text-center py-8">No rules in this pack.</p>
+          )}
+
+          {/* Streaming latency notice for packs with PSEUDONYMIZE rules */}
+          {pack && pack.rules.some((r) => r.action === 'PSEUDONYMIZE') && (
+            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-warning/6 border border-warning/20">
+              <AlertTriangle size={13} className="text-warning shrink-0 mt-0.5" strokeWidth={1.5} />
+              <p className="text-[11px] text-warning/90 leading-relaxed">
+                <span className="font-semibold">Streaming latency trade-off:</span> when this pack is enabled,
+                streaming responses are buffered until complete so PII tokens can be rehydrated.
+                Non-streaming requests are unaffected.
+              </p>
+            </div>
           )}
 
           {pack?.rules.map((rule) => (

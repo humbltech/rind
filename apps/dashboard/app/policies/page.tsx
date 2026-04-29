@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Fragment } from 'react';
 import { Plus } from 'lucide-react';
 import { Sidebar } from '../components/sidebar';
 import { PackGrid, type PackSummary } from '../components/pack-grid';
@@ -95,18 +95,48 @@ function PageTitle({ connected }: { connected: boolean }) {
   );
 }
 
+// Category metadata — display order and labels
+const PACK_CATEGORIES: { id: PackSummary['category']; label: string }[] = [
+  { id: 'infrastructure',   label: 'Infrastructure' },
+  { id: 'data-protection',  label: 'Data protection' },
+  { id: 'llm-safety',       label: 'LLM safety' },
+  { id: 'compliance',       label: 'Compliance' },
+  { id: 'communication',    label: 'Communication' },
+];
+
 function PackSection({ packs, onToggle, onPreview }: {
   packs: PackSummary[];
   onToggle: (id: string, enable: boolean) => Promise<void>;
   onPreview: (id: string) => void;
 }) {
+  // Group packs by category, preserving display order
+  const grouped = PACK_CATEGORIES
+    .map(({ id, label }) => ({ label, packs: packs.filter((p) => p.category === id) }))
+    .filter((g) => g.packs.length > 0);
+
+  // Packs whose category isn't in the known list fall into "Other"
+  const knownIds = new Set(PACK_CATEGORIES.map((c) => c.id));
+  const other = packs.filter((p) => !knownIds.has(p.category));
+  if (other.length > 0) grouped.push({ label: 'Other', packs: other });
+
   return (
     <section>
       <SectionLabel>Policy packs</SectionLabel>
-      <p className="mt-1 mb-4 text-xs text-dim">
+      <p className="mt-1 mb-6 text-xs text-dim">
         One-click bundles — enable a pack to activate its rules immediately.
       </p>
-      <PackGrid packs={packs} onToggle={onToggle} onPreview={onPreview} />
+      <div className="space-y-8">
+        {grouped.map(({ label, packs: categoryPacks }) => (
+          <Fragment key={label}>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-dim mb-3">
+                {label}
+              </p>
+              <PackGrid packs={categoryPacks} onToggle={onToggle} onPreview={onPreview} />
+            </div>
+          </Fragment>
+        ))}
+      </div>
     </section>
   );
 }

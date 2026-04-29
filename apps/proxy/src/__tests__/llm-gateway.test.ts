@@ -167,6 +167,28 @@ const SECRET_DENY_RULE: PolicyRule = {
   priority: 5,
 };
 
+/** Rule that DENY-blocks responses containing secrets (scope:'response'). */
+const RESPONSE_SECRET_DENY_RULE: PolicyRule = {
+  name: 'test:deny-response-secrets',
+  agent: '*',
+  match: { content: { scope: 'response', detectors: ['secret'] } },
+  secrets: {},
+  action: 'DENY',
+  failMode: 'open',
+  priority: 5,
+};
+
+/** Rule that REDACTs secrets found in responses (scope:'response'). */
+const RESPONSE_SECRET_REDACT_RULE: PolicyRule = {
+  name: 'test:redact-response-secrets',
+  agent: '*',
+  match: { content: { scope: 'response', detectors: ['secret'] } },
+  secrets: {},
+  action: 'REDACT',
+  failMode: 'open',
+  priority: 5,
+};
+
 // ─── Gateway factory ──────────────────────────────────────────────────────────
 
 const BASE_CONFIG: LlmProxyConfig = {
@@ -493,5 +515,95 @@ describe('llmGateway — event ordering', () => {
 
     // Content policy blocks before step 5 (forward), so llm:request is never emitted
     expect(requestEvents).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Response-side content policy (scope:'response')
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('llmGateway — response-side content policy', () => {
+  beforeEach(() => mockForward.mockReset());
+
+  it('non-streaming DENY: blocks response body when LLM reply contains a secret', async () => {
+    // LLM echoes back an API key in its response — should be blocked before client receives it
+    mockForward.mockResolvedValue(
+      makeForwardResult('Your key is: sk-abcdefghijklmnopqrstuvwxyz1234567890ab'),
+    );
+    const { app, bus } = makeGateway([RESPONSE_SECRET_DENY_RULE]);
+    const blockedEvents: unknown[] = [];
+    bus.on('llm:blocked', (e) => blockedEvents.push(e));
+
+    const res = await postToGateway(app, makeAnthropicBody('What is my key?'));
+
+    // Upstream returned 200 but response policy blocks it before delivery to client
+    expect(res.status).toBe(403);
+    const body = await res.json() as { error: { type: string } };
+    expect(body.error.type).toBe('policy_denied');
+
+    // Block event emitted with the matched rule
+    expect(blockedEvents).toHaveLength(1);
+    expect(mockForward).toHaveBeenCalledOnce(); // forward still happened
+  });
+
+  it('non-streaming DENY: clean response passes through', async () => {
+    mockForward.mockResolvedValue(makeForwardResult('Paris is the capital of France.'));
+    const { app } = makeGateway([RESPONSE_SECRET_DENY_RULE]);
+
+    const res = await postToGateway(app, makeAnthropicBody('Capital of France?'));
+
+    expect(res.status).toBe(200);
+    expect(mockForward).toHaveBeenCalledOnce();
+  });
+
+  it('non-streaming REDACT: replaces secret in response body before delivery', async () => {
+    const secretReply = 'Use sk-abcdefghijklmnopqrstuvwxyz1234567890ab to authenticate.';
+    mockForward.mockResolvedValue(makeForwardResult(secretReply));
+    const { app, bus } = makeGateway([RESPONSE_SECRET_REDACT_RULE]);
+    const responseEvents: LlmCallEvent[] = [];
+    bus.on('llm:response', (e) => responseEvents.push(e));
+
+    const res = await postToGateway(app, makeAnthropicBody('What is the auth key?'));
+
+    expect(res.status).toBe(200);
+    const responseBody = await res.json() as { content: { type: string; text: string }[] };
+
+    // Response body text replaced with [REDACTED]
+    const textBlock = responseBody.content.find((b) => b.type === 'text');
+    expect(textBlock?.text).toBe('[REDACTED]');
+
+    // Event responseText also reflects the redacted value
+    expect(responseEvents).toHaveLength(1);
+    expect(responseEvents[0]!.responseText).toBe('[REDACTED]');
+  });
+
+  it('streaming policy violation: emits outcome:policy-violation after stream completes', async () => {
+    // The stream is already forwarded to the client — but the event should reflect the violation
+    const secretReply = 'Here is the key: sk-abcdefghijklmnopqrstuvwxyz1234567890ab';
+    mockForward.mockResolvedValue(makeStreamForwardResult(secretReply));
+    const { app, bus } = makeGateway([RESPONSE_SECRET_DENY_RULE]);
+    const responseEvents: LlmCallEvent[] = [];
+    bus.on('llm:response', (e) => responseEvents.push(e));
+
+    const res = await postToGateway(app, makeAnthropicBody('Show me the key.'));
+
+    // Streaming: client receives the stream (200), but violation is flagged post-hoc
+    expect(res.status).toBe(200);
+    await drainAndFlush(res);
+
+    expect(responseEvents).toHaveLength(1);
+    expect(responseEvents[0]!.outcome).toBe('policy-violation');
+  });
+
+  it('scope:request rule does not fire on response content', async () => {
+    // scope:'request' — evaluated at request time only, not at response time
+    const secretReply = 'Your secret: sk-abcdefghijklmnopqrstuvwxyz1234567890ab';
+    mockForward.mockResolvedValue(makeForwardResult(secretReply));
+    const { app } = makeGateway([SECRET_DENY_RULE]); // scope:'request'
+
+    const res = await postToGateway(app, makeAnthropicBody('What is the secret?'));
+
+    // Rule is scope:request only — response passes through unchanged
+    expect(res.status).toBe(200);
   });
 });

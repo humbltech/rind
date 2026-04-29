@@ -101,7 +101,14 @@ export interface LlmCallEvent {
   contentInspection?: ContentInspectionAudit;
 
   // ── Outcome ───────────────────────────────────────────────────────────────
-  outcome: 'forwarded' | 'blocked' | 'error';
+  /**
+   * 'forwarded'       — request proxied and response delivered to client
+   * 'blocked'         — request or response blocked by policy before delivery
+   * 'error'           — upstream error or parsing failure
+   * 'policy-violation' — streaming response forwarded but violated a response-side
+   *                      content rule post-hoc (stream was already sent to client)
+   */
+  outcome: 'forwarded' | 'blocked' | 'error' | 'policy-violation';
   statusCode?: number;
   errorMessage?: string;
 

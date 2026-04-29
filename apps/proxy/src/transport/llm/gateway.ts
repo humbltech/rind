@@ -28,6 +28,7 @@ import { scanLlmRequest } from './request-scanner.js';
 import { scanLlmResponse } from './response-scanner.js';
 import { calculateCost } from './cost-calculator.js';
 import { evaluateLlmContent } from './content-policy.js';
+import { evaluateLlmResponseContent, patchResponseBodyWithRedaction } from './content-policy-response.js';
 import type { PIIVault } from '../../pii-vault.js';
 
 // ─── Gateway options ──────────────────────────────────────────────────────────
@@ -389,8 +390,44 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     // ── 7a. Non-streaming response ───────────────────────────────────────────
     if (!result.stream) {
       if (result.meta) {
-        emitEnrichedEvent(event, result.meta, { statusCode: result.statusCode, durationMs: result.durationMs, ttfbMs: result.ttfbMs }, activeVault);
+        // ── 7a-i. Response-side content policy ──────────────────────────────
+        // Evaluated after the upstream responds but before returning to client.
+        // DENY blocks the response body; REDACT replaces assistant text content.
+        const responseContentResult = await evaluateLlmResponseContent(
+          result.meta.responseText ?? '',
+          event,
+          contentRules,
+        );
+
+        if (responseContentResult.action === 'DENY') {
+          const blockedEvent: LlmCallEvent = {
+            ...event,
+            outcome: 'blocked',
+            matchedRule: responseContentResult.matchedRule,
+          };
+          bus.emit('llm:blocked', { event: blockedEvent, reason: responseContentResult.reason ?? 'Response content policy DENY' });
+          logger.info({ model: event.model, rule: responseContentResult.matchedRule }, 'LLM response blocked by content policy');
+          activeVault?.dispose();
+          activeVault = undefined;
+          return c.json(
+            { error: { type: 'policy_denied', message: responseContentResult.reason ?? 'Response blocked by policy' } },
+            403,
+          );
+        }
+
+        const finalMeta = responseContentResult.action === 'REDACT' && responseContentResult.redactedText
+          ? { ...result.meta, responseText: responseContentResult.redactedText }
+          : result.meta;
+        const finalBody = responseContentResult.action === 'REDACT'
+          ? patchResponseBodyWithRedaction(result.responseBody)
+          : result.responseBody;
+
+        emitEnrichedEvent(event, finalMeta, { statusCode: result.statusCode, durationMs: result.durationMs, ttfbMs: result.ttfbMs }, activeVault);
         activeVault = undefined; // vault disposed inside emitEnrichedEvent
+        return new Response(JSON.stringify(finalBody), {
+          status: result.statusCode,
+          headers: { 'content-type': 'application/json' },
+        });
       } else {
         // No parsed meta (e.g. unexpected upstream format) — dispose vault to prevent leak
         activeVault?.dispose();
@@ -412,14 +449,42 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     const capturedForwardStart = forwardStart;
     const capturedStatusCode = result.statusCode;
     const capturedVault = activeVault;
+    const capturedContentRules = contentRules; // capture for async response-side eval
     activeVault = undefined; // ownership transferred to stream closure
 
-    result.streamMeta?.then((meta) => {
-      emitEnrichedEvent(capturedEvent, meta, {
-        statusCode: capturedStatusCode,
-        durationMs: Date.now() - capturedForwardStart,
-        ttfbMs: capturedTtfb,
-      }, capturedVault);
+    result.streamMeta?.then(async (meta) => {
+      // ── Response-side content policy (post-hoc for streaming) ────────────
+      // The stream was already piped to the client — enforcement is observability
+      // only. Violations are flagged via outcome:'policy-violation' in the event.
+      const responseContentResult = await evaluateLlmResponseContent(
+        meta.responseText ?? '',
+        capturedEvent,
+        capturedContentRules,
+      );
+
+      const isViolation = responseContentResult.action !== 'ALLOW';
+      if (isViolation) {
+        logger.warn(
+          { model: capturedEvent.model, rule: responseContentResult.matchedRule, action: responseContentResult.action },
+          'Response content policy violation on streaming response (post-hoc — stream already forwarded to client)',
+        );
+      }
+
+      // Use redacted text in the event when REDACT matched (audit reflects redacted value)
+      const finalMeta = isViolation && responseContentResult.redactedText
+        ? { ...meta, responseText: responseContentResult.redactedText }
+        : meta;
+
+      emitEnrichedEvent(
+        isViolation ? { ...capturedEvent, outcome: 'policy-violation' } : capturedEvent,
+        finalMeta,
+        {
+          statusCode: capturedStatusCode,
+          durationMs: Date.now() - capturedForwardStart,
+          ttfbMs: capturedTtfb,
+        },
+        capturedVault,
+      );
     }).catch((err: unknown) => {
       capturedVault?.dispose();
       logger.error({ err, eventId: capturedEvent.id }, 'Failed to emit LLM stream response event');

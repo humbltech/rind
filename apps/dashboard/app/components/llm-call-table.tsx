@@ -25,7 +25,7 @@ export interface LlmCallEntry {
   estimatedCostUsd?: number;
   ttfbMs?: number;
   totalDurationMs?: number;
-  outcome: 'forwarded' | 'blocked' | 'error';
+  outcome: 'forwarded' | 'blocked' | 'error' | 'policy-violation';
   statusCode?: number;
   errorMessage?: string;
   matchedRule?: string;
@@ -65,9 +65,10 @@ function ProviderBadge({ provider }: { provider: string }) {
 
 function OutcomeBadge({ outcome }: { outcome: LlmCallEntry['outcome'] }) {
   const styles: Record<string, string> = {
-    forwarded: 'text-accent bg-accent/10',
-    blocked:   'text-critical bg-critical/10',
-    error:     'text-high bg-high/10',
+    forwarded:          'text-accent bg-accent/10',
+    blocked:            'text-critical bg-critical/10',
+    error:              'text-high bg-high/10',
+    'policy-violation': 'text-warning bg-warning/10',
   };
   return (
     <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${styles[outcome] ?? 'text-muted bg-overlay'}`}>
@@ -177,7 +178,7 @@ function groupByConversation(entries: LlmCallEntry[]): LlmThread[] {
     map.get(key)!.push(entry);
   }
 
-  const outcomeRank: Record<string, number> = { forwarded: 0, error: 1, blocked: 2 };
+  const outcomeRank: Record<string, number> = { forwarded: 0, error: 1, 'policy-violation': 2, blocked: 3 };
 
   return Array.from(map.entries())
     .map(([convId, calls]) => {
