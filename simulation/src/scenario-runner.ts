@@ -116,6 +116,14 @@ async function runStep(
     }
   }
 
+  if (exp.errorType !== undefined) {
+    const actual = (responseBody as Record<string, unknown>)?.['error'];
+    const actualType = (actual as Record<string, unknown> | undefined)?.['type'];
+    if (actualType !== exp.errorType) {
+      errors.push(`Expected error.type="${exp.errorType}", got error.type="${String(actualType)}"`);
+    }
+  }
+
   if (exp.findingCategory !== undefined) {
     const findings = (responseBody as Record<string, unknown>)?.['findings'] as
       | Array<{ category: string }>
@@ -252,6 +260,17 @@ export async function runScenario(
       upstreamMcpUrl: 'http://mock-mcp-unused', // unused when forwardFn is injected
       policy: scenario.policy,
       forwardFn,
+      ...(scenario.llmForwardFn
+        ? {
+            llmProxy: {
+              enabled: true,
+              anthropicUpstream: 'http://mock-llm-unused',
+              openaiUpstream: 'http://mock-llm-unused',
+              ...scenario.llmProxyConfig,
+            },
+            llmForwardFn: scenario.llmForwardFn,
+          }
+        : {}),
       logLevel: 'error', // suppress logs during scenario runs
     });
     transport = (endpoint, init) => app.request(endpoint, init);
