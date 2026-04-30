@@ -163,9 +163,10 @@ function ActiveSessionsSection({ sessions, workDirs }: { sessions: ClaudeSession
         {sessions.map((s) => {
           const dir = workDirs.find((w) => w.sessionId === s.sessionId);
           return (
-            <div
+            <Link
               key={s.sessionId}
-              className="flex items-center gap-4 px-4 py-3 rounded-lg border border-border hover:bg-overlay transition-colors duration-100"
+              href={`/sessions/${s.sessionId}`}
+              className="flex items-center gap-4 px-4 py-3 rounded-lg border border-border hover:bg-overlay hover:border-accent/30 transition-colors duration-100"
             >
               <div className="flex items-center gap-2 min-w-0 flex-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
@@ -186,7 +187,7 @@ function ActiveSessionsSection({ sessions, workDirs }: { sessions: ClaudeSession
                   {dir.toolCallCount} calls
                 </span>
               )}
-            </div>
+            </Link>
           );
         })}
       </div>

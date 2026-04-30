@@ -152,9 +152,10 @@ export const getLlmCalls = (params?: { provider?: string; model?: string; outcom
 };
 
 // ─── Timeline ─────────────────────────────────────────────────────────────────
-export const getTimeline = (params?: { agentId?: string; since?: number; until?: number }) => {
+export const getTimeline = (params?: { agentId?: string; sessionId?: string; since?: number; until?: number }) => {
   const q = new URLSearchParams();
   if (params?.agentId) q.set('agentId', params.agentId);
+  if (params?.sessionId) q.set('sessionId', params.sessionId);
   if (params?.since) q.set('since', String(params.since));
   if (params?.until) q.set('until', String(params.until));
   const qs = q.toString();

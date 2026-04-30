@@ -54,6 +54,10 @@ export interface PolicyRuleRow {
   pii?: { entities: string[]; locale?: string };
   secrets?: { patterns?: string[] };
   injection?: Record<string, never>;
+  dlp?: { patterns: { regex: string; label: string }[] };
+  // Action-specific config
+  redact?: { replacement?: string };
+  pseudonymize?: { tokenPrefix?: string };
   _meta?: {
     source: string;
     modifiedFromPack?: boolean;

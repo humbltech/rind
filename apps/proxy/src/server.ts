@@ -230,20 +230,22 @@ export function createProxyServer(config: ProxyConfig) {
     });
 
     // Unified timeline: merges tool calls + LLM calls sorted by timestamp.
-    // Supports ?agentId=, ?since=, ?until= filters.
+    // Supports ?agentId=, ?sessionId=, ?since=, ?until= filters.
     app.get('/logs/timeline', (c) => {
-      const { agentId, since, until } = c.req.query();
+      const { agentId, sessionId, since, until } = c.req.query();
       const sinceTs = since ? parseInt(since, 10) : NaN;
       const untilTs = until ? parseInt(until, 10) : NaN;
 
       const toolEvents = ringBuffer.toArray()
         .filter((e) => !agentId || e.agentId.includes(agentId))
+        .filter((e) => !sessionId || e.sessionId === sessionId)
         .filter((e) => isNaN(sinceTs) || e.timestamp >= sinceTs)
         .filter((e) => isNaN(untilTs) || e.timestamp <= untilTs)
         .map((e) => ({ kind: 'tool' as const, timestamp: e.timestamp, data: e }));
 
       const llmEvents = llmRingBuffer.toArray()
         .filter((e) => !agentId || e.agentId.includes(agentId))
+        .filter((e) => !sessionId || e.sessionId === sessionId)
         .filter((e) => isNaN(sinceTs) || e.timestamp >= sinceTs)
         .filter((e) => isNaN(untilTs) || e.timestamp <= untilTs)
         .map((e) => ({ kind: 'llm' as const, timestamp: e.timestamp, data: e }));

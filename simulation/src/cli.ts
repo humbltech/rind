@@ -1,14 +1,16 @@
 // CLI entry point for `pnpm sim`
 //
 // Usage:
-//   pnpm sim list                                 # list all scenarios
-//   pnpm sim replit-db-deletion                   # demo mode — chat-like output (streamed)
-//   pnpm sim replit-db-deletion --no-proxy        # demo without Rind — shows damage
-//   pnpm sim replit-db-deletion --interactive     # pause for Enter before sending
-//   pnpm sim replit-db-deletion --instant         # skip streaming delays
-//   pnpm sim                                      # run all scenarios (streamed chat format)
-//   pnpm sim --mode record                        # record cassettes
-//   pnpm sim --http http://localhost:7777 <slug>  # run against live proxy
+//   pnpm sim list                                                    # list all scenarios
+//   pnpm sim replit-db-deletion                                      # demo mode — chat-like output (streamed)
+//   pnpm sim replit-db-deletion --no-proxy                          # demo without Rind — shows damage
+//   pnpm sim replit-db-deletion --interactive                       # pause for Enter before sending
+//   pnpm sim replit-db-deletion --instant                           # skip streaming delays
+//   pnpm sim                                                         # run all scenarios (streamed chat format)
+//   pnpm sim --mode record                                           # record cassettes
+//   pnpm sim --http http://localhost:7777 <slug>                    # run against live proxy
+//   pnpm sim --http http://localhost:7777 <slug> --enable-policy pii-protection   # enable pack before run
+//   pnpm sim --http http://localhost:7777 <slug> --enable-policy pii-protection --no-cleanup  # keep pack after
 
 import { scenarios, scenariosBySlug } from './scenarios/index.js';
 import { runScenario, runScenarioWithoutProxy } from './scenario-runner.js';
@@ -25,6 +27,10 @@ interface ParsedArgs {
   noProxy: boolean;
   interactive: boolean;
   instant: boolean;
+  /** Pack ID to enable before running the scenario and disable after (unless --no-cleanup). */
+  enablePolicy?: string;
+  /** When true, skip disabling the pack after the scenario completes. */
+  noCleanup: boolean;
 }
 
 function parseArgs(args: string[]): ParsedArgs {
@@ -35,11 +41,13 @@ function parseArgs(args: string[]): ParsedArgs {
   let noProxy = false;
   let interactive = false;
   let instant = false;
+  let enablePolicy: string | undefined;
+  let noCleanup = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === 'list') {
-      return { command: 'list', mode, slugs: [], proxyUrl: undefined, fixturePort, noProxy: false, interactive: false, instant: false };
+      return { command: 'list', mode, slugs: [], proxyUrl: undefined, fixturePort, noProxy: false, interactive: false, instant: false, noCleanup: false };
     }
     if (arg === '--mode' && args[i + 1]) {
       const m = args[++i]!;
@@ -57,8 +65,12 @@ function parseArgs(args: string[]): ParsedArgs {
         process.exit(1);
       }
       fixturePort = raw;
+    } else if (arg === '--enable-policy' && args[i + 1]) {
+      enablePolicy = args[++i]!;
     } else if (arg === '--no-proxy') {
       noProxy = true;
+    } else if (arg === '--no-cleanup') {
+      noCleanup = true;
     } else if (arg === '--interactive') {
       interactive = true;
     } else if (arg === '--instant') {
@@ -68,7 +80,7 @@ function parseArgs(args: string[]): ParsedArgs {
     }
   }
 
-  return { command: 'run', mode, slugs, proxyUrl, fixturePort, noProxy, interactive, instant };
+  return { command: 'run', mode, slugs, proxyUrl, fixturePort, noProxy, interactive, instant, enablePolicy, noCleanup };
 }
 
 function resolveScenarios(slugs: string[]) {
@@ -86,23 +98,70 @@ function resolveScenarios(slugs: string[]) {
     : scenarios;
 }
 
+// ─── Pack lifecycle helpers ────────────────────────────────────────────────────
+
+async function enablePack(proxyUrl: string, packId: string): Promise<void> {
+  const base = proxyUrl.replace(/\/$/, '');
+  const res = await fetch(`${base}/packs/${packId}/enable`, { method: 'POST' });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to enable pack "${packId}": ${res.status} ${text}`);
+  }
+  console.log(`  ✓ Policy pack enabled: ${packId}`);
+}
+
+async function disablePack(proxyUrl: string, packId: string): Promise<void> {
+  const base = proxyUrl.replace(/\/$/, '');
+  const res = await fetch(`${base}/packs/${packId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const text = await res.text();
+    // Non-fatal — pack may already be disabled
+    console.warn(`  ⚠ Could not disable pack "${packId}": ${res.status} ${text}`);
+    return;
+  }
+  console.log(`  ✓ Policy pack disabled: ${packId}`);
+}
+
 // ─── Demo mode (single scenario — chat format) ─────────────────────────────
 
-async function runDemo(slugs: string[], mode: SimMode, noProxy: boolean, interactive: boolean, proxyUrl?: string, fixturePort = 3100) {
+async function runDemo(
+  slugs: string[],
+  mode: SimMode,
+  noProxy: boolean,
+  interactive: boolean,
+  proxyUrl?: string,
+  fixturePort = 3100,
+  enablePolicy?: string,
+  noCleanup = false,
+) {
   const toRun = resolveScenarios(slugs);
 
-  for (const scenario of toRun) {
-    if (noProxy) {
-      const result = await runScenarioWithoutProxy(scenario);
-      await runDemoUnprotected(scenario, result.steps, interactive);
-    } else {
-      const result = await runScenario(scenario, mode, proxyUrl, fixturePort);
-      await runDemoProtected(scenario, result, interactive);
+  if (enablePolicy) {
+    if (!proxyUrl) {
+      console.error('--enable-policy requires --http <proxyUrl>');
+      process.exit(1);
+    }
+    await enablePack(proxyUrl, enablePolicy);
+  }
+
+  try {
+    for (const scenario of toRun) {
+      if (noProxy) {
+        const result = await runScenarioWithoutProxy(scenario);
+        await runDemoUnprotected(scenario, result.steps, interactive);
+      } else {
+        const result = await runScenario(scenario, mode, proxyUrl, fixturePort);
+        await runDemoProtected(scenario, result, interactive);
+      }
+    }
+  } finally {
+    if (enablePolicy && proxyUrl && !noCleanup) {
+      await disablePack(proxyUrl, enablePolicy);
     }
   }
 }
 
-// ─── Batch mode (all scenarios — demo chat format) ─────���────────────────────
+// ─── Batch mode (all scenarios — demo chat format) ─────────────────────────
 
 async function runBatch(mode: SimMode, proxyUrl?: string, fixturePort = 3100) {
   const toRun = scenarios;
@@ -126,7 +185,16 @@ async function main() {
 
   // Single scenario(s) specified → demo mode (chat format)
   if (parsed.slugs.length > 0) {
-    await runDemo(parsed.slugs, parsed.mode, parsed.noProxy, parsed.interactive, parsed.proxyUrl, parsed.fixturePort);
+    await runDemo(
+      parsed.slugs,
+      parsed.mode,
+      parsed.noProxy,
+      parsed.interactive,
+      parsed.proxyUrl,
+      parsed.fixturePort,
+      parsed.enablePolicy,
+      parsed.noCleanup,
+    );
     return;
   }
 

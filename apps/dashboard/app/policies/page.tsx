@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useEffect, useState, useCallback, Fragment } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Plus } from 'lucide-react';
 import { Sidebar } from '../components/sidebar';
 import { PackGrid, type PackSummary } from '../components/pack-grid';
@@ -44,8 +44,11 @@ export default function PoliciesPage() {
   }
 
   async function handleRuleSave(rule: PolicyRuleRow) {
-    if (editingRule != null) await updateRule(editingRule.name, rule);
-    else await addRule(rule);
+    // PolicyRuleRow is a wider UI type; form controls ensure values are valid at runtime.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = rule as any;
+    if (editingRule != null) await updateRule(editingRule.name, r);
+    else await addRule(r);
     reload();
   }
 
@@ -138,7 +141,7 @@ function CategoryHeader({ label, packs, onToggle }: {
           type="button"
           onClick={handleCategoryToggle}
           disabled={toggling}
-          className="text-[10px] px-2 py-0.5 rounded border border-border text-dim hover:text-foreground hover:border-border-muted transition-colors disabled:opacity-50"
+          className="text-[10px] px-2 py-0.5 rounded border border-border text-dim hover:text-foreground hover:border-border-subtle transition-colors disabled:opacity-50"
         >
           {allEnabled ? 'Disable all' : 'Enable all'}
         </button>
@@ -170,12 +173,10 @@ function PackSection({ packs, onToggle, onPreview }: {
       </p>
       <div className="space-y-8">
         {grouped.map(({ label, packs: categoryPacks }) => (
-          <Fragment key={label}>
-            <div>
-              <CategoryHeader label={label} packs={categoryPacks} onToggle={onToggle} />
-              <PackGrid packs={categoryPacks} onToggle={onToggle} onPreview={onPreview} />
-            </div>
-          </Fragment>
+          <div key={label}>
+            <CategoryHeader label={label} packs={categoryPacks} onToggle={onToggle} />
+            <PackGrid packs={categoryPacks} onToggle={onToggle} onPreview={onPreview} />
+          </div>
         ))}
       </div>
     </section>
@@ -267,7 +268,8 @@ function usePolicyData() {
         if (!active) return;
 
         setPacks(packsData);
-        setRules(rulesData.policies);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setRules(rulesData.policies as any);
         setConnected(true);
       } catch {
         if (active) setConnected(false);

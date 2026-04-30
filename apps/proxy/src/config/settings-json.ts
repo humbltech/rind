@@ -182,8 +182,10 @@ export function alreadyHasRindEventHooks(settings: ClaudeSettings): boolean {
  * Returns a new settings object with the Rind PreToolUse hook added.
  * Existing hooks, permissions, and env are preserved.
  * Idempotent — if the hook is already present, returns settings unchanged.
+ *
+ * @param preToolOnly - when true, only PreToolUse is added; observability hooks are skipped.
  */
-export function mergeRindHook(settings: ClaudeSettings, rindUrl: string): ClaudeSettings {
+export function mergeRindHook(settings: ClaudeSettings, rindUrl: string, preToolOnly = false): ClaudeSettings {
   let result = { ...settings };
 
   // Add PreToolUse (policy enforcement)
@@ -203,7 +205,8 @@ export function mergeRindHook(settings: ClaudeSettings, rindUrl: string): Claude
   }
 
   // Add observability hooks (PostToolUse, SubagentStart, SubagentStop)
-  if (!alreadyHasRindEventHooks(result)) {
+  // Skipped when --pre-tool-only is set.
+  if (!preToolOnly && !alreadyHasRindEventHooks(result)) {
     const eventCommand = buildEventHookCommand(rindUrl);
     const eventEntry: HookMatcher = {
       matcher: WILDCARD_MATCHER,

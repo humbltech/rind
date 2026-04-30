@@ -604,7 +604,6 @@ const registry: PolicyPack[] = [
           llmModel: ['claude-opus-4-6', 'claude-opus-4-5'],
         },
         action: 'DENY',
-        reason: 'Model not approved by organisation policy',
         failMode: 'closed',
         priority: PACK_PRIORITY,
       },

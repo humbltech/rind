@@ -273,11 +273,12 @@ export async function intercept(
   if (respMode !== 'off') {
     try {
       responseThreats = inspectResponse(output);
-    } catch {
-      // Response inspection error → fail closed in block mode, continue in alert mode
+    } catch (err) {
+      // Response inspection error → fail closed in block mode, record anomaly and continue in alert mode
       if (respMode === 'block') {
         return blocked('BLOCKED_THREAT', `Response inspection failed — blocking for safety.`, matchedRule?.name ?? 'response-inspector');
       }
+      responseThreats = [{ type: 'inspection-error', detail: err instanceof Error ? err.message : String(err) } as never];
     }
   }
 

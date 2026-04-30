@@ -42,3 +42,22 @@ Railway shipped native remote MCP support with interceptor middleware — meanin
 **Next step**: Review Railway's implementation details from the changelog, then finalize the interceptor interface in `rind/proxy/interceptors/mcp.py` before starting Week 9 work.
 
 ---
+
+### Session Lifecycle — `Stop` Hook + Natural Session End
+
+**Context**: Claude Code fires a `Stop` hook event when the agent finishes a task (natural end of a session). RIND currently registers `PreToolUse`, `PostToolUse`, `SubagentStart`, and `SubagentStop` hooks, but not `Stop`. The `session.ts` `kill()` method sets `active = false` but is only used by the kill-switch (forced termination). There is no concept of natural session completion in the store.
+
+**What to implement:**
+
+1. **`Session` type** — add `endedAt?: number` field
+2. **`ISessionStore`** — add `end(sessionId: string): boolean` method (sets `active = false`, records `endedAt`)
+3. **`hook.ts` `/hook/event` handler** — when `event.eventType === 'Stop'`, call `sessionStore.end(sid)`
+4. **`settings-json.ts` / `init.ts`** — add `Stop` to the EVENT_HOOKS array so `rind-proxy init` writes it
+5. **Dashboard** — session list shows ended sessions greyed out (not counted as active); session timeline page shows a "Session ended" terminal event
+6. **`/status` API** — `sessions.active` count only includes sessions without `endedAt`
+
+**Why deferred**: No consumer currently uses `endedAt` and the dashboard already handles session inactivity gracefully. Adding it properly requires touching the type, store, route, CLI, and dashboard — a full cross-cutting slice worth a dedicated PR.
+
+**Priority**: Medium — improves dashboard accuracy but not blocking for MVP.
+
+---

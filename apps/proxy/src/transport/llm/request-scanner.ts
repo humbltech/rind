@@ -5,14 +5,13 @@
 //
 // Design:
 //   - Pure function, no I/O
-//   - Reuses CREDENTIAL_PATTERNS from inspector/response.ts
+//   - Reuses CREDENTIAL_PATTERNS from rules/response-threats.rules.ts (via rules/index.ts)
 //   - Adds PII patterns (SSN, credit card, phone, email)
 //   - Only scans text content — skips image/tool_result blocks (too expensive, low signal)
 //   - Large contexts: scans only the last MAX_MESSAGES messages + system prompt
 
 import type { LlmThreat } from './types.js';
-import { CREDENTIAL_PATTERNS } from '../../inspector/response.js';
-import { PII_PATTERNS } from '../../rules/index.js';
+import { CREDENTIAL_PATTERNS, PII_PATTERNS } from '../../rules/index.js';
 
 export { PII_PATTERNS } from '../../rules/index.js';
 

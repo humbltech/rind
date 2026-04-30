@@ -11,22 +11,24 @@
 //
 // What it removes:
 //   - PreToolUse / PostToolUse / SubagentStart / SubagentStop Rind hooks
-//   - ANTHROPIC_BASE_URL env var (if set to a Rind URL)
+//   - ANTHROPIC_BASE_URL and OPENAI_BASE_URL env vars (if set to a Rind URL)
+//   - .mcp.json wrapping (reverts rind-proxy wrap entries to their original commands)
 //
 // Does NOT touch:
-//   - .mcp.json (MCP server wrapping is a separate decision)
 //   - rind.policy.yaml
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { parseClaudeSettings, isRindHookCommand, isRindEventHookCommand } from '../config/settings-json.js';
+import { parseMcpJson, unwrapWithRind, describeUnwrap } from '../config/mcp-json.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface UninitArgs {
   settingsPath: string | undefined;
   settingsScope: 'global' | 'local';
+  mcpJsonPath: string | undefined;
   dryRun: boolean;
 }
 
@@ -37,6 +39,7 @@ export function parseUninitArgs(argv: string[]): UninitArgs | null {
 
   let settingsPath: string | undefined;
   let settingsScope: 'global' | 'local' = 'global';
+  let mcpJsonPath: string | undefined;
   let dryRun = false;
 
   const USAGE = `Usage: rind-proxy uninit [options]
@@ -45,6 +48,7 @@ Options:
   --global              Remove from ~/.claude/settings.json (default)
   --local               Remove from .claude/settings.json in current directory
   --settings <path>     Explicit settings.json path
+  --mcp-json <path>     Path to .mcp.json to unwrap (default: auto-detect)
   --dry-run             Print what would change without writing any files
   --help                Show this help message
 `;
@@ -63,6 +67,10 @@ Options:
         if (!args[i + 1]) { process.stderr.write('--settings requires a path\n'); return null; }
         settingsPath = args[++i];
         break;
+      case '--mcp-json':
+        if (!args[i + 1]) { process.stderr.write('--mcp-json requires a path\n'); return null; }
+        mcpJsonPath = args[++i];
+        break;
       default:
         process.stderr.write(`Unknown option: ${arg}\n`);
         process.stderr.write(USAGE);
@@ -70,7 +78,7 @@ Options:
     }
   }
 
-  return { settingsPath, settingsScope, dryRun };
+  return { settingsPath, settingsScope, mcpJsonPath, dryRun };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -158,32 +166,70 @@ export async function runUninit(argv: string[]): Promise<void> {
     }
   }
 
-  // ── Remove ANTHROPIC_BASE_URL if it points to Rind ────────────────────────
+  // ── Remove LLM proxy env vars if they point to Rind ──────────────────────
   const env = settings['env'] as Record<string, unknown> | undefined;
   if (env) {
-    const baseUrl = env['ANTHROPIC_BASE_URL'];
-    if (typeof baseUrl === 'string' && baseUrl.includes('/llm/')) {
-      process.stdout.write(`  - remove  ANTHROPIC_BASE_URL=${baseUrl}\n`);
-      delete env['ANTHROPIC_BASE_URL'];
-      if (Object.keys(env).length === 0) delete settings['env'];
-      changed = true;
+    for (const key of ['ANTHROPIC_BASE_URL', 'OPENAI_BASE_URL'] as const) {
+      const val = env[key];
+      if (typeof val === 'string' && val.includes('/llm/')) {
+        process.stdout.write(`  - remove  ${key}=${val}\n`);
+        delete env[key];
+        changed = true;
+      }
     }
+    if (Object.keys(env).length === 0) delete settings['env'];
   }
 
   if (!changed) {
     process.stdout.write('  = nothing to remove — no Rind configuration found\n\n');
-    return;
+  } else {
+    if (!dryRun) {
+      writeFileSync(resolve(settingsPath), JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+      process.stdout.write('  ✓ written\n');
+    }
+    process.stdout.write('\n');
   }
 
-  if (!dryRun) {
-    writeFileSync(resolve(settingsPath), JSON.stringify(settings, null, 2) + '\n', 'utf-8');
-    process.stdout.write('  ✓ written\n');
+  // ── Unwrap .mcp.json ───────────────────────────────────────────────────────
+  const mcpPath = args.mcpJsonPath ?? detectMcpJsonPath();
+  if (mcpPath && existsSync(mcpPath)) {
+    process.stdout.write(`\nMCP servers  (${mcpPath})\n`);
+    let mcpRaw: unknown;
+    try {
+      mcpRaw = JSON.parse(readFileSync(mcpPath, 'utf-8'));
+    } catch {
+      process.stderr.write(`  ! warn  ${mcpPath} is not valid JSON — skipping\n`);
+      mcpRaw = null;
+    }
+    const mcpConfig = mcpRaw ? parseMcpJson(mcpRaw) : null;
+    if (mcpConfig) {
+      const summary = describeUnwrap(mcpConfig);
+      if (summary.unwrapped.length === 0) {
+        process.stdout.write('  = nothing to unwrap — no Rind-wrapped entries found\n');
+      } else {
+        for (const id of summary.unwrapped) process.stdout.write(`  - unwrap  ${id}\n`);
+        if (!dryRun) {
+          const unwrapped = unwrapWithRind(mcpConfig);
+          writeFileSync(resolve(mcpPath), JSON.stringify(unwrapped, null, 2) + '\n', 'utf-8');
+          process.stdout.write('  ✓ written\n');
+        }
+      }
+    } else {
+      process.stdout.write('  = skipping — unrecognised .mcp.json format\n');
+    }
+    process.stdout.write('\n');
   }
 
-  process.stdout.write('\n');
   if (dryRun) {
     process.stdout.write('Dry run complete — no files were written.\n');
-  } else {
+  } else if (changed) {
     process.stdout.write('Done. Rind configuration removed. Claude Code will use default settings.\n');
   }
+}
+
+/** Detect .mcp.json path — checks common locations used by init. */
+function detectMcpJsonPath(): string | undefined {
+  if (existsSync('.mcp.json')) return '.mcp.json';
+  if (existsSync('.claude/mcp.json')) return '.claude/mcp.json';
+  return undefined;
 }

@@ -7,6 +7,9 @@ import {
   isStdioEntry,
   isHttpEntry,
   wrapWithRind,
+  unwrapWithRind,
+  unwrapStdioEntry,
+  describeUnwrap,
   alreadyWrapped,
   describeWrap,
 } from '../config/mcp-json.js';
@@ -252,5 +255,145 @@ describe('describeWrap', () => {
     };
     describeWrap(config);
     expect(config.mcpServers['x']).toEqual({ command: 'npx' });
+  });
+});
+
+// ─── unwrapStdioEntry ─────────────────────────────────────────────────────────
+
+describe('unwrapStdioEntry', () => {
+  it('restores original command and args from a wrapped entry', () => {
+    const wrapped: StdioMcpEntry = {
+      command: 'npx',
+      args: ['-y', '@rind/proxy', 'wrap', '--server-id', 'github', '--', 'npx', '@github/mcp-server', '--port', '3000'],
+    };
+    const result = unwrapStdioEntry(wrapped);
+    expect(result).not.toBeNull();
+    expect(result?.command).toBe('npx');
+    expect(result?.args).toEqual(['@github/mcp-server', '--port', '3000']);
+  });
+
+  it('restores entry with no original args after --', () => {
+    const wrapped: StdioMcpEntry = {
+      command: 'npx',
+      args: ['-y', '@rind/proxy', 'wrap', '--server-id', 'x', '--', 'python'],
+    };
+    const result = unwrapStdioEntry(wrapped);
+    expect(result?.command).toBe('python');
+    expect(result?.args).toBeUndefined();
+  });
+
+  it('returns null when -- separator is missing', () => {
+    const noSep: StdioMcpEntry = { command: 'npx', args: ['some', 'args'] };
+    expect(unwrapStdioEntry(noSep)).toBeNull();
+  });
+
+  it('returns null when -- is the last element (no command after it)', () => {
+    const noCmd: StdioMcpEntry = { command: 'npx', args: ['--'] };
+    expect(unwrapStdioEntry(noCmd)).toBeNull();
+  });
+
+  it('preserves env from the wrapper entry', () => {
+    const wrapped: StdioMcpEntry = {
+      command: 'npx',
+      args: ['-y', '@rind/proxy', 'wrap', '--server-id', 'x', '--', 'uvx', 'my-mcp'],
+      env: { MY_VAR: 'value' },
+    };
+    const result = unwrapStdioEntry(wrapped);
+    expect(result?.env).toEqual({ MY_VAR: 'value' });
+  });
+});
+
+// ─── unwrapWithRind ───────────────────────────────────────────────────────────
+
+describe('unwrapWithRind', () => {
+  it('round-trip: unwrap(wrap(config)) equals original', () => {
+    const original: McpJsonConfig = {
+      mcpServers: {
+        github: { command: 'npx', args: ['@github/mcp-server'] },
+        python: { command: 'python', args: ['-m', 'my_mcp'] },
+      },
+    };
+    const wrapped = wrapWithRind(original);
+    const restored = unwrapWithRind(wrapped);
+    expect(restored).toEqual(original);
+  });
+
+  it('leaves HTTP entries unchanged', () => {
+    const config: McpJsonConfig = {
+      mcpServers: {
+        remote: { type: 'http', url: 'https://example.com/mcp' },
+      },
+    };
+    expect(unwrapWithRind(config)).toEqual(config);
+  });
+
+  it('leaves already-unwrapped stdio entries unchanged', () => {
+    const config: McpJsonConfig = {
+      mcpServers: {
+        plain: { command: 'npx', args: ['@some/server'] },
+      },
+    };
+    expect(unwrapWithRind(config)).toEqual(config);
+  });
+
+  it('is idempotent: unwrap(unwrap(x)) equals unwrap(x)', () => {
+    const original: McpJsonConfig = {
+      mcpServers: { x: { command: 'npx', args: ['@x/mcp'] } },
+    };
+    const wrapped = wrapWithRind(original);
+    const once = unwrapWithRind(wrapped);
+    const twice = unwrapWithRind(once);
+    expect(twice).toEqual(once);
+  });
+
+  it('leaves malformed wrapped entries unchanged (no -- separator)', () => {
+    const config: McpJsonConfig = {
+      mcpServers: {
+        // manually broken — no -- separator but has @rind/proxy in args
+        broken: { command: 'npx', args: ['-y', '@rind/proxy', 'wrap'] },
+      },
+    };
+    // alreadyWrapped returns true, but unwrapStdioEntry returns null → entry preserved
+    const result = unwrapWithRind(config);
+    expect(result.mcpServers['broken']).toEqual(config.mcpServers['broken']);
+  });
+
+  it('handles mixed wrapped, unwrapped, and HTTP entries', () => {
+    const config: McpJsonConfig = {
+      mcpServers: {
+        wrapped: { command: 'npx', args: ['-y', '@rind/proxy', 'wrap', '--server-id', 'wrapped', '--', 'npx', '@w/mcp'] },
+        plain:   { command: 'python', args: ['-m', 'mcp'] },
+        remote:  { type: 'http', url: 'https://example.com' },
+      },
+    };
+    const result = unwrapWithRind(config);
+    expect(result.mcpServers['wrapped']).toEqual({ command: 'npx', args: ['@w/mcp'] });
+    expect(result.mcpServers['plain']).toEqual(config.mcpServers['plain']);
+    expect(result.mcpServers['remote']).toEqual(config.mcpServers['remote']);
+  });
+});
+
+// ─── describeUnwrap ───────────────────────────────────────────────────────────
+
+describe('describeUnwrap', () => {
+  it('classifies wrapped, plain, and HTTP entries correctly', () => {
+    const config: McpJsonConfig = {
+      mcpServers: {
+        wrapped: { command: 'npx', args: ['-y', '@rind/proxy', 'wrap', '--server-id', 'wrapped', '--', 'npx', '@w/mcp'] },
+        plain:   { command: 'python' },
+        remote:  { type: 'http', url: 'https://example.com' },
+      },
+    };
+    const summary = describeUnwrap(config);
+    expect(summary.unwrapped).toEqual(['wrapped']);
+    expect(summary.skipped).toEqual(['plain']);
+    expect(summary.httpOnly).toEqual(['remote']);
+  });
+
+  it('returns empty arrays for an empty config', () => {
+    const summary = describeUnwrap({ mcpServers: {} });
+    expect(summary.unwrapped).toHaveLength(0);
+    expect(summary.skipped).toHaveLength(0);
+    expect(summary.httpOnly).toHaveLength(0);
   });
 });

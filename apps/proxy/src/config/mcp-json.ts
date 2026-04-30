@@ -123,6 +123,80 @@ function wrapStdioEntry(serverId: string, entry: StdioMcpEntry): StdioMcpEntry {
   };
 }
 
+// ─── Unwrap transform ─────────────────────────────────────────────────────────
+
+/**
+ * Returns a new .mcp.json where every Rind-wrapped stdio server is restored to
+ * its original command. HTTP entries and already-unwrapped entries are left unchanged.
+ */
+export function unwrapWithRind(config: McpJsonConfig): McpJsonConfig {
+  const unwrapped: Record<string, McpServerEntry> = {};
+
+  for (const [serverId, entry] of Object.entries(config.mcpServers)) {
+    if (isHttpEntry(entry)) {
+      unwrapped[serverId] = entry;
+      continue;
+    }
+
+    if (!alreadyWrapped(entry)) {
+      unwrapped[serverId] = entry;
+      continue;
+    }
+
+    const restored = unwrapStdioEntry(entry);
+    unwrapped[serverId] = restored ?? entry; // leave unchanged if -- not found
+  }
+
+  return { mcpServers: unwrapped };
+}
+
+/**
+ * Restores a single Rind-wrapped stdio entry to its original command + args.
+ * Returns null if the entry doesn't have the expected -- separator (defensive).
+ */
+export function unwrapStdioEntry(entry: StdioMcpEntry): StdioMcpEntry | null {
+  const args = entry.args ?? [];
+  const dashIdx = args.indexOf('--');
+  if (dashIdx === -1 || dashIdx + 1 >= args.length) return null;
+
+  const originalCommand = args[dashIdx + 1]!;
+  const originalArgs    = args.slice(dashIdx + 2);
+
+  return {
+    ...(entry.env ? { env: entry.env } : {}),
+    command: originalCommand,
+    ...(originalArgs.length > 0 ? { args: originalArgs } : {}),
+  };
+}
+
+export type UnwrapSummary = {
+  unwrapped: string[];  // server IDs that were unwrapped
+  skipped:   string[];  // not wrapped — left unchanged
+  httpOnly:  string[];  // HTTP servers — not touched
+};
+
+/**
+ * Returns a summary of what unwrapWithRind() would do, without mutating config.
+ * Used by the uninit CLI to print an informative diff to the user.
+ */
+export function describeUnwrap(config: McpJsonConfig): UnwrapSummary {
+  const unwrapped: string[] = [];
+  const skipped:   string[] = [];
+  const httpOnly:  string[] = [];
+
+  for (const [serverId, entry] of Object.entries(config.mcpServers)) {
+    if (isHttpEntry(entry)) {
+      httpOnly.push(serverId);
+    } else if (alreadyWrapped(entry)) {
+      unwrapped.push(serverId);
+    } else {
+      skipped.push(serverId);
+    }
+  }
+
+  return { unwrapped, skipped, httpOnly };
+}
+
 // ─── Diff helpers ─────────────────────────────────────────────────────────────
 
 export type WrapSummary = {

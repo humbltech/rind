@@ -41,6 +41,7 @@ export interface InitArgs {
   settingsScope: 'global' | 'local'; // where to write settings when no explicit path
   dryRun:       boolean;
   llmProxy:     boolean;    // configure ANTHROPIC_BASE_URL for LLM API interception
+  preToolOnly:  boolean;    // only add PreToolUse hook; skip PostToolUse/SubagentStart/Stop
   writePolicy:  string | undefined; // path to generate rind.policy.yaml, or undefined = skip
 }
 
@@ -61,6 +62,7 @@ export function parseInitArgs(argv: string[]): InitArgs | null {
   let settingsScope: 'global' | 'local' = 'global'; // default: write to ~/.claude/settings.json
   let dryRun        = false;
   let llmProxy      = true;   // on by default — matches the always-on LLM module
+  let preToolOnly   = false;
   let writePolicy: string | undefined;
 
   const USAGE = `Usage: rind-proxy init [options]
@@ -73,6 +75,7 @@ Options:
   --local                    Write settings to .claude/settings.json in current directory
   --settings <path>          Explicit settings.json path (overrides --global/--local)
   --no-llm-proxy             Skip writing ANTHROPIC_BASE_URL / OPENAI_BASE_URL
+  --pre-tool-only            Only add PreToolUse hook (skip PostToolUse/SubagentStart/Stop)
   --write-policy [path]      Generate starter rind.policy.yaml (default: ./rind.policy.yaml)
   --dry-run                  Print what would change without writing any files
   --help                     Show this help message
@@ -87,8 +90,9 @@ Options:
         break;
       case '--claude-code': claudeCode = true; break;
       case '--dry-run':       dryRun = true; break;
-      case '--no-llm-proxy': llmProxy = false; break;
-      case '--llm-proxy':    llmProxy = true; break; // explicit opt-in still accepted
+      case '--no-llm-proxy':   llmProxy = false; break;
+      case '--llm-proxy':      llmProxy = true; break; // explicit opt-in still accepted
+      case '--pre-tool-only':  preToolOnly = true; break;
       case '--global':      settingsScope = 'global'; break;
       case '--local':       settingsScope = 'local'; break;
       case '--rind-url':
@@ -123,7 +127,7 @@ Options:
   // --claude-code is the default if no target is specified
   if (!claudeCode) claudeCode = true;
 
-  return { claudeCode, rindUrl, mcpJsonPath, settingsPath, settingsScope, dryRun, llmProxy, writePolicy };
+  return { claudeCode, rindUrl, mcpJsonPath, settingsPath, settingsScope, dryRun, llmProxy, preToolOnly, writePolicy };
 }
 
 // ─── File I/O helpers ─────────────────────────────────────────────────────────
@@ -204,7 +208,7 @@ export async function runInit(argv: string[]): Promise<void> {
     applyMcpJsonWrap(mcpJsonPath, dryRun);
 
     // ── Step 2: Add Claude Code hooks ─────────────────────────────────────────
-    applySettingsHook(settingsPath, rindUrl, dryRun);
+    applySettingsHook(settingsPath, rindUrl, dryRun, args.preToolOnly);
 
     // ── Step 3: LLM proxy (opt-in via --llm-proxy) ───────────────────────────
     if (args.llmProxy) {
@@ -269,7 +273,7 @@ function applyMcpJsonWrap(mcpJsonPath: string, dryRun: boolean): void {
   }
 }
 
-function applySettingsHook(settingsPath: string, rindUrl: string, dryRun: boolean): void {
+function applySettingsHook(settingsPath: string, rindUrl: string, dryRun: boolean, preToolOnly = false): void {
   process.stdout.write(`\nClaude Code hooks  (${settingsPath})\n`);
 
   const raw = readJsonFile(settingsPath);
@@ -278,22 +282,26 @@ function applySettingsHook(settingsPath: string, rindUrl: string, dryRun: boolea
   const hasPreToolUse = alreadyHasRindHook(settings);
   const hasEventHooks = alreadyHasRindEventHooks(settings);
 
-  if (hasPreToolUse && hasEventHooks) {
-    process.stdout.write('  = skip  All Rind hooks already present\n');
+  if (hasPreToolUse && (preToolOnly || hasEventHooks)) {
+    process.stdout.write(preToolOnly
+      ? '  = skip  PreToolUse hook already present (--pre-tool-only)\n'
+      : '  = skip  All Rind hooks already present\n');
     return;
   }
 
-  const merged = mergeRindHook(settings, rindUrl);
+  const merged = mergeRindHook(settings, rindUrl, preToolOnly);
 
   if (!hasPreToolUse) {
     process.stdout.write(`  + add   PreToolUse     → ${rindUrl}/hook/evaluate\n`);
   } else {
     process.stdout.write('  = skip  PreToolUse hook already present\n');
   }
-  if (!hasEventHooks) {
+  if (!preToolOnly && !hasEventHooks) {
     process.stdout.write(`  + add   PostToolUse    → ${rindUrl}/hook/event\n`);
     process.stdout.write(`  + add   SubagentStart  → ${rindUrl}/hook/event\n`);
     process.stdout.write(`  + add   SubagentStop   → ${rindUrl}/hook/event\n`);
+  } else if (preToolOnly) {
+    process.stdout.write('  ~ skip  PostToolUse / SubagentStart / SubagentStop (--pre-tool-only)\n');
   }
 
   if (!dryRun) {

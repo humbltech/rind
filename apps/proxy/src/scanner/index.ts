@@ -47,14 +47,9 @@ export function runFullScan(
     findings.push(...driftFindings);
   }
 
-  // Compute pass/fail before deciding whether to update the stored baseline.
-  // In alert mode, always treat as passed (findings recorded but not enforced).
-  // Only update the baseline on clean scans — this preserves the last-known-good
-  // schema so drift is detectable on repeated scans of a poisoned/drifted server,
-  // not just the first reconnect.
-  const passed = mode === 'alert'
-    ? true
-    : !findings.some((f) => f.severity === 'critical' || f.severity === 'high');
+  // Compute pass/fail: in alert mode the request is not blocked, but findings are still recorded.
+  const hasHighFindings = findings.some((f) => f.severity === 'critical' || f.severity === 'high');
+  const passed = mode === 'alert' ? true : !hasHighFindings;
   const scannedAt = Date.now();
 
   const result: ScanResult = { serverId, scannedAt, findings, passed };
@@ -62,9 +57,10 @@ export function runFullScan(
   // Always record the latest scan result so callers can check quarantine status.
   lastScanResults.set(serverId, { ...result, tools });
 
-  if (passed) {
-    // Only update the baseline on clean scans — preserves last-known-good schema
-    // so drift is detectable on repeated scans of a poisoned/drifted server.
+  // Only update the baseline when no critical/high findings are present — even in alert mode.
+  // Alert mode doesn't block, but must not adopt a poisoned schema as the new ground truth,
+  // otherwise subsequent scans compare poisoned-against-poisoned and drift goes undetected.
+  if (!hasHighFindings) {
     schemaStore.set(serverId, {
       serverId,
       hash: hashToolSchema(tools),

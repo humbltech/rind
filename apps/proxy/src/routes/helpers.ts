@@ -53,11 +53,12 @@ export function recordProxyOutcome(
   const ad = interceptorResult.approvalDecision;
   if (ad === 'disapproved' || ad === 'approval-timeout') {
     outcome = ad;
-  } else if (ad === 'approved' && (interceptorResult.action === 'ALLOW' || interceptorResult.action === 'RATE_LIMIT')) {
+  } else if (ad === 'approved' && interceptorResult.action === 'ALLOW') {
     outcome = 'approved';
   } else {
-    const isBlocked = interceptorResult.action !== 'ALLOW' && interceptorResult.action !== 'RATE_LIMIT';
-    outcome = isBlocked ? 'blocked' : 'allowed';
+    // When rate limit passes, action is normalised to ALLOW in the interceptor.
+    // When rate limit is exceeded, action remains RATE_LIMIT → treat as blocked.
+    outcome = interceptorResult.action === 'ALLOW' ? 'allowed' : 'blocked';
   }
 
   ringBuffer.update(
