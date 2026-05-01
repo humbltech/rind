@@ -119,14 +119,14 @@ describe('/llm/anthropic/v1/messages — LLM gateway simulation', () => {
       action: 'PSEUDONYMIZE', failMode: 'open', priority: 10,
     }], forwardFn);
 
-    await postLlm(app, makeBody('Contact john.doe@example.com for details'));
+    await postLlm(app, makeBody('Contact john.doe@acme.com for details'));
     expect(forwardFn).toHaveBeenCalled();
 
     // Forwarded body must not contain the raw email
     const bodyStr = JSON.stringify(capturedBody);
-    expect(bodyStr).not.toContain('john.doe@example.com');
-    // Should contain a token placeholder
-    expect(bodyStr).toMatch(/<EMAIL_\d+>/);
+    expect(bodyStr).not.toContain('john.doe@acme.com');
+    // Should contain a synthetic email (original replaced, RFC 2606 reserved domain)
+    expect(bodyStr).toContain('@example.com');
   });
 
   it('PII in prompt → REDACT: [REDACTED] in forwarded body', async () => {

@@ -7,9 +7,15 @@ import { runFullScan } from '../scanner/index.js';
 import type { RindEventBus } from '../event-bus.js';
 import { emitAudit } from './helpers.js';
 
+const ToolSchema = z.object({
+  name: z.string().min(1),
+  description: z.string(),
+  inputSchema: z.record(z.unknown()),
+});
+
 const ScanBodySchema = z.object({
   serverId: z.string().min(1),
-  tools: z.array(z.object({ name: z.string() }).passthrough()),
+  tools: z.array(ToolSchema),
 });
 
 export interface ScanRouteDeps {
@@ -35,7 +41,7 @@ export function scanRoutes({ bus, logger, serverScannerMode = 'block' }: ScanRou
     const parsed = ScanBodySchema.safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
     const { serverId, tools } = parsed.data;
-    return c.json(handleScan(serverId, tools as Parameters<typeof runFullScan>[1], 'Scan-on-connect'));
+    return c.json(handleScan(serverId, tools, 'Scan-on-connect'));
   });
 
   // ─── Continuous re-scan (D-030) ───────────────────────────────────────────────
@@ -43,7 +49,7 @@ export function scanRoutes({ bus, logger, serverScannerMode = 'block' }: ScanRou
     const parsed = ScanBodySchema.safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
     const { serverId, tools } = parsed.data;
-    return c.json(handleScan(serverId, tools as Parameters<typeof runFullScan>[1], 'Re-scan (rug pull detection)'));
+    return c.json(handleScan(serverId, tools, 'Re-scan (rug pull detection)'));
   });
 
   return app;

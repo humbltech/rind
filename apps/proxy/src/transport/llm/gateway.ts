@@ -28,8 +28,8 @@ import { createAnthropicAccumulator, createOpenAIAccumulator } from './streaming
 import { scanLlmRequest } from './request-scanner.js';
 import { scanLlmResponse } from './response-scanner.js';
 import { calculateCost } from './cost-calculator.js';
-import { evaluateLlmContent } from './content-policy.js';
-import { evaluateLlmResponseContent, patchResponseBodyWithRedaction } from './content-policy-response.js';
+import { evaluateLlmContent, applyPseudonymizeToBody } from './content-policy.js';
+import { evaluateLlmResponseContent, patchResponseBodyWithRedaction, rehydrateResponseBody } from './content-policy-response.js';
 import type { PIIVault } from '../../pii-vault.js';
 import type { LlmForwardFn, ProxyConfig } from '../../types.js';
 
@@ -197,13 +197,14 @@ function makeEnricher(
     timing: EnrichedEventTiming,
     vault?: PIIVault,
   ): void {
-    // Rehydrate LLM response — swap pseudonymization tokens back to original values
-    const responseText = vault ? vault.rehydrate(meta.responseText ?? '') : meta.responseText;
-    const rehydratedMeta = vault ? { ...meta, responseText } : meta;
-    const responseThreats = llmScannerMode !== 'off' ? scanLlmResponse(rehydratedMeta.responseText) : [];
-    const inputTokens = rehydratedMeta.inputTokens > 0 ? rehydratedMeta.inputTokens : undefined;
-    const outputTokens = rehydratedMeta.outputTokens > 0 ? rehydratedMeta.outputTokens : undefined;
-    const { toolUses } = rehydratedMeta;
+    // Rehydrate a local copy for threat scanning — detectors must see real values, not tokens.
+    // The event itself stores the synthetic (pre-rehydration) text so original PII never
+    // reaches the ring buffer, audit log, or dashboard.
+    const rehydratedForScan = vault ? vault.rehydrate(meta.responseText ?? '') : (meta.responseText ?? '');
+    const responseThreats = llmScannerMode !== 'off' ? scanLlmResponse(rehydratedForScan) : [];
+    const inputTokens = meta.inputTokens > 0 ? meta.inputTokens : undefined;
+    const outputTokens = meta.outputTokens > 0 ? meta.outputTokens : undefined;
+    const { toolUses } = meta;
     const enrichedEvent: LlmCallEvent = {
       ...baseEvent,
       statusCode: timing.statusCode,
@@ -214,7 +215,7 @@ function makeEnricher(
       estimatedCostUsd: (inputTokens != null && outputTokens != null)
         ? calculateCost(baseEvent.model, inputTokens, outputTokens)
         : undefined,
-      responseText: rehydratedMeta.responseText,
+      responseText: meta.responseText, // synthetic tokens — safe for audit log
       ...(toolUses && toolUses.length > 0 ? { toolUses } : {}),
       ...(responseThreats.length > 0 ? { responseThreats } : {}),
     };
@@ -321,6 +322,14 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     const forwardBody = contentResult.sanitizedBody;
     // Vault reference for rehydration — undefined when no pseudonymization occurred
     let activeVault: PIIVault | undefined = contentResult.vault;
+
+    // ── Scrub original PII from the audit event ──────────────────────────────
+    // event.messages was built from the raw inbound body before pseudonymization.
+    // Replace original values with their synthetics so logs never contain real PII.
+    // Only needed when a vault is active (pseudonymization was applied).
+    if (activeVault && event.messages !== undefined) {
+      event = { ...event, messages: applyPseudonymizeToBody(event.messages, activeVault) };
+    }
 
     // ── 4. Pre-forward policy check ──────────────────────────────────────────
     const policyResult = policyEngine.evaluateLlm(event);
@@ -438,9 +447,16 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
         const finalMeta = responseContentResult.action === 'REDACT' && responseContentResult.redactedText
           ? { ...result.meta, responseText: responseContentResult.redactedText }
           : result.meta;
-        const finalBody = responseContentResult.action === 'REDACT'
+
+        // REDACT takes precedence: replace content with [REDACTED] before rehydration.
+        // Otherwise rehydrate vault tokens → original PII values before sending to client.
+        // Must happen before emitEnrichedEvent disposes the vault.
+        let finalBody: unknown = responseContentResult.action === 'REDACT'
           ? patchResponseBodyWithRedaction(result.responseBody)
           : result.responseBody;
+        if (activeVault && responseContentResult.action !== 'REDACT') {
+          finalBody = rehydrateResponseBody(finalBody, activeVault);
+        }
 
         emitEnrichedEvent(event, finalMeta, { statusCode: result.statusCode, durationMs: result.durationMs, ttfbMs: result.ttfbMs }, activeVault);
         activeVault = undefined; // vault disposed inside emitEnrichedEvent
@@ -460,10 +476,6 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     }
 
     // ── 7b. Streaming response ───────────────────────────────────────────────
-    // Enrich the ring buffer entry after the stream drains (fire-and-forget).
-    // Note: if two streaming responses overlap and both generate tool_use blocks,
-    // ConversationTracker uses last-writer-wins — acceptable since overlapping
-    // turns in the same conversation are rare and the conversationId is still correct.
     const capturedEvent = event;
     const capturedTtfb = result.ttfbMs;
     const capturedForwardStart = forwardStart;
@@ -472,10 +484,86 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     const capturedContentRules = contentRules; // capture for async response-side eval
     activeVault = undefined; // ownership transferred to stream closure
 
+    // ── 7b-i. Vault active: hold-back window rehydration ────────────────────
+    // When PSEUDONYMIZE was applied to the request, tokens like <EMAIL_1> must
+    // be replaced before bytes reach the client. We use a hold-back window of
+    // maxTokenLength bytes: rehydrate and forward all bytes except the final
+    // window; the window is prepended to the next chunk so no token can span a
+    // send boundary. Only the window is ever held in memory — not the full stream.
+    if (capturedVault) {
+      const holdBack = capturedVault.maxTokenLength;
+      const decoder = new TextDecoder();
+      const encoder = new TextEncoder();
+
+      return stream(c, async (s) => {
+        let pending = '';
+        const reader = result.stream!.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            pending += decoder.decode(value, { stream: true });
+            if (pending.length > holdBack) {
+              const cutAt = pending.length - holdBack;
+              await s.write(encoder.encode(capturedVault.rehydrate(pending.slice(0, cutAt))));
+              pending = pending.slice(cutAt);
+            }
+          }
+          pending += decoder.decode(); // flush multi-byte codepoints at stream end
+        } catch {
+          result.stream!.cancel().catch(() => {});
+        } finally {
+          reader.releaseLock();
+        }
+
+        if (pending) {
+          await s.write(encoder.encode(capturedVault.rehydrate(pending)));
+        }
+
+        // streamMeta has settled — stream was fully consumed above.
+        // If streamMeta rejects (e.g. upstream error mid-stream), emit an error event
+        // and dispose the vault; never leave the vault alive after request completion.
+        let meta: import('./providers/interface.js').LlmResponseMeta;
+        try {
+          meta = (await result.streamMeta) ?? { model: capturedEvent.model, inputTokens: 0, outputTokens: 0 };
+        } catch (err: unknown) {
+          logger.error({ err, eventId: capturedEvent.id }, 'Failed to emit LLM stream response event');
+          bus.emit('llm:response', {
+            ...capturedEvent,
+            outcome: 'error',
+            errorMessage: err instanceof Error ? err.message : 'Stream pipeline error',
+            ttfbMs: capturedTtfb,
+            totalDurationMs: Date.now() - capturedForwardStart,
+          });
+          capturedVault.dispose();
+          return;
+        }
+
+        const responseContentResult = await evaluateLlmResponseContent(
+          meta.responseText ?? '',
+          capturedEvent,
+          capturedContentRules,
+        );
+        const isViolation = responseContentResult.action !== 'ALLOW';
+        const vaultMeta: typeof meta = isViolation && responseContentResult.redactedText
+          ? { ...meta, responseText: responseContentResult.redactedText }
+          : meta;
+        emitEnrichedEvent(
+          isViolation ? { ...capturedEvent, outcome: 'policy-violation' } : capturedEvent,
+          vaultMeta,
+          { statusCode: capturedStatusCode, durationMs: Date.now() - capturedForwardStart, ttfbMs: capturedTtfb },
+          capturedVault,
+        );
+      });
+    }
+
+    // ── 7b-ii. Normal streaming path (no vault) ──────────────────────────────
+    // Note: if two streaming responses overlap and both generate tool_use blocks,
+    // ConversationTracker uses last-writer-wins — acceptable since overlapping
+    // turns in the same conversation are rare and the conversationId is still correct.
     result.streamMeta?.then(async (meta) => {
-      // ── Response-side content policy (post-hoc for streaming) ────────────
-      // The stream was already piped to the client — enforcement is observability
-      // only. Violations are flagged via outcome:'policy-violation' in the event.
+      // Response-side content policy (post-hoc) — stream already forwarded;
+      // violations are flagged via outcome:'policy-violation' in the event.
       const responseContentResult = await evaluateLlmResponseContent(
         meta.responseText ?? '',
         capturedEvent,
@@ -490,7 +578,6 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
         );
       }
 
-      // Use redacted text in the event when REDACT matched (audit reflects redacted value)
       const finalMeta = isViolation && responseContentResult.redactedText
         ? { ...meta, responseText: responseContentResult.redactedText }
         : meta;
@@ -498,15 +585,10 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
       emitEnrichedEvent(
         isViolation ? { ...capturedEvent, outcome: 'policy-violation' } : capturedEvent,
         finalMeta,
-        {
-          statusCode: capturedStatusCode,
-          durationMs: Date.now() - capturedForwardStart,
-          ttfbMs: capturedTtfb,
-        },
+        { statusCode: capturedStatusCode, durationMs: Date.now() - capturedForwardStart, ttfbMs: capturedTtfb },
         capturedVault,
       );
     }).catch((err: unknown) => {
-      capturedVault?.dispose();
       logger.error({ err, eventId: capturedEvent.id }, 'Failed to emit LLM stream response event');
       bus.emit('llm:response', {
         ...capturedEvent,
@@ -517,7 +599,6 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
       });
     });
 
-    // Pipe the upstream stream to the client using Hono's stream helper
     return stream(c, async (s) => {
       const reader = result.stream!.getReader();
       try {

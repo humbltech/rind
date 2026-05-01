@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createPIIVault } from '../pii-vault.js';
 import type { PIIVault } from '../pii-vault.js';
+import { generateSyntheticValue } from '../synthetic-generators.js';
 
 describe('PIIVault', () => {
   let vault: PIIVault;
@@ -14,41 +15,49 @@ describe('PIIVault', () => {
       'Contact john@acme.com for details.',
       { entities: ['EMAIL'] },
     );
-    expect(sanitized).toContain('<EMAIL_1>');
     expect(sanitized).not.toContain('john@acme.com');
+    // Synthetic is an RFC 2606 reserved address
+    expect(sanitized).toContain('@example.com');
 
     const rehydrated = vault.rehydrate(sanitized);
     expect(rehydrated).toBe('Contact john@acme.com for details.');
   });
 
-  it('assigns incrementing counters per entity type', () => {
+  it('assigns distinct synthetics for distinct values', () => {
     const { sanitized } = vault.pseudonymize(
       'Email a@x.com and b@x.com please.',
       { entities: ['EMAIL'] },
     );
-    expect(sanitized).toContain('<EMAIL_1>');
-    expect(sanitized).toContain('<EMAIL_2>');
+    expect(sanitized).not.toContain('a@x.com');
+    expect(sanitized).not.toContain('b@x.com');
+    // Two distinct values → two vault entries
+    expect(vault.size).toBe(2);
+    // Both are fully rehydratable
+    expect(vault.rehydrate(sanitized)).toBe('Email a@x.com and b@x.com please.');
   });
 
-  it('deduplicates — same value gets same token', () => {
+  it('deduplicates — same value gets same synthetic', () => {
     const { sanitized } = vault.pseudonymize(
       'From: a@x.com. To: a@x.com.',
       { entities: ['EMAIL'] },
     );
-    // Both occurrences replaced with the same token
-    expect(sanitized).toBe('From: <EMAIL_1>. To: <EMAIL_1>.');
+    // Only one vault entry — not two
     expect(vault.size).toBe(1);
+    expect(sanitized).not.toContain('a@x.com');
+    // Both occurrences replaced by the identical synthetic
+    const synth = generateSyntheticValue('EMAIL', 'a@x.com', 0);
+    expect(sanitized).toBe(`From: ${synth}. To: ${synth}.`);
   });
 
   it('handles multiple entity types independently', () => {
     const { sanitized } = vault.pseudonymize(
-      'Call 416-555-1234 or email bob@example.com.',
+      'Call 416-555-1234 or email bob@acme.com.',
       { entities: ['PHONE', 'EMAIL'] },
     );
-    expect(sanitized).toContain('<PHONE_1>');
-    expect(sanitized).toContain('<EMAIL_1>');
     expect(sanitized).not.toContain('416-555-1234');
-    expect(sanitized).not.toContain('bob@example.com');
+    expect(sanitized).not.toContain('bob@acme.com');
+    expect(vault.size).toBe(2);
+    expect(vault.rehydrate(sanitized)).toBe('Call 416-555-1234 or email bob@acme.com.');
   });
 
   it('rehydrate is a no-op when no tokens are present', () => {
@@ -56,9 +65,11 @@ describe('PIIVault', () => {
     expect(vault.rehydrate('plain text response')).toBe('plain text response');
   });
 
-  it('rehydrate leaves unknown tokens unchanged', () => {
-    vault.pseudonymize('test@example.com', { entities: ['EMAIL'] });
-    expect(vault.rehydrate('prefix <EMAIL_999> suffix')).toBe('prefix <EMAIL_999> suffix');
+  it('rehydrate leaves unknown strings unchanged', () => {
+    vault.pseudonymize('test@acme.com', { entities: ['EMAIL'] });
+    expect(vault.rehydrate('prefix totally-unknown-value suffix')).toBe(
+      'prefix totally-unknown-value suffix',
+    );
   });
 
   it('returns stats with correct entity type breakdown', () => {
@@ -83,12 +94,13 @@ describe('PIIVault', () => {
   });
 
   it('dispose clears vault state', () => {
-    vault.pseudonymize('user@example.com', { entities: ['EMAIL'] });
+    vault.pseudonymize('user@acme.com', { entities: ['EMAIL'] });
     expect(vault.size).toBe(1);
     vault.dispose();
     expect(vault.size).toBe(0);
-    // After dispose, rehydrate has no mapping
-    expect(vault.rehydrate('<EMAIL_1>')).toBe('<EMAIL_1>');
+    // After dispose, any string passes through unchanged
+    const synth = generateSyntheticValue('EMAIL', 'user@acme.com', 0);
+    expect(vault.rehydrate(synth)).toBe(synth);
   });
 
   it('clean text produces empty stats', () => {
@@ -111,16 +123,17 @@ describe('PIIVault', () => {
     }
   });
 
-  it('applyTokens replaces original values with tokens — safe in production', () => {
-    vault.pseudonymize('Contact bob@example.com for info.', { entities: ['EMAIL'] });
-    // applyTokens goes original→token (forward direction)
-    const applied = vault.applyTokens('Please reach bob@example.com or bob@example.com again.');
-    expect(applied).toBe('Please reach <EMAIL_1> or <EMAIL_1> again.');
+  it('applyTokens replaces original values with synthetics — safe in production', () => {
+    vault.pseudonymize('Contact bob@acme.com for info.', { entities: ['EMAIL'] });
+    const synth = generateSyntheticValue('EMAIL', 'bob@acme.com', 0);
+    // applyTokens goes original→synthetic (forward direction)
+    const applied = vault.applyTokens('Please reach bob@acme.com or bob@acme.com again.');
+    expect(applied).toBe(`Please reach ${synth} or ${synth} again.`);
     // Does not throw in production
     const originalEnv = process.env['NODE_ENV'];
     process.env['NODE_ENV'] = 'production';
     try {
-      expect(() => vault.applyTokens('bob@example.com')).not.toThrow();
+      expect(() => vault.applyTokens('bob@acme.com')).not.toThrow();
     } finally {
       process.env['NODE_ENV'] = originalEnv;
     }
@@ -128,22 +141,31 @@ describe('PIIVault', () => {
   });
 
   it('applyTokens is a no-op before pseudonymize is called', () => {
-    expect(vault.applyTokens('bob@example.com')).toBe('bob@example.com');
+    expect(vault.applyTokens('bob@acme.com')).toBe('bob@acme.com');
   });
 
   it('applyTokens returns identity after dispose', () => {
-    vault.pseudonymize('bob@example.com', { entities: ['EMAIL'] });
+    vault.pseudonymize('bob@acme.com', { entities: ['EMAIL'] });
     vault.dispose();
-    expect(vault.applyTokens('bob@example.com')).toBe('bob@example.com');
+    expect(vault.applyTokens('bob@acme.com')).toBe('bob@acme.com');
   });
 
   it('accumulates entries across multiple pseudonymize calls', () => {
     vault.pseudonymize('first@x.com', { entities: ['EMAIL'] });
     vault.pseudonymize('second@x.com', { entities: ['EMAIL'] });
     expect(vault.size).toBe(2);
-    // Counters continue incrementing across calls
+    // Counters continue incrementing: first@x.com → index 0, second@x.com → index 1
+    const synth0 = generateSyntheticValue('EMAIL', 'first@x.com', 0);
+    const synth1 = generateSyntheticValue('EMAIL', 'second@x.com', 1);
     const applied = vault.applyTokens('second@x.com and first@x.com');
-    expect(applied).toBe('<EMAIL_2> and <EMAIL_1>');
+    expect(applied).toBe(`${synth1} and ${synth0}`);
     vault.dispose();
+  });
+
+  it('maxTokenLength reflects the longest synthetic in the vault', () => {
+    expect(vault.maxTokenLength).toBe(0);
+    vault.pseudonymize('user@acme.com', { entities: ['EMAIL'] });
+    const synth = generateSyntheticValue('EMAIL', 'user@acme.com', 0);
+    expect(vault.maxTokenLength).toBe(synth.length);
   });
 });

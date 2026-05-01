@@ -7,7 +7,6 @@
 // Requesting an unimplemented entity type silently produces no matches.
 
 import type { PiiDetectorConfig, PiiEntity } from '@rind/core';
-import { piiPatternById } from '../rules/llm-pii-patterns.rules.js';
 import type { DetectorRunResult } from './types.js';
 
 // ─── Entity → pattern ────────────────────────────────────────────────────────
@@ -17,13 +16,20 @@ import type { DetectorRunResult } from './types.js';
 //
 // IP_ADDRESS and IBAN use inline patterns (not in the shared PII_PATTERNS array).
 
+// All patterns exclude Rind synthetic reserved ranges to prevent re-detection
+// when synthetic values appear in multi-turn conversation history.
 const ENTITY_PATTERN_MAP: Partial<Record<PiiEntity, RegExp>> = {
-  SSN:         piiPatternById('llm-pii-001'),
-  SIN:         piiPatternById('llm-pii-001'), // same digit structure; locale label differs
-  CREDIT_CARD: piiPatternById('llm-pii-002'),
-  PHONE:       piiPatternById('llm-pii-003'),
-  EMAIL:       piiPatternById('llm-pii-004'),
-  IP_ADDRESS:  /\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b/,
+  // Exclude SSNs/SINs starting with 000 — SSA permanently reserves 000-xx-xxxx.
+  SSN:         /\b(?!000)(?:\d{3}-\d{2}-\d{4}|\d{3} \d{2} \d{4}|\d{9})\b/,
+  SIN:         /\b(?!000)(?:\d{3}-\d{2}-\d{4}|\d{3} \d{2} \d{4}|\d{9})\b/,
+  // Exclude 0000-xxxx-xxxx-xxxx — no real payment network uses 0000 as the first group.
+  CREDIT_CARD: /\b(?!0000[- ])\d{4}[- ]\d{4}[- ]\d{4}[- ]\d{2,4}\b/,
+  // Exclude NANP 555-01xx — permanently reserved for fictional use.
+  PHONE:       /\b(?:\+?1[-.\s]?)?(?!\(?555\)?[-.\s]?01\d)(?:\(\d{3}\)|\d{3})[-.\s]?\d{3}[-.\s]?\d{4}\b/,
+  // Exclude RFC 2606 §3 reserved domains — so synthetic values are never re-detected.
+  EMAIL:       /\b[A-Za-z0-9._%+-]+@(?!(?:example|test|invalid)\.(?:com|net|org)\b)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/i,
+  // Exclude RFC 5737 TEST-NET-1 (192.0.2.0/24) — reserved for documentation.
+  IP_ADDRESS:  /\b(?!192\.0\.2\.)(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b/,
   IBAN:        /\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}(?:[A-Z0-9]{0,16})\b/,
   // PERSON_NAME, ADDRESS, PASSPORT, DATE_OF_BIRTH, HEALTH_CARD: Phase 2 (ml_ner)
 };
@@ -35,22 +41,23 @@ export function runPIIDetector(
   config: PiiDetectorConfig,
 ): DetectorRunResult {
   const matches: DetectorRunResult['matches'] = [];
-  const seen = new Set<PiiEntity>(); // one match per entity type per call
+  const seen = new Set<PiiEntity>(); // one match entry per entity type per call
 
   for (const entityType of config.entities) {
     if (seen.has(entityType)) continue;
     const pattern = ENTITY_PATTERN_MAP[entityType];
     if (!pattern) continue; // entity type not yet implemented (Phase 2)
 
-    // Reset lastIndex before test() — guards against stateful global regexes
-    // on shared module-level pattern instances.
-    pattern.lastIndex = 0;
-    if (pattern.test(text)) {
+    // Build a fresh global regex for matchAll — the stored patterns are non-global
+    const globalPattern = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g');
+    const occurrences = [...text.matchAll(globalPattern)];
+    if (occurrences.length > 0) {
       matches.push({
         label: entityType,
         type: entityType,
         confidence: 0.9,
         stage: 'regex',
+        occurrenceCount: occurrences.length,
       });
       seen.add(entityType);
     }

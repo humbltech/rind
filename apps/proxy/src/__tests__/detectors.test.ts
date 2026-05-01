@@ -63,7 +63,7 @@ describe('runSecretDetector', () => {
 
 describe('runPIIDetector', () => {
   it('detects email', () => {
-    const result = runPIIDetector('Contact alice@example.com', { entities: ['EMAIL'] });
+    const result = runPIIDetector('Contact alice@acme.com', { entities: ['EMAIL'] });
     expect(result.triggered).toBe(true);
     expect(result.matches[0]!.type).toBe('EMAIL');
   });

@@ -184,26 +184,52 @@ export function createProxyServer(config: ProxyConfig) {
   // Intercepts HTTP calls from Claude Code → Anthropic/OpenAI/Google.
   // Enabled via config.llmProxy.enabled (set from RIND_LLM_PROXY=true in env).
   // Bypass: unset ANTHROPIC_BASE_URL — no code change needed.
+  //
+  // Hoisted to outer scope so start() can call llmRingBuffer.load() on restart.
+  let llmRingBuffer: IEventStore<LlmCallEvent> | undefined;
+  let llmEventsLogPath: string | undefined;
+
   if (config.llmProxy?.enabled) {
     const llmLogPath = config.auditLogPath
       ? config.auditLogPath.replace(/\.jsonl$/, '-llm-events.jsonl')
       : join(RIND_DATA_DIR, 'llm-events.jsonl');
     mkdirSync(dirname(llmLogPath), { recursive: true });
+    llmEventsLogPath = llmLogPath;
 
-    const llmRingBuffer: IEventStore<LlmCallEvent> = new JsonlEventStore<LlmCallEvent>({
+    llmRingBuffer = new JsonlEventStore<LlmCallEvent>({
       capacity: config.ringBufferSize ?? 10_000,
       filePath: llmLogPath,
       onError: (err) => logger.error({ err }, 'LLM event log write failed'),
     });
+    // Local alias — closures below need a const reference to avoid undefined narrowing
+    const llmBuf = llmRingBuffer;
 
     // llm:request → initial entry (outcome='forwarded', no tokens yet)
     // llm:response → enriched entry with tokens/cost/latency (update in-place)
     // llm:blocked  → terminal entry (no prior request event pushed)
-    bus.on('llm:request', (event) => llmRingBuffer.push(event));
+    bus.on('llm:request', (event) => llmBuf.push(event));
     bus.on('llm:response', (event) => {
-      llmRingBuffer.update((e) => e.id === event.id, () => event);
+      llmBuf.update((e) => e.id === event.id, () => event);
     });
-    bus.on('llm:blocked', ({ event }) => llmRingBuffer.push(event));
+    bus.on('llm:blocked', ({ event, reason }) => {
+      llmBuf.push(event);
+      // Emit audit entry so llm:blocked decisions appear in audit.jsonl alongside
+      // tool:blocked entries. Extract matched pattern labels from the inspection
+      // result so analysts can see exactly which pattern fired.
+      const matchedPatterns = event.contentInspection?.results
+        ?.flatMap((r) => r.matches.map((m) => m.label)) ?? [];
+      bus.emit('audit', {
+        timestamp: new Date().toISOString(),
+        eventType: 'llm:blocked',
+        sessionId: event.sessionId ?? '',
+        agentId: event.agentId,
+        serverId: '',
+        action: 'DENY',
+        policyRule: event.matchedRule,
+        reason,
+        ...(matchedPatterns.length > 0 && { matchedPatterns }),
+      });
+    });
 
     const llmConfig = { ...defaultLlmProxyConfig(), ...config.llmProxy };
     app.route('/', llmGateway({ config: llmConfig, bus, policyEngine, logger, forwardFn: config.llmForwardFn, layers: config.layers }));
@@ -211,7 +237,7 @@ export function createProxyServer(config: ProxyConfig) {
 
     app.get('/logs/llm-calls', (c) => {
       const { provider, model, outcome, agentId, since, until } = c.req.query();
-      let events = llmRingBuffer.toArray();
+      let events = llmBuf.toArray();
 
       if (provider) events = events.filter((e) => e.provider === provider);
       if (model) events = events.filter((e) => e.model === model);
@@ -243,7 +269,7 @@ export function createProxyServer(config: ProxyConfig) {
         .filter((e) => isNaN(untilTs) || e.timestamp <= untilTs)
         .map((e) => ({ kind: 'tool' as const, timestamp: e.timestamp, data: e }));
 
-      const llmEvents = llmRingBuffer.toArray()
+      const llmEvents = llmBuf.toArray()
         .filter((e) => !agentId || e.agentId.includes(agentId))
         .filter((e) => !sessionId || e.sessionId === sessionId)
         .filter((e) => isNaN(sinceTs) || e.timestamp >= sinceTs)
@@ -295,16 +321,20 @@ export function createProxyServer(config: ProxyConfig) {
 
   return {
     start: async () => {
-      // Reload persisted events into the ring buffer before accepting requests
-      const [loaded, hookLoaded] = await Promise.all([
+      // Reload persisted events into the ring buffers before accepting requests
+      const [loaded, hookLoaded, llmLoaded] = await Promise.all([
         ringBuffer.load(),
         hookEventBuffer.load(),
+        llmRingBuffer ? llmRingBuffer.load() : Promise.resolve(0),
       ]);
       if (loaded > 0) {
         logger.info({ events: loaded, file: eventsLogPath }, 'Reloaded persisted tool call events');
       }
       if (hookLoaded > 0) {
         logger.info({ events: hookLoaded, file: hookEventsLogPath }, 'Reloaded persisted hook events');
+      }
+      if (llmLoaded > 0) {
+        logger.info({ events: llmLoaded, file: llmEventsLogPath }, 'Reloaded persisted LLM call events');
       }
 
       // Periodic cleanup of expired correlation entries (every 60s)

@@ -461,6 +461,24 @@ export interface DetectorMatchAudit {
   type: string;
   confidence: number;
   stage: 'regex' | 'ml_ner' | 'llm_judge';
+  /** Which conversation role this match was found in (system/user/assistant) */
+  sourceTarget?: 'system' | 'user' | 'assistant';
+  /** 0-based index of the message within its role that triggered the match */
+  messageIndex?: number;
+  /** How many times this entity/pattern appeared in the matched target */
+  occurrenceCount?: number;
+  /**
+   * For PII detectors when PSEUDONYMIZE was applied: the synthetic value
+   * that replaced the original (e.g. "user1@example.com"). Safe to log —
+   * this is the reserved-range placeholder, not the real value.
+   */
+  syntheticValue?: string;
+  /**
+   * For non-PII detectors (injection, secret, DLP): a short excerpt of the
+   * matched text, truncated at 120 chars. Only populated when the rule sets
+   * debugMatchContext: true. Never populated for PII detectors.
+   */
+  excerpt?: string;
 }
 
 /** Per-detector summary for one content inspection pass */
@@ -560,6 +578,13 @@ export interface PolicyRule {
   secrets?: SecretDetectorConfig;
   injection?: InjectionDetectorConfig;
   dlp?: DlpDetectorConfig;
+  /**
+   * When true, populates DetectorMatchAudit.excerpt for non-PII detectors
+   * (injection, secret, DLP). Never exposes original PII values — use only
+   * for debugging false positives in development or staging environments.
+   * Default: false.
+   */
+  debugMatchContext?: boolean;
 }
 
 export interface PolicyConfig {
@@ -655,6 +680,7 @@ export interface AuditEntry {
   toolName?: string;
   reason?: string;
   threats?: ResponseThreat[];
+  matchedPatterns?: string[]; // detector pattern labels that triggered (e.g. 'OpenAI / Anthropic API key format')
   input?: unknown; // always included (needed for security investigation)
   output?: unknown; // only included when auditIncludeOutput is true
 }

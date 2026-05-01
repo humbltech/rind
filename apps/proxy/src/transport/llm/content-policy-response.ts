@@ -19,6 +19,7 @@ import type {
   DetectorAuditResult,
 } from '@rind/core';
 import type { LlmCallEvent } from './types.js';
+import type { PIIVault } from '../../pii-vault.js';
 import { runSecretDetector } from '../../detectors/secret.js';
 import { runPIIDetector } from '../../detectors/pii.js';
 import { runInjectionDetector } from '../../detectors/injection.js';
@@ -168,6 +169,29 @@ export async function evaluateLlmResponseContent(
   }
 
   return { action: 'ALLOW', inspection: buildInspection(auditResults, startMs) };
+}
+
+// ─── Response body rehydration ────────────────────────────────────────────────
+
+/**
+ * Walk every string in the response body and replace pseudonymization tokens
+ * with their original PII values. Inverse of applyPseudonymizeToBody.
+ *
+ * Called on the non-streaming response body BEFORE it is sent to the client,
+ * and on buffered SSE text for streaming responses, when PSEUDONYMIZE was applied
+ * to the outbound request. Must run before vault.dispose() is called.
+ */
+export function rehydrateResponseBody(body: unknown, vault: PIIVault): unknown {
+  if (typeof body === 'string') return vault.rehydrate(body);
+  if (Array.isArray(body)) return body.map((item) => rehydrateResponseBody(item, vault));
+  if (typeof body === 'object' && body !== null) {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
+      result[key] = rehydrateResponseBody(value, vault);
+    }
+    return result;
+  }
+  return body;
 }
 
 // ─── Response body patching ───────────────────────────────────────────────────

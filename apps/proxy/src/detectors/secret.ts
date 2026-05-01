@@ -95,3 +95,62 @@ export function runSecretDetector(
 
 // Re-export pattern list for use in built-in pack definitions
 export { BUILTIN_PATTERN_MAP };
+
+// ─── Pattern metadata for UI display ─────────────────────────────────────────
+// Human-readable descriptions of what each built-in pattern detects.
+// Intentionally excludes raw regex — exposing the exact pattern would help
+// attackers craft bypass strings. Labels match CREDENTIAL_PATTERNS.label exactly.
+
+export interface SecretPatternMeta {
+  label: string;
+  description: string;
+  example: string; // format hint, not a real secret
+}
+
+export const SECRET_DETECTOR_PATTERNS_META: SecretPatternMeta[] = [
+  {
+    label: 'Plaintext password',
+    description: 'password= or passwd: followed by a value',
+    example: 'password=hunter2',
+  },
+  {
+    label: 'API key',
+    description: 'api_key or apikey assignment with 16+ character value',
+    example: 'api_key=AbCdEfGhIjKlMnOp',
+  },
+  {
+    label: 'AWS access key',
+    description: 'AWS_ACCESS_KEY_ID assignment',
+    example: 'AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE',
+  },
+  {
+    label: 'AWS secret key',
+    description: 'AWS_SECRET_ACCESS_KEY assignment',
+    example: 'AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/...',
+  },
+  {
+    label: 'private key block',
+    description: 'PEM-encoded private key header (RSA, EC, OpenSSH, PGP)',
+    example: '-----BEGIN RSA PRIVATE KEY-----',
+  },
+  {
+    label: 'Database connection string',
+    description: 'Connection URI with embedded credentials (MongoDB, PostgreSQL, MySQL, Redis)',
+    example: 'postgresql://user:pass@host/db',
+  },
+  {
+    label: 'GitHub personal access token',
+    description: 'GitHub PAT in ghp_ format',
+    example: 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcd1234',
+  },
+  {
+    label: 'OpenAI / Anthropic API key format',
+    description: 'API keys starting with sk- (OpenAI, Anthropic, and similar providers)',
+    example: 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+  },
+  {
+    label: 'JWT token',
+    description: 'JSON Web Token in eyJ... three-part format',
+    example: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.signature',
+  },
+];

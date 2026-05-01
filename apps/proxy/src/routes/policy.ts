@@ -10,6 +10,7 @@ import { listPacks, getPack, expandPackRules, rulesFromPack, recommendPacks } fr
 import { listStoredSchemas } from '../scanner/index.js';
 import type { RindEventBus } from '../event-bus.js';
 import { emitPolicyAudit } from './helpers.js';
+import { SECRET_DETECTOR_PATTERNS_META } from '../detectors/secret.js';
 
 // ─── Validation schemas ────────────────────────────────────────────────────────
 
@@ -52,16 +53,17 @@ export function policyRoutes({ policyEngine, policyStore, bus, logger }: PolicyR
 
   app.put('/policies/rules/:name', async (c) => {
     const { name } = c.req.param();
+    // Find existing rule first — partial updates are valid (e.g. changing only action).
+    // Merge incoming fields onto the existing rule, then validate the merged result.
+    const existing = policyStore.get().policies.find((r) => r.name === name);
+    if (!existing) return c.json({ error: `Rule "${name}" not found` }, 404);
     const body = await c.req.json<unknown>();
-    const parsed = PolicyRuleSchema.safeParse(body);
+    const merged = typeof body === 'object' && body !== null ? { ...existing, ...body } : body;
+    const parsed = PolicyRuleSchema.safeParse(merged);
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
-    try {
-      policyStore.updateRule(name, parsed.data);
-      emitPolicyAudit(bus, 'rule-updated', name);
-      return c.json({ updated: true, rule: parsed.data });
-    } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : 'Unknown error' }, 404);
-    }
+    policyStore.updateRule(name, parsed.data);
+    emitPolicyAudit(bus, 'rule-updated', name);
+    return c.json({ updated: true, rule: parsed.data });
   });
 
   app.patch('/policies/rules/:name/toggle', async (c) => {
@@ -149,6 +151,12 @@ export function policyRoutes({ policyEngine, policyStore, bus, logger }: PolicyR
     logger.info({ packId }, 'Policy pack disabled');
     return c.json({ disabled: true, packId });
   });
+
+  // ─── Detector metadata ────────────────────────────────────────────────────────
+  // Returns the patterns the secret detector checks — so the UI can show users
+  // exactly what "detectors: ['secret']" means without exposing raw regex.
+
+  app.get('/detectors/secret', (c) => c.json({ patterns: SECRET_DETECTOR_PATTERNS_META }));
 
   app.get('/suggestions', (c) => {
     const schemas = listStoredSchemas();

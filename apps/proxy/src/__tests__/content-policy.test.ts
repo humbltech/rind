@@ -97,7 +97,7 @@ describe('evaluateLlmContent — PSEUDONYMIZE on PII detection', () => {
   };
 
   it('pseudonymizes email in user message and returns vault', async () => {
-    const body = makeBody('Please contact alice@example.com for details.');
+    const body = makeBody('Please contact alice@acme.com for details.');
     const result = await evaluateLlmContent(body, makeLlmEvent(), [piiRule]);
 
     expect(result.action).toBe('PSEUDONYMIZE');
@@ -106,12 +106,14 @@ describe('evaluateLlmContent — PSEUDONYMIZE on PII detection', () => {
 
     // Sanitized body should not contain the original email
     const bodyStr = JSON.stringify(result.sanitizedBody);
-    expect(bodyStr).not.toContain('alice@example.com');
-    expect(bodyStr).toContain('<EMAIL_1>');
+    expect(bodyStr).not.toContain('alice@acme.com');
+    // Synthetic is an RFC 2606 reserved address
+    expect(bodyStr).toContain('@example.com');
 
-    // Vault can rehydrate
-    const rehydrated = result.vault!.rehydrate('Reply to <EMAIL_1> asap.');
-    expect(rehydrated).toBe('Reply to alice@example.com asap.');
+    // Vault can rehydrate — synthetic echoed back by LLM maps to original
+    const synth = result.vault!.applyTokens('alice@acme.com');
+    const rehydrated = result.vault!.rehydrate(`Reply to ${synth} asap.`);
+    expect(rehydrated).toBe('Reply to alice@acme.com asap.');
 
     result.vault!.dispose();
   });
@@ -242,7 +244,7 @@ describe('evaluateLlmContent — inspection audit', () => {
       priority: 10,
     };
     const result = await evaluateLlmContent(
-      makeBody('test@example.com'),
+      makeBody('test@acme.com'),
       makeLlmEvent(),
       [rule],
     );
@@ -299,26 +301,27 @@ describe('evaluateLlmContent — PSEUDONYMIZE body mutation', () => {
   };
 
   it('body string fields are tokenized in all environments', async () => {
-    const body = makeBody('Reach alice@example.com for help.');
+    const body = makeBody('Reach alice@acme.com for help.');
     const result = await evaluateLlmContent(body, makeLlmEvent(), [pseudoRule]);
     expect(result.action).toBe('PSEUDONYMIZE');
 
     const bodyStr = JSON.stringify(result.sanitizedBody);
-    // The actual body structure must contain the token, not the original value
-    expect(bodyStr).toContain('<EMAIL_1>');
-    expect(bodyStr).not.toContain('alice@example.com');
+    // The actual body structure must contain the synthetic, not the original value
+    expect(bodyStr).not.toContain('alice@acme.com');
+    expect(bodyStr).toContain('@example.com'); // synthetic is RFC 2606 reserved domain
 
     result.vault!.dispose();
   });
 
   it('vault can rehydrate tokenized text after body mutation', async () => {
-    const body = makeBody('Contact alice@example.com.');
+    const body = makeBody('Contact alice@acme.com.');
     const result = await evaluateLlmContent(body, makeLlmEvent(), [pseudoRule]);
     expect(result.action).toBe('PSEUDONYMIZE');
 
-    // Simulate LLM responding with the token
-    const rehydrated = result.vault!.rehydrate('Reply to <EMAIL_1> ASAP.');
-    expect(rehydrated).toBe('Reply to alice@example.com ASAP.');
+    // Simulate LLM responding with the synthetic value — vault rehydrates to original
+    const synth = result.vault!.applyTokens('alice@acme.com');
+    const rehydrated = result.vault!.rehydrate(`Reply to ${synth} ASAP.`);
+    expect(rehydrated).toBe('Reply to alice@acme.com ASAP.');
 
     result.vault!.dispose();
   });
@@ -327,14 +330,14 @@ describe('evaluateLlmContent — PSEUDONYMIZE body mutation', () => {
     const originalEnv = process.env['NODE_ENV'];
     process.env['NODE_ENV'] = 'production';
     try {
-      const body = makeBody('Reach alice@example.com for help.');
+      const body = makeBody('Reach alice@acme.com for help.');
       const result = await evaluateLlmContent(body, makeLlmEvent(), [pseudoRule]);
       expect(result.action).toBe('PSEUDONYMIZE');
 
       const bodyStr = JSON.stringify(result.sanitizedBody);
       // Must work in production — applyTokens() must not rely on getDebugEntries()
-      expect(bodyStr).toContain('<EMAIL_1>');
-      expect(bodyStr).not.toContain('alice@example.com');
+      expect(bodyStr).not.toContain('alice@acme.com');
+      expect(bodyStr).toContain('@example.com'); // synthetic is RFC 2606 reserved domain
 
       result.vault!.dispose();
     } finally {

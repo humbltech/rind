@@ -19,6 +19,8 @@ import type {
   LlmDetector,
   ContentInspectionAudit,
   DetectorAuditResult,
+  DetectorMatchAudit,
+  PiiEntity,
   PolicyAction,
 } from '@rind/core';
 import type { LlmCallEvent } from './types.js';
@@ -118,7 +120,7 @@ function extractText(
  * from the entire forwarded body is the safer choice — we don't want the same
  * email to appear tokenized in one message block but plain in another field.
  */
-function applyPseudonymizeToBody(body: unknown, vault: PIIVault): unknown {
+export function applyPseudonymizeToBody(body: unknown, vault: PIIVault): unknown {
   if (typeof body === 'string') {
     return vault.applyTokens(body);
   }
@@ -225,27 +227,52 @@ export async function evaluateLlmContent(
     if (content.scope === 'response') continue;
 
     const targets = content.targets ?? ['system', 'user', 'assistant'];
-    const text = extractText(body, targets);
-
-    if (!text) continue;
 
     for (const detector of content.detectors) {
       const detectorStart = Date.now();
-      const result = runDetector(detector, rule, text);
-      const detectorMs = Date.now() - detectorStart;
 
+      // Run the detector once per target so each match can be tagged with its
+      // source role (system/user/assistant). Aggregated into one DetectorAuditResult.
+      const taggedMatches: DetectorMatchAudit[] = [];
+      let triggered = false;
+      let maxConf = 0;
+      let decidedByStage: DetectorAuditResult['decidedBy'] = 'regex';
+
+      for (const target of targets) {
+        const targetText = extractText(body, [target]);
+        if (!targetText) continue;
+
+        const res = runDetector(detector, rule, targetText);
+        if (res.triggered) triggered = true;
+        if (res.maxConfidence > maxConf) maxConf = res.maxConfidence;
+        decidedByStage = res.stage;
+
+        for (const match of res.matches) {
+          // For non-PII detectors: optionally include a short excerpt of the
+          // triggering target text for debugging false positives in dev/staging.
+          // Never for PII — synthetic value is added separately below.
+          const excerpt =
+            detector !== 'pii' && rule.debugMatchContext
+              ? targetText.slice(0, 120) + (targetText.length > 120 ? '…' : '')
+              : undefined;
+
+          taggedMatches.push({ ...match, sourceTarget: target, excerpt });
+        }
+      }
+
+      const detectorMs = Date.now() - detectorStart;
       const auditResult: DetectorAuditResult = {
         detector,
-        decidedBy: result.stage,
-        matchCount: result.matches.length,
-        maxConfidence: result.maxConfidence,
-        action: result.triggered ? rule.action : 'ALLOW',
+        decidedBy: decidedByStage,
+        matchCount: taggedMatches.length,
+        maxConfidence: maxConf,
+        action: triggered ? rule.action : 'ALLOW',
         durationMs: detectorMs,
-        matches: result.matches,
+        matches: taggedMatches,
       };
       auditResults.push(auditResult);
 
-      if (!result.triggered) continue;
+      if (!triggered) continue;
 
       // First triggered detector determines the action
       if (rule.action === 'DENY') {
@@ -260,7 +287,22 @@ export async function evaluateLlmContent(
 
       if (rule.action === 'PSEUDONYMIZE' && detector === 'pii' && rule.pii) {
         const vault = createPIIVault(event.id);
-        const pseudoResult = vault.pseudonymize(text, rule.pii);
+        // Pseudonymize the combined text of all targets to populate the vault with
+        // all entity mappings before applying to the body. Vault deduplicates — the
+        // same value across targets gets the same synthetic.
+        const flatText = extractText(body, targets);
+        const pseudoResult = vault.pseudonymize(flatText, rule.pii);
+
+        // Annotate PII matches with the synthetic values that were generated.
+        // syntheticValue is safe to log — it's the reserved-range placeholder, not
+        // the original. Admins can see "EMAIL → user1@example.com in user message"
+        // to understand and tune the rule without accessing original PII.
+        const matchesWithSynthetics = taggedMatches.map((match) => ({
+          ...match,
+          syntheticValue: vault.getSyntheticsForEntity(match.type as PiiEntity).join(', '),
+        }));
+        auditResults[auditResults.length - 1] = { ...auditResult, matches: matchesWithSynthetics };
+
         const sanitizedBody = applyPseudonymizeToBody(body, vault);
         return {
           action: 'PSEUDONYMIZE',

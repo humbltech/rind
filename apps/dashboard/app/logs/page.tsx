@@ -162,15 +162,25 @@ function PageHeader({ connected, total, filtered }: { connected: boolean; total:
 function ConnectionDot({ connected }: { connected: boolean }) {
   return (
     <div className="flex items-center gap-2 text-xs text-muted">
-      <span
-        className="w-2 h-2 rounded-full"
-        style={{
-          backgroundColor: connected ? 'var(--rind-accent)' : 'var(--rind-critical)',
-          boxShadow: connected
-            ? '0 0 6px color-mix(in srgb, var(--rind-accent) 50%, transparent)'
-            : '0 0 6px color-mix(in srgb, var(--rind-critical) 50%, transparent)',
-        }}
-      />
+      {/* Relative wrapper so the ping ring stays behind the solid dot */}
+      <span className="relative flex h-2 w-2 items-center justify-center">
+        {connected && (
+          // Subtle halo that grows and fades — only when live
+          <span
+            className="absolute inline-flex h-full w-full rounded-full animate-ping opacity-40"
+            style={{ backgroundColor: 'var(--rind-accent)' }}
+          />
+        )}
+        <span
+          className="relative h-2 w-2 rounded-full"
+          style={{
+            backgroundColor: connected ? 'var(--rind-accent)' : 'var(--rind-critical)',
+            boxShadow: connected
+              ? '0 0 6px color-mix(in srgb, var(--rind-accent) 50%, transparent)'
+              : '0 0 6px color-mix(in srgb, var(--rind-critical) 50%, transparent)',
+          }}
+        />
+      </span>
       {connected ? 'Live' : 'Disconnected'}
     </div>
   );

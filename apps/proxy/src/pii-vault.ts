@@ -1,7 +1,10 @@
 // PII Vault — per-request pseudonymization and rehydration.
 //
-// Replaces PII entities in outbound LLM prompts with opaque tokens
-// (<EMAIL_1>, <SIN_2>, etc.) and restores original values in the LLM response.
+// Replaces PII entities in outbound LLM prompts with realistic synthetic values
+// (e.g. alex.chen@company.com instead of <EMAIL_1>) so LLMs process the request
+// naturally and echo the synthetic back in their response, enabling reliable
+// rehydration. Opaque tokens like <EMAIL_1> caused models to comment on the tag
+// rather than answer the question.
 //
 // Design constraints:
 //   - In-memory only — no persistence, no disk, no DB
@@ -11,7 +14,7 @@
 
 import { createHash } from 'node:crypto';
 import type { PiiDetectorConfig, PiiEntity, PIIAuditStats } from '@rind/core';
-import { piiPatternById } from './rules/llm-pii-patterns.rules.js';
+import { generateSyntheticValue } from './synthetic-generators.js';
 
 // ─── Internal entry ───────────────────────────────────────────────────────────
 
@@ -52,12 +55,24 @@ export interface PIIVault {
    */
   applyTokens(text: string): string;
   /**
+   * Return the synthetic values generated for a given entity type.
+   * Safe in all environments — returns the replacement values, never originals.
+   * Used to populate syntheticValue in audit matches after pseudonymization.
+   */
+  getSyntheticsForEntity(entityType: PiiEntity): string[];
+  /**
    * Raw vault entries including original values.
    * Only accessible when NODE_ENV !== 'production'.
    * For development debugging of false positives only.
    */
   getDebugEntries(): VaultEntry[];
   readonly size: number;
+  /**
+   * Length of the longest token currently in the vault (e.g. `<DATE_OF_BIRTH_1>` = 17).
+   * Used to size the streaming hold-back window: hold back this many bytes so no
+   * token can span a send boundary.
+   */
+  readonly maxTokenLength: number;
   /** Clear all mappings. Must be called after request completes. */
   dispose(): void;
 }
@@ -69,19 +84,26 @@ export interface PIIVault {
 // Phase 2 (requires ml_ner stage): PERSON_NAME, ADDRESS, PASSPORT,
 //   DATE_OF_BIRTH, HEALTH_CARD
 //
-// Build entity → RegExp map from PII_PATTERNS, keyed by id (not position).
-// piiPatternById is imported from rules/llm-pii-patterns.rules.ts — id type is
-// checked at compile time against the LlmPiiPatternId union.
+// All patterns exclude Rind synthetic reserved ranges to prevent re-detection
+// when synthetic values appear in multi-turn conversation history.
 const ENTITY_PATTERN_MAP: Partial<Record<PiiEntity, RegExp>> = {
-  // From PII_PATTERNS (shared with passive scanner) — looked up by id, not position
-  SSN:         piiPatternById('llm-pii-001'),
-  SIN:         piiPatternById('llm-pii-001'), // same digit structure; locale label differs
-  CREDIT_CARD: piiPatternById('llm-pii-002'),
-  PHONE:       piiPatternById('llm-pii-003'),
-  EMAIL:       piiPatternById('llm-pii-004'),
-  // Additional Phase 1 patterns (inline — not in passive scanner)
-  IP_ADDRESS: /\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b/,
-  IBAN:       /\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}(?:[A-Z0-9]{0,16})\b/,
+  // Exclude SSNs/SINs starting with 000 — SSA permanently reserves 000-xx-xxxx.
+  // Our SSN synthetics are 000-00-XXXX; our SIN synthetics are 000-000-XXX.
+  SSN:         /\b(?!000)(?:\d{3}-\d{2}-\d{4}|\d{3} \d{2} \d{4}|\d{9})\b/,
+  SIN:         /\b(?!000)(?:\d{3}-\d{2}-\d{4}|\d{3} \d{2} \d{4}|\d{9})\b/,
+  // Exclude 0000-xxxx-xxxx-xxxx — no real payment network uses 0000 as the first group.
+  // Our CC synthetics always start with 0000-.
+  CREDIT_CARD: /\b(?!0000[- ])\d{4}[- ]\d{4}[- ]\d{4}[- ]\d{2,4}\b/,
+  // Exclude NANP 555-01xx — permanently reserved for fictional use.
+  // Our phone synthetics are 555-010-XXXX. Lookahead checks area code 555 + exchange 01x.
+  PHONE:       /\b(?:\+?1[-.\s]?)?(?!\(?555\)?[-.\s]?01\d)(?:\(\d{3}\)|\d{3})[-.\s]?\d{3}[-.\s]?\d{4}\b/,
+  // Exclude RFC 2606 §3 reserved domains — @example.com/net/org, @test.com, @invalid.
+  // Our email synthetics are user1@example.com.
+  EMAIL:       /\b[A-Za-z0-9._%+-]+@(?!(?:example|test|invalid)\.(?:com|net|org)\b)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/i,
+  // Exclude RFC 5737 TEST-NET-1 (192.0.2.0/24) — reserved for documentation.
+  // Our IP synthetics are 192.0.2.X.
+  IP_ADDRESS:  /\b(?!192\.0\.2\.)(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b/,
+  IBAN:        /\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}(?:[A-Z0-9]{0,16})\b/,
   // PERSON_NAME, ADDRESS, PASSPORT, DATE_OF_BIRTH, HEALTH_CARD:
   // Not implementable with regex alone — require ml_ner stage (Phase 2).
   // Configuring these entities in a regex-only pipeline silently produces no matches.
@@ -91,17 +113,12 @@ const ENTITY_PATTERN_MAP: Partial<Record<PiiEntity, RegExp>> = {
 
 export function createPIIVault(requestId: string): PIIVault {
   const entries: VaultEntry[] = [];
+  // Per-entity-type occurrence counter — used as the index into synthetic generators
   const counters = new Map<string, number>();
-  // token → original value (for rehydration — O(1) lookup)
+  // synthetic → original (for rehydration — O(1) lookup)
   const tokenMap = new Map<string, string>();
-  // original value → token (for forward application — applyTokens)
+  // original → synthetic (for forward application — applyTokens)
   const valueToToken = new Map<string, string>();
-
-  function nextToken(entityType: PiiEntity): string {
-    const count = (counters.get(entityType) ?? 0) + 1;
-    counters.set(entityType, count);
-    return `<${entityType}_${count}>`;
-  }
 
   function buildStats(rehydrated: boolean): PIIAuditStats {
     const breakdown: Record<string, number> = {};
@@ -139,6 +156,9 @@ export function createPIIVault(requestId: string): PIIVault {
   return {
     get requestId() { return requestId; },
     get size() { return entries.length; },
+    get maxTokenLength() {
+      return entries.reduce((max, e) => Math.max(max, e.token.length), 0);
+    },
 
     pseudonymize(text: string, config: PiiDetectorConfig): PseudonymizeResult {
       let result = text;
@@ -156,25 +176,30 @@ export function createPIIVault(requestId: string): PIIVault {
 
         for (const match of matches) {
           const originalValue = match[0]!;
-          // Check if we already have a token for this exact value (dedup)
+          // Dedup: same original value in the same request always maps to the same synthetic
           const existing = entries.find(
             (e) => e.originalValue === originalValue && e.entityType === entityType,
           );
-          const token = existing?.token ?? nextToken(entityType);
 
-          if (!existing) {
+          let synthetic: string;
+          if (existing) {
+            synthetic = existing.token;
+          } else {
+            const index = counters.get(entityType) ?? 0;
+            synthetic = generateSyntheticValue(entityType, originalValue, index);
+            counters.set(entityType, index + 1);
             entries.push({
-              token,
+              token: synthetic,
               originalValue,
               entityType,
               confidence: 0.9, // regex detections are high-confidence
               detectedBy: 'regex',
             });
-            tokenMap.set(token, originalValue);
-            valueToToken.set(originalValue, token);
+            tokenMap.set(synthetic, originalValue);
+            valueToToken.set(originalValue, synthetic);
           }
 
-          result = result.replaceAll(originalValue, token);
+          result = result.replaceAll(originalValue, synthetic);
           foundTypes.add(entityType);
         }
       }
@@ -204,6 +229,12 @@ export function createPIIVault(requestId: string): PIIVault {
         result = result.replaceAll(original, token);
       }
       return result;
+    },
+
+    getSyntheticsForEntity(entityType: PiiEntity): string[] {
+      return entries
+        .filter((e) => e.entityType === entityType)
+        .map((e) => e.token);
     },
 
     getDebugEntries(): VaultEntry[] {

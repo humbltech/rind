@@ -8,6 +8,7 @@ import { useState } from 'react';
 import type React from 'react';
 import Link from 'next/link';
 import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
+import type { ContentInspectionAudit } from '@rind/core';
 
 // ─── Data shape ───────────────────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ export interface LlmCallEntry {
   // Content — present when logLevel is 'full' or 'preview'
   messages?: unknown;
   responseText?: string;
+  contentInspection?: ContentInspectionAudit;
 }
 
 // ─── Provider badge ───────────────────────────────────────────────────────────
@@ -372,11 +374,168 @@ function ThreadRow({ thread }: { thread: LlmThread }) {
   );
 }
 
-function MessageBlock({ messages }: { messages: unknown }) {
+// ─── Annotation helpers ───────────────────────────────────────────────────────
+
+interface TextAnnotation {
+  value: string;
+  entityType: string;
+  /** 'synthetic' = replaced PII sent to LLM; 'rehydrated' = original restored for client */
+  kind: 'synthetic' | 'rehydrated';
+}
+
+/**
+ * Extract all synthetic value annotations from a ContentInspectionAudit.
+ * Only PII matches with syntheticValue set produce annotations.
+ */
+function extractAnnotations(inspection: ContentInspectionAudit | undefined): TextAnnotation[] {
+  if (!inspection) return [];
+  const annotations: TextAnnotation[] = [];
+  for (const result of inspection.results) {
+    for (const match of result.matches) {
+      if (!match.syntheticValue) continue;
+      for (const val of match.syntheticValue.split(', ')) {
+        if (val) annotations.push({ value: val, entityType: match.type, kind: 'synthetic' });
+      }
+    }
+  }
+  return annotations;
+}
+
+/**
+ * Render text with synthetic PII placeholder values highlighted inline.
+ * Synthetics are shown in amber — "this replaced real PII before going to the LLM."
+ * On hover, a tooltip shows the entity type and that this is a safe placeholder.
+ */
+function AnnotatedText({ text, annotations }: { text: string; annotations: TextAnnotation[] }) {
+  if (annotations.length === 0) {
+    return <span className="text-foreground whitespace-pre-wrap break-words">{text}</span>;
+  }
+
+  // Walk the text once, finding the earliest annotation match at each step.
+  const segments: Array<{ text: string; annotation?: TextAnnotation }> = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    let earliest = -1;
+    let hit: TextAnnotation | null = null;
+
+    for (const ann of annotations) {
+      const idx = remaining.indexOf(ann.value);
+      if (idx !== -1 && (earliest === -1 || idx < earliest)) {
+        earliest = idx;
+        hit = ann;
+      }
+    }
+
+    if (earliest === -1 || !hit) {
+      segments.push({ text: remaining });
+      break;
+    }
+    if (earliest > 0) segments.push({ text: remaining.slice(0, earliest) });
+    segments.push({ text: hit.value, annotation: hit });
+    remaining = remaining.slice(earliest + hit.value.length);
+  }
+
+  return (
+    <span className="whitespace-pre-wrap break-words">
+      {segments.map((seg, i) =>
+        seg.annotation ? (
+          <span
+            key={i}
+            title={`${seg.annotation.entityType} — synthetic placeholder (original PII was replaced before sending to LLM)`}
+            className="rounded px-0.5 border cursor-help"
+            style={{
+              background: 'rgba(180,120,0,0.18)',
+              color: '#fbbf24',
+              borderColor: 'rgba(251,191,36,0.25)',
+            }}
+          >
+            {seg.text}
+          </span>
+        ) : (
+          <span key={i} className="text-foreground">{seg.text}</span>
+        )
+      )}
+    </span>
+  );
+}
+
+// ─── Inspection summary ───────────────────────────────────────────────────────
+
+function InspectionSummary({ inspection }: { inspection: ContentInspectionAudit }) {
+  // Collect per-match lines: "EMAIL × 2 in user → user1@example.com" etc.
+  const lines: Array<{ entityType: string; count: number; target?: string; synthetic?: string; detector: string }> = [];
+
+  for (const result of inspection.results) {
+    for (const match of result.matches) {
+      lines.push({
+        detector: result.detector,
+        entityType: match.type,
+        count: match.occurrenceCount ?? 1,
+        target: match.sourceTarget,
+        synthetic: match.syntheticValue,
+      });
+    }
+  }
+
+  if (lines.length === 0) return null;
+
+  return (
+    <div className="space-y-0.5">
+      <span className="text-dim text-[10px] uppercase tracking-wider">content inspection</span>
+      {lines.map((line, i) => (
+        <div key={i} className="ml-4 flex items-center gap-1.5 flex-wrap">
+          {/* Entity type badge */}
+          <span
+            className="text-[9px] font-mono px-1 py-0.5 rounded border"
+            style={{ background: 'rgba(180,120,0,0.18)', color: '#fbbf24', borderColor: 'rgba(251,191,36,0.25)' }}
+          >
+            {line.entityType}
+          </span>
+          {/* Occurrence count */}
+          {line.count > 1 && (
+            <span className="text-dim">×{line.count}</span>
+          )}
+          {/* Source target */}
+          {line.target && (
+            <>
+              <span className="text-dim">in</span>
+              <span className="text-muted font-semibold">{line.target}</span>
+            </>
+          )}
+          {/* Synthetic value */}
+          {line.synthetic && (
+            <>
+              <span className="text-dim">→</span>
+              <span
+                className="font-mono text-[10px] rounded px-0.5 border"
+                style={{ background: 'rgba(180,120,0,0.18)', color: '#fbbf24', borderColor: 'rgba(251,191,36,0.25)' }}
+              >
+                {line.synthetic}
+              </span>
+            </>
+          )}
+          {/* Detector label */}
+          <span className="text-dim text-[9px]">({line.detector})</span>
+        </div>
+      ))}
+      {inspection.pseudonymization && (
+        <div className="ml-4 text-dim text-[9px]">
+          {inspection.pseudonymization.tokenCount} value{inspection.pseudonymization.tokenCount !== 1 ? 's' : ''} pseudonymized
+          {inspection.pseudonymization.rehydrated ? ' · rehydrated in response' : ' · pending rehydration'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Prompt + response blocks ─────────────────────────────────────────────────
+
+function MessageBlock({ messages, annotations }: { messages: unknown; annotations: TextAnnotation[] }) {
   if (!messages) return null;
   const lines = Array.isArray(messages)
     ? messages.map((m: unknown) => {
-        if (typeof m !== 'object' || m === null) return String(m);
+        if (typeof m !== 'object' || m === null) return { role: '?', text: String(m) };
         const msg = m as { role?: string; content?: unknown };
         const role = msg.role ?? '?';
         let text = '';
@@ -391,25 +550,36 @@ function MessageBlock({ messages }: { messages: unknown }) {
             })
             .join('');
         }
-        return `${role}: ${text}`;
+        return { role, text };
       })
-    : [String(messages)];
+    : [{ role: '?', text: String(messages) }];
+
+  const hasSynthetics = annotations.length > 0;
 
   return (
     <div className="space-y-1">
-      <span className="text-dim text-[10px] uppercase tracking-wider">Prompt</span>
+      <div className="flex items-center gap-2">
+        <span className="text-dim text-[10px] uppercase tracking-wider">Prompt</span>
+        {hasSynthetics && (
+          <span
+            className="text-[9px] px-1 py-0.5 rounded border"
+            style={{ background: 'rgba(180,120,0,0.15)', color: '#fbbf24', borderColor: 'rgba(251,191,36,0.2)' }}
+          >
+            PII replaced
+          </span>
+        )}
+      </div>
       <div className="bg-[#0d0d0d] rounded border border-border p-2 max-h-48 overflow-auto space-y-1.5">
-        {lines.map((line, i) => {
-          const colonIdx = line.indexOf(': ');
-          if (colonIdx === -1) return <div key={i} className="text-foreground whitespace-pre-wrap break-words">{line}</div>;
-          const role = line.slice(0, colonIdx);
-          const content = line.slice(colonIdx + 2);
+        {lines.map(({ role, text }, i) => {
           const roleColor = role === 'user' ? 'text-accent' : role === 'assistant' ? 'text-[#10a37f]' : 'text-muted';
+          const truncated = text.slice(0, 2000);
+          const overflow = text.length > 2000;
           return (
             <div key={i}>
               <span className={`${roleColor} font-semibold`}>{role}</span>
               <span className="text-dim">: </span>
-              <span className="text-foreground whitespace-pre-wrap break-words">{content.slice(0, 2000)}{content.length > 2000 ? '…' : ''}</span>
+              <AnnotatedText text={truncated} annotations={annotations} />
+              {overflow && <span className="text-dim">…</span>}
             </div>
           );
         })}
@@ -418,14 +588,27 @@ function MessageBlock({ messages }: { messages: unknown }) {
   );
 }
 
-function ResponseBlock({ text }: { text: string }) {
+function ResponseBlock({ text, annotations }: { text: string; annotations: TextAnnotation[] }) {
+  const truncated = text.slice(0, 4000);
+  const overflow = text.length > 4000;
+  const hasSynthetics = annotations.length > 0 && annotations.some((a) => text.includes(a.value));
+
   return (
     <div className="space-y-1">
-      <span className="text-dim text-[10px] uppercase tracking-wider">Response</span>
+      <div className="flex items-center gap-2">
+        <span className="text-dim text-[10px] uppercase tracking-wider">Response</span>
+        {hasSynthetics && (
+          <span
+            className="text-[9px] px-1 py-0.5 rounded border"
+            style={{ background: 'rgba(180,120,0,0.15)', color: '#fbbf24', borderColor: 'rgba(251,191,36,0.2)' }}
+          >
+            PII echoed → rehydrated for client
+          </span>
+        )}
+      </div>
       <div className="bg-[#0d0d0d] rounded border border-border p-2 max-h-48 overflow-auto">
-        <span className="text-foreground whitespace-pre-wrap break-words">
-          {text.slice(0, 4000)}{text.length > 4000 ? '…' : ''}
-        </span>
+        <AnnotatedText text={truncated} annotations={annotations} />
+        {overflow && <span className="text-dim">…</span>}
       </div>
     </div>
   );
@@ -456,6 +639,7 @@ function summariseToolInput(name: string, input: unknown): string | null {
 
 function DetailPanel({ entry, toolNameById, consumedToolIds }: { entry: LlmCallEntry; toolNameById?: Map<string, string>; consumedToolIds?: Set<string> }) {
   const allThreats = [...(entry.requestThreats ?? []), ...(entry.responseThreats ?? [])];
+  const annotations = extractAnnotations(entry.contentInspection);
   return (
     <div className="space-y-3 text-[11px] font-mono text-muted">
       {/* Tools generated by this turn */}
@@ -514,9 +698,13 @@ function DetailPanel({ entry, toolNameById, consumedToolIds }: { entry: LlmCallE
           ))}
         </div>
       )}
+      {/* Content inspection breakdown — which target matched, what was replaced */}
+      {entry.contentInspection && entry.contentInspection.results.some((r) => r.matchCount > 0) && (
+        <InspectionSummary inspection={entry.contentInspection} />
+      )}
       {/* Prompt + response content */}
-      {entry.messages != null && <MessageBlock messages={entry.messages} />}
-      {entry.responseText && <ResponseBlock text={entry.responseText} />}
+      {entry.messages != null && <MessageBlock messages={entry.messages} annotations={annotations} />}
+      {entry.responseText && <ResponseBlock text={entry.responseText} annotations={annotations} />}
       {entry.messages == null && !entry.responseText && (
         <div className="text-dim italic">
           No prompt/response captured — set <span className="font-mono not-italic text-muted">llmProxy.logLevel: full</span> in rind config to enable

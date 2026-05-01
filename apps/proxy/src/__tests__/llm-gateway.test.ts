@@ -225,27 +225,27 @@ function getForwardedBody(): unknown {
 describe('llmGateway — non-streaming PSEUDONYMIZE round-trip', () => {
   beforeEach(() => mockForward.mockReset());
 
-  it('tokenizes PII before forwarding and rehydrates in the response event', async () => {
-    mockForward.mockResolvedValue(makeForwardResult('I will contact <EMAIL_1> shortly.'));
+  it('tokenizes PII before forwarding and stores synthetic in the response event', async () => {
+    mockForward.mockResolvedValue(makeForwardResult('I will contact user1@example.com shortly.'));
     const { app, bus } = makeGateway();
     const responseEvents: LlmCallEvent[] = [];
     bus.on('llm:response', (e) => responseEvents.push(e));
 
     const res = await postToGateway(app, makeAnthropicBody(
-      'Please follow up with alice@example.com about the contract.',
+      'Please follow up with alice@acme.com about the contract.',
     ));
 
     expect(res.status).toBe(200);
 
-    // Forwarded body must contain token, not original value
+    // Forwarded body must contain synthetic, not original value
     const forwarded = JSON.stringify(getForwardedBody());
-    expect(forwarded).toContain('<EMAIL_1>');
-    expect(forwarded).not.toContain('alice@example.com');
+    expect(forwarded).toContain('user1@example.com');
+    expect(forwarded).not.toContain('alice@acme.com');
 
-    // Response event must have rehydrated original value
+    // Response event stores synthetic (pre-rehydration) — safe for audit log
     expect(responseEvents).toHaveLength(1);
-    expect(responseEvents[0]!.responseText).toContain('alice@example.com');
-    expect(responseEvents[0]!.responseText).not.toContain('<EMAIL_1>');
+    expect(responseEvents[0]!.responseText).toContain('user1@example.com');
+    expect(responseEvents[0]!.responseText).not.toContain('alice@acme.com');
   });
 
   it('attaches contentInspection to the response event when PII is detected', async () => {
@@ -284,15 +284,15 @@ describe('llmGateway — non-streaming PSEUDONYMIZE round-trip', () => {
     const body = {
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 100,
-      system: [{ type: 'text', text: 'Contact alice@example.com for support.' }],
+      system: [{ type: 'text', text: 'Contact alice@acme.com for support.' }],
       messages: [{ role: 'user', content: 'hello' }],
     };
     await postToGateway(app, body);
 
     // PII rule targets system + user (default targets), so system block is tokenized
     const forwarded = JSON.stringify(getForwardedBody());
-    expect(forwarded).toContain('<EMAIL_1>');
-    expect(forwarded).not.toContain('alice@example.com');
+    expect(forwarded).toContain('user1@example.com');
+    expect(forwarded).not.toContain('alice@acme.com');
   });
 });
 
@@ -303,30 +303,31 @@ describe('llmGateway — non-streaming PSEUDONYMIZE round-trip', () => {
 describe('llmGateway — streaming PSEUDONYMIZE round-trip', () => {
   beforeEach(() => mockForward.mockReset());
 
-  it('tokenizes PII before forwarding and rehydrates in the response event (streaming)', async () => {
-    // LLM echoes the token back in its streamed reply
-    mockForward.mockResolvedValue(makeStreamForwardResult('Reply to <EMAIL_1> asap.'));
+  it('tokenizes PII before forwarding and stores synthetic in the response event (streaming)', async () => {
+    // LLM echoes the synthetic back — event stores it as-is, rehydration is for the HTTP body only
+    mockForward.mockResolvedValue(makeStreamForwardResult('Reply to user1@example.com asap.'));
     const { app, bus } = makeGateway();
     const responseEvents: LlmCallEvent[] = [];
     bus.on('llm:response', (e) => responseEvents.push(e));
 
     const res = await postToGateway(app, makeAnthropicBody(
-      'Contact alice@example.com about the deal.',
+      'Contact alice@acme.com about the deal.',
     ));
 
     expect(res.status).toBe(200);
 
-    // Forwarded body must be tokenized (same invariant as non-streaming)
+    // Forwarded body must contain synthetic, not original value
     const forwarded = JSON.stringify(getForwardedBody());
-    expect(forwarded).toContain('<EMAIL_1>');
-    expect(forwarded).not.toContain('alice@example.com');
+    expect(forwarded).toContain('user1@example.com');
+    expect(forwarded).not.toContain('alice@acme.com');
 
     // Drain stream and flush microtasks — streamMeta.then() fires here
     await drainAndFlush(res);
 
     expect(responseEvents).toHaveLength(1);
-    expect(responseEvents[0]!.responseText).toContain('alice@example.com');
-    expect(responseEvents[0]!.responseText).not.toContain('<EMAIL_1>');
+    // Event stores synthetic (pre-rehydration) — safe for audit log
+    expect(responseEvents[0]!.responseText).toContain('user1@example.com');
+    expect(responseEvents[0]!.responseText).not.toContain('alice@acme.com');
   });
 
   it('emits error event and disposes vault when streamMeta rejects', async () => {
@@ -336,7 +337,7 @@ describe('llmGateway — streaming PSEUDONYMIZE round-trip', () => {
     bus.on('llm:response', (e) => responseEvents.push(e));
 
     const res = await postToGateway(app, makeAnthropicBody(
-      'Contact alice@example.com.',
+      'Contact alice@acme.com.',
     ));
 
     expect(res.status).toBe(200); // response is already sent; error is post-stream
@@ -469,7 +470,7 @@ describe('llmGateway — upstream error handling', () => {
 
     const res = await postToGateway(
       app,
-      makeAnthropicBody('Contact alice@example.com.'),
+      makeAnthropicBody('Contact alice@acme.com.'),
     );
 
     // Client receives the upstream error status
