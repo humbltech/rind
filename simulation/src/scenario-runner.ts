@@ -194,17 +194,23 @@ type AnthropicMessage =
  * Runs the full LLM → tool_use → proxy intercept → tool_result → LLM loop.
  *
  * Each round:
- *   1. POST /llm/anthropic/v1/messages with accumulated message history
+ *   1. POST /llm/anthropic/v1/messages through the real proxy (full dashboard visibility)
  *   2. Parse tool_use blocks from the response
  *   3. POST /proxy/tool-call for each tool_use
  *   4. Build tool_result messages (blocked → error string, allowed → output JSON)
  *   5. Repeat until stop_reason = end_turn or maxRounds reached
+ *
+ * In HTTP demo mode, the proxy should be started with RIND_ANTHROPIC_UPSTREAM pointing
+ * to the sim LLM server (e.g. http://localhost:4099). The scenario runner loads the
+ * scenario's llmTurns into the sim server before running the step, so all LLM calls
+ * route through the real proxy and appear in the dashboard.
  */
 async function runAgentTurnStep(
   transport: Transport,
   step: AgentTurnStep,
   scenario: Scenario,
   resolvedSessionId?: string,
+  simLlmUrl?: string,
 ): Promise<StepResult> {
   const maxRounds = step.maxRounds ?? 5;
   const messages: AnthropicMessage[] = [
@@ -217,6 +223,16 @@ async function runAgentTurnStep(
   let finalStopReason = 'end_turn';
   let rounds = 0;
 
+  // When a sim LLM server is running, load this scenario's turns into it so the
+  // real proxy forwards LLM calls to the mock server instead of real Anthropic.
+  if (simLlmUrl && scenario.llmTurns && scenario.llmTurns.length > 0) {
+    await fetch(`${simLlmUrl}/admin/scenario`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turns: scenario.llmTurns }),
+    }).catch(() => { /* non-fatal — proxy will fall through to real Anthropic if server is down */ });
+  }
+
   // Convert ToolDefinition[] to Anthropic tool format for the LLM request
   const anthropicTools = scenario.tools.map((t) => ({
     name: t.name,
@@ -227,7 +243,9 @@ async function runAgentTurnStep(
   for (let round = 0; round < maxRounds; round++) {
     rounds = round + 1;
 
-    // ── Call the LLM via Rind's proxy ──────────────────────────────────────
+    // ── Call the LLM via the real Rind proxy ──────────────────────────────
+    // In HTTP mode: proxy forwards to RIND_ANTHROPIC_UPSTREAM (mock server or real API).
+    // In in-process mode: llmForwardFn injected at proxy creation handles the call.
     const llmRes = await transport('/llm/anthropic/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -344,6 +362,10 @@ export async function runScenario(
   // The proxy must be started separately with appropriate policies loaded.
   proxyUrl?: string,
   fixturePort = 3100,
+  // When set, agent-turn steps register scenario.llmTurns with the sim LLM server before
+  // executing. The proxy must be started with RIND_ANTHROPIC_UPSTREAM pointing here so
+  // LLM calls route through the proxy → mock server (full dashboard visibility, no API key).
+  simLlmUrl?: string,
 ): Promise<ScenarioResult> {
   // Create a fresh proxy server for in-process mode: each call gets a new sessionStore.
   // HTTP mode talks to an external process, so no reset needed.
@@ -404,9 +426,7 @@ export async function runScenario(
         let result: StepResult;
 
         if (step.type === 'agent-turn') {
-          // Agent-turn steps work in HTTP mode as long as the proxy has ANTHROPIC_BASE_URL
-          // configured to point to a mock LLM server (or a real LLM API for live demos).
-          result = await runAgentTurnStep(transport, step, scenario, resolvedSessionId);
+          result = await runAgentTurnStep(transport, step, scenario, resolvedSessionId, simLlmUrl);
         } else {
           result = await runStep(transport, step as ScenarioStep, resolvedSessionId);
         }
@@ -463,7 +483,7 @@ export async function runScenario(
         : {}),
       logLevel: 'error', // suppress logs during scenario runs
     });
-    transport = (endpoint, init) => app.request(endpoint, init);
+    transport = (endpoint, init) => Promise.resolve(app.request(endpoint, init));
   }
 
   const stepResults: StepResult[] = [];
@@ -473,7 +493,8 @@ export async function runScenario(
     let result: StepResult;
 
     if (step.type === 'agent-turn') {
-      result = await runAgentTurnStep(transport, step, scenario, resolvedSessionId);
+      // simLlmUrl is only relevant in HTTP mode (in-process mode uses injected llmForwardFn)
+      result = await runAgentTurnStep(transport, step, scenario, resolvedSessionId, proxyUrl ? simLlmUrl : undefined);
     } else {
       result = await runStep(transport, step as ScenarioStep, resolvedSessionId, /* isInProcess */ !proxyUrl);
     }

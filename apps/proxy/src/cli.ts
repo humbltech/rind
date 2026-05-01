@@ -47,7 +47,14 @@ export function buildConfigFromEnv(args: string[] = []): ProxyConfig {
     logLevel:        (process.env['LOG_LEVEL'] ?? 'info') as ProxyConfig['logLevel'],
     auditLogPath:    process.env['RIND_AUDIT_LOG'],
     // All modules on by default — opt out with --no-* flags
-    llmProxy:        { enabled: !args.includes('--no-llm-proxy') },
+    // RIND_ANTHROPIC_UPSTREAM overrides the default Anthropic API URL — useful for
+    // demo mode where a local sim LLM server serves pre-recorded responses.
+    llmProxy: {
+      enabled: !args.includes('--no-llm-proxy'),
+      ...(process.env['RIND_ANTHROPIC_UPSTREAM']
+        ? { anthropicUpstream: process.env['RIND_ANTHROPIC_UPSTREAM'] }
+        : {}),
+    },
     mcpProxyEnabled: !args.includes('--no-mcp-proxy'),
     hooksEnabled:    !args.includes('--no-hooks'),
   };

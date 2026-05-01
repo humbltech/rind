@@ -99,7 +99,8 @@ async function showToolCallProtected(step: StepResult, scenario: Scenario): Prom
   const rule = body?.['rule'] as string | undefined;
 
   // Extract tool name and input from the scenario step body for a clean spinner label
-  const stepBody = scenario.steps.find((s) => s.label === step.label)?.body as Record<string, unknown> | undefined;
+  const matchedStep = scenario.steps.find((s) => s.label === step.label);
+  const stepBody = (matchedStep && 'body' in matchedStep ? matchedStep.body : undefined) as Record<string, unknown> | undefined;
   const toolName = stepBody?.['toolName'] as string | undefined;
   const input = stepBody?.['input'];
   const inputStr = input ? JSON.stringify(input) : '';

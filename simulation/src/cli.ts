@@ -14,9 +14,13 @@
 
 import { scenarios, scenariosBySlug } from './scenarios/index.js';
 import { runScenario, runScenarioWithoutProxy } from './scenario-runner.js';
+import { startSimLlmServer, type SimLlmServer } from './sim-llm-server.js';
 import { printScenarioList } from './reporter.js';
 import { runDemoProtected, runDemoUnprotected } from './demo.js';
 import type { SimMode } from './scenarios/types.js';
+
+const SIM_LLM_PORT = 4099;
+const SIM_LLM_URL = `http://localhost:${SIM_LLM_PORT}`;
 
 interface ParsedArgs {
   command: 'list' | 'run';
@@ -122,6 +126,32 @@ async function disablePack(proxyUrl: string, packId: string): Promise<void> {
   console.log(`  ✓ Policy pack disabled: ${packId}`);
 }
 
+// ─── Sim LLM server lifecycle ─────────────────────────────────────────────────
+// In HTTP mode, auto-start the sim LLM server so LLM calls route through the real
+// proxy (full dashboard visibility) without needing a real Anthropic API key.
+// The proxy must be started with: RIND_ANTHROPIC_UPSTREAM=http://localhost:4099
+
+async function maybeStartSimLlmServer(proxyUrl: string | undefined): Promise<SimLlmServer | undefined> {
+  if (!proxyUrl) return undefined; // in-process mode uses injected llmForwardFn
+
+  try {
+    const srv = await startSimLlmServer(SIM_LLM_PORT);
+    console.log(`  ✓ Sim LLM server started on port ${SIM_LLM_PORT}`);
+    console.log(`    (proxy must be started with RIND_ANTHROPIC_UPSTREAM=${SIM_LLM_URL})\n`);
+    return srv;
+  } catch (err) {
+    // Port already in use — server may already be running, which is fine
+    const isAddrInUse = err instanceof Error && (err as NodeJS.ErrnoException).code === 'EADDRINUSE';
+    if (isAddrInUse) {
+      console.log(`  ✓ Sim LLM server already running on port ${SIM_LLM_PORT}\n`);
+    } else {
+      console.warn(`  ⚠ Could not start sim LLM server: ${String(err)}`);
+      console.warn(`    LLM calls will go to real Anthropic (requires ANTHROPIC_API_KEY)\n`);
+    }
+    return undefined; // non-fatal — scenario runner falls through to real proxy
+  }
+}
+
 // ─── Demo mode (single scenario — chat format) ─────────────────────────────
 
 async function runDemo(
@@ -135,6 +165,9 @@ async function runDemo(
   noCleanup = false,
 ) {
   const toRun = resolveScenarios(slugs);
+
+  const simLlm = await maybeStartSimLlmServer(proxyUrl);
+  const simLlmUrl = proxyUrl ? SIM_LLM_URL : undefined;
 
   if (enablePolicy) {
     if (!proxyUrl) {
@@ -150,7 +183,7 @@ async function runDemo(
         const result = await runScenarioWithoutProxy(scenario);
         await runDemoUnprotected(scenario, result.steps, interactive);
       } else {
-        const result = await runScenario(scenario, mode, proxyUrl, fixturePort);
+        const result = await runScenario(scenario, mode, proxyUrl, fixturePort, simLlmUrl);
         await runDemoProtected(scenario, result, interactive);
       }
     }
@@ -158,6 +191,7 @@ async function runDemo(
     if (enablePolicy && proxyUrl && !noCleanup) {
       await disablePack(proxyUrl, enablePolicy);
     }
+    await simLlm?.stop().catch(() => undefined);
   }
 }
 
@@ -167,9 +201,16 @@ async function runBatch(mode: SimMode, proxyUrl?: string, fixturePort = 3100) {
   const toRun = scenarios;
   console.log(`\n  Running all ${toRun.length} scenarios\n`);
 
-  for (const scenario of toRun) {
-    const result = await runScenario(scenario, mode, proxyUrl, fixturePort);
-    await runDemoProtected(scenario, result, false);
+  const simLlm = await maybeStartSimLlmServer(proxyUrl);
+  const simLlmUrl = proxyUrl ? SIM_LLM_URL : undefined;
+
+  try {
+    for (const scenario of toRun) {
+      const result = await runScenario(scenario, mode, proxyUrl, fixturePort, simLlmUrl);
+      await runDemoProtected(scenario, result, false);
+    }
+  } finally {
+    await simLlm?.stop().catch(() => undefined);
   }
 }
 
