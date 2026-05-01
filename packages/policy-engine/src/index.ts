@@ -5,4 +5,6 @@ export { loadPolicyFile, emptyPolicyConfig, PolicyRuleSchema, PolicyConfigSchema
 export type { PolicyEvalResult, ILoopDetector } from './engine.js';
 export { PolicyEngine } from './engine.js';
 export { listPacks, getPack, expandPackRules, rulesFromPack, recommendPacks } from './packs.js';
-export { matchesRule, matchesLlmRule } from './rules.js';
+export { matchesRule, matchesLlmRule, classifyRuleCriteria } from './rules.js';
+export { validateRuleSemantics, validateAllRules } from './validation.js';
+export type { RuleValidationResult } from './validation.js';

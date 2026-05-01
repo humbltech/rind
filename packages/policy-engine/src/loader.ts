@@ -6,6 +6,7 @@ import { parse } from 'yaml';
 import { z } from 'zod';
 import type { PolicyConfig } from '@rind/core';
 import { getPack, expandPackRules, listPacks } from './packs.js';
+import { validateAllRules } from './validation.js';
 
 // ─── Sub-schemas ──────────────────────────────────────────────────────────────
 
@@ -219,7 +220,21 @@ export function loadPolicyFile(filePath: string): PolicyConfig {
   }
 
   const { packs = [], policies } = result.data;
-  return expandPacks(packs, policies);
+  const expanded = expandPacks(packs, policies);
+
+  // Semantic validation — catches issues Zod cannot express (wrong action for rule
+  // type, dead detector configs, etc.). Errors abort startup; warnings are non-fatal.
+  const { errors, warnings } = validateAllRules(expanded.policies);
+  if (warnings.length > 0) {
+    // Warnings surface to the caller via console.warn — the server wires pino instead.
+    // This keeps the loader free of logger dependencies.
+    for (const w of warnings) process.stderr.write(`[rind:policy] WARN ${w}\n`);
+  }
+  if (errors.length > 0) {
+    throw new Error(`Semantic errors in policy file at ${filePath}:\n${errors.map((e) => `  ${e}`).join('\n')}`);
+  }
+
+  return expanded;
 }
 
 export function emptyPolicyConfig(): PolicyConfig {

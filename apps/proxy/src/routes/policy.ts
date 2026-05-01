@@ -7,6 +7,7 @@ import type { PolicyEngine } from '../policy/engine.js';
 import type { InMemoryPolicyStore } from '../policy/store.js';
 import { PolicyRuleSchema } from '../policy/loader.js';
 import { listPacks, getPack, expandPackRules, rulesFromPack, recommendPacks } from '../policy/packs.js';
+import { validateRuleSemantics } from '../policy/validation.js';
 import { listStoredSchemas } from '../scanner/index.js';
 import type { RindEventBus } from '../event-bus.js';
 import { emitPolicyAudit } from './helpers.js';
@@ -42,10 +43,12 @@ export function policyRoutes({ policyEngine, policyStore, bus, logger }: PolicyR
     const body = await c.req.json<unknown>();
     const parsed = PolicyRuleSchema.safeParse(body);
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+    const semantic = validateRuleSemantics(parsed.data);
+    if (!semantic.valid) return c.json({ error: 'Semantic validation failed', details: semantic.errors }, 400);
     try {
       policyStore.addRule(parsed.data);
       emitPolicyAudit(bus, 'rule-added', parsed.data.name);
-      return c.json({ added: true, rule: parsed.data }, 201);
+      return c.json({ added: true, rule: parsed.data, warnings: semantic.warnings }, 201);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : 'Unknown error' }, 409);
     }
@@ -61,9 +64,11 @@ export function policyRoutes({ policyEngine, policyStore, bus, logger }: PolicyR
     const merged = typeof body === 'object' && body !== null ? { ...existing, ...body } : body;
     const parsed = PolicyRuleSchema.safeParse(merged);
     if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+    const semantic = validateRuleSemantics(parsed.data);
+    if (!semantic.valid) return c.json({ error: 'Semantic validation failed', details: semantic.errors }, 400);
     policyStore.updateRule(name, parsed.data);
     emitPolicyAudit(bus, 'rule-updated', name);
-    return c.json({ updated: true, rule: parsed.data });
+    return c.json({ updated: true, rule: parsed.data, warnings: semantic.warnings });
   });
 
   app.patch('/policies/rules/:name/toggle', async (c) => {

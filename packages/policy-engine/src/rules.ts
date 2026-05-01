@@ -21,6 +21,10 @@ export function matchesRule(
 
   const match = rule.match;
 
+  // LLM-only rules must not fire on tool calls — skip them here.
+  const { hasToolCriteria, hasLlmCriteria } = classifyRuleCriteria(match);
+  if (hasLlmCriteria && !hasToolCriteria) return false;
+
   // Tool name exact or pattern matching
   if (match.tool && match.tool.length > 0) {
     const toolMatched = match.tool.some((t) => matchToolPattern(t, toolName));
@@ -232,11 +236,39 @@ function isWithinHourRange(range: string, now: Date): boolean {
   return currentMinutes >= startMinutes && currentMinutes < endMinutes;
 }
 
+// ─── Rule type classifier (shared by both matching functions) ─────────────────
+
+/**
+ * Classify a rule's match object into the domains it targets.
+ * Used to prevent LLM-only rules from firing on tool calls and vice versa.
+ *
+ * hasToolCriteria: rule has at least one tool-call-specific constraint
+ * hasLlmCriteria:  rule has at least one LLM-gateway-specific constraint
+ *
+ * Rules with neither are agent-only and apply to both domains.
+ * Rules with both are hybrid and apply to both domains (unusual but valid).
+ */
+export function classifyRuleCriteria(match: PolicyRule['match']): {
+  hasToolCriteria: boolean;
+  hasLlmCriteria: boolean;
+} {
+  return {
+    hasToolCriteria:
+      (match.tool != null && match.tool.length > 0) ||
+      match.toolPattern != null ||
+      (match.subcommand != null && match.subcommand.length > 0) ||
+      (match.parameters != null && Object.keys(match.parameters).length > 0),
+    hasLlmCriteria:
+      (match.llmModel != null && match.llmModel.length > 0) ||
+      (match.llmProvider != null && match.llmProvider.length > 0) ||
+      match.content != null,
+  };
+}
+
 // ─── LLM rule matching (D-041) ────────────────────────────────────────────────
 
 /**
  * Check whether a rule applies to an LLM call event.
- * A rule matches LLM calls if it has llmModel or llmProvider in its match object.
  * Rules with ONLY tool/toolPattern/subcommand/parameters are tool-call-only and are skipped.
  * Rules with no match criteria at all (agent-only) match both tool calls and LLM calls.
  * Time window matching applies to LLM calls the same as tool calls.
@@ -252,18 +284,8 @@ export function matchesLlmRule(
 
   const match = rule.match;
 
-  // If the rule has tool-call-specific matchers but NO LLM matchers, skip it.
-  // "Tool-call-specific" = tool / toolPattern / subcommand / parameters.
-  const hasToolCriteria =
-    (match.tool && match.tool.length > 0) ||
-    match.toolPattern ||
-    (match.subcommand && match.subcommand.length > 0) ||
-    (match.parameters && Object.keys(match.parameters).length > 0);
-  const hasLlmCriteria =
-    (match.llmModel && match.llmModel.length > 0) ||
-    (match.llmProvider && match.llmProvider.length > 0);
-
-  // Rule has tool criteria but no LLM criteria → tool-call-only, skip
+  // Tool-only rules must not fire on LLM calls — skip them here.
+  const { hasToolCriteria, hasLlmCriteria } = classifyRuleCriteria(match);
   if (hasToolCriteria && !hasLlmCriteria) return false;
 
   // LLM model matching (glob patterns, case-insensitive)
