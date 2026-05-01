@@ -228,7 +228,7 @@ function groupByConversation(entries: LlmCallEntry[]): LlmThread[] {
 
 // ─── Individual call row (indented, inside an expanded thread) ────────────────
 
-function CallRow({ entry, index, toolNameById }: { entry: LlmCallEntry; index: number; toolNameById: Map<string, string> }) {
+function CallRow({ entry, index, toolNameById, consumedToolIds }: { entry: LlmCallEntry; index: number; toolNameById: Map<string, string>; consumedToolIds: Set<string> }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <>
@@ -264,7 +264,7 @@ function CallRow({ entry, index, toolNameById }: { entry: LlmCallEntry; index: n
       {expanded && (
         <tr className="bg-overlay/40 border-b border-border/50">
           <td colSpan={9} className="pl-12 pr-6 py-3">
-            <DetailPanel entry={entry} toolNameById={toolNameById} />
+            <DetailPanel entry={entry} toolNameById={toolNameById} consumedToolIds={consumedToolIds} />
           </td>
         </tr>
       )}
@@ -277,6 +277,8 @@ function CallRow({ entry, index, toolNameById }: { entry: LlmCallEntry; index: n
 function ThreadRow({ thread }: { thread: LlmThread }) {
   const [expanded, setExpanded] = useState(false);
   const { root, calls, toolNames, toolNameById } = thread;
+  // IDs whose results were consumed in a later turn — used to annotate tool uses as "ran"
+  const consumedToolIds = new Set(calls.flatMap((c) => c.referencedToolUseIds ?? []));
   const multiTurn = calls.length > 1;
   const hasTokens = thread.totalInputTokens > 0 || thread.totalOutputTokens > 0;
 
@@ -356,11 +358,11 @@ function ThreadRow({ thread }: { thread: LlmThread }) {
       {expanded && (
         <>
           {multiTurn
-            ? calls.map((call, i) => <CallRow key={call.id} entry={call} index={i} toolNameById={toolNameById} />)
+            ? calls.map((call, i) => <CallRow key={call.id} entry={call} index={i} toolNameById={toolNameById} consumedToolIds={consumedToolIds} />)
             : (
               <tr className="bg-overlay/30 border-b border-border">
                 <td colSpan={9} className="px-6 py-3">
-                  <DetailPanel entry={root} toolNameById={toolNameById} />
+                  <DetailPanel entry={root} toolNameById={toolNameById} consumedToolIds={consumedToolIds} />
                 </td>
               </tr>
             )}
@@ -452,7 +454,7 @@ function summariseToolInput(name: string, input: unknown): string | null {
   return null;
 }
 
-function DetailPanel({ entry, toolNameById }: { entry: LlmCallEntry; toolNameById?: Map<string, string> }) {
+function DetailPanel({ entry, toolNameById, consumedToolIds }: { entry: LlmCallEntry; toolNameById?: Map<string, string>; consumedToolIds?: Set<string> }) {
   const allThreats = [...(entry.requestThreats ?? []), ...(entry.responseThreats ?? [])];
   return (
     <div className="space-y-3 text-[11px] font-mono text-muted">
@@ -462,14 +464,16 @@ function DetailPanel({ entry, toolNameById }: { entry: LlmCallEntry; toolNameByI
           <span className="text-dim">tools requested:</span>
           {entry.toolUses.map((t) => {
             const summary = summariseToolInput(t.name, t.input);
+            const ran = consumedToolIds?.has(t.id);
             return (
               <div key={t.id} className="ml-4 flex items-center gap-2 min-w-0">
                 <span className="text-accent font-semibold shrink-0">{t.name}</span>
-                {summary && (
-                  <span className="text-dim">→</span>
-                )}
-                {summary && (
-                  <span className="text-foreground truncate">{summary}</span>
+                {summary && <span className="text-dim">→</span>}
+                {summary && <span className="text-foreground truncate">{summary}</span>}
+                {ran && (
+                  <span className="text-[9px] font-mono px-1 py-0.5 rounded shrink-0" style={{ color: '#4ade80', background: 'rgba(74,222,128,0.1)' }}>
+                    ✓ ran
+                  </span>
                 )}
               </div>
             );
@@ -514,7 +518,9 @@ function DetailPanel({ entry, toolNameById }: { entry: LlmCallEntry; toolNameByI
       {entry.messages != null && <MessageBlock messages={entry.messages} />}
       {entry.responseText && <ResponseBlock text={entry.responseText} />}
       {entry.messages == null && !entry.responseText && (
-        <div className="text-dim italic">No content captured — logLevel is &apos;metadata&apos;</div>
+        <div className="text-dim italic">
+          No prompt/response captured — set <span className="font-mono not-italic text-muted">llmProxy.logLevel: full</span> in rind config to enable
+        </div>
       )}
     </div>
   );
