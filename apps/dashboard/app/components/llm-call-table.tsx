@@ -6,6 +6,7 @@
 
 import { useState } from 'react';
 import type React from 'react';
+import Link from 'next/link';
 import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 
 // ─── Data shape ───────────────────────────────────────────────────────────────
@@ -148,7 +149,13 @@ function AgentLabel({ agentId, sessionId }: { agentId: string; sessionId: string
   return (
     <div className="flex flex-col gap-0.5 min-w-0">
       <span className="font-mono text-[11px] text-foreground font-medium truncate">{label}</span>
-      <span className="font-mono text-[10px] text-dim truncate">{sub}</span>
+      <Link
+        href={`/sessions/${sessionId}`}
+        className="font-mono text-[10px] text-dim hover:text-accent truncate"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {sub}
+      </Link>
     </div>
   );
 }
@@ -422,6 +429,29 @@ function ResponseBlock({ text }: { text: string }) {
   );
 }
 
+// Returns the key argument for a tool call — the one detail most useful to show at a glance.
+function summariseToolInput(name: string, input: unknown): string | null {
+  if (typeof input !== 'object' || input === null) return null;
+  const inp = input as Record<string, unknown>;
+  // File/path tools
+  if (typeof inp['file_path'] === 'string') return inp['file_path'] as string;
+  if (typeof inp['path'] === 'string') return inp['path'] as string;
+  // Shell tools
+  if (typeof inp['command'] === 'string') {
+    const cmd = inp['command'] as string;
+    return cmd.length > 60 ? cmd.slice(0, 60) + '…' : cmd;
+  }
+  // Search tools
+  if (typeof inp['pattern'] === 'string') return inp['pattern'] as string;
+  if (typeof inp['query'] === 'string') return inp['query'] as string;
+  // URL/navigation
+  if (typeof inp['url'] === 'string') return inp['url'] as string;
+  // Generic: first string value
+  const firstStr = Object.values(inp).find((v) => typeof v === 'string');
+  if (typeof firstStr === 'string') return firstStr.length > 60 ? firstStr.slice(0, 60) + '…' : firstStr;
+  return null;
+}
+
 function DetailPanel({ entry, toolNameById }: { entry: LlmCallEntry; toolNameById?: Map<string, string> }) {
   const allThreats = [...(entry.requestThreats ?? []), ...(entry.responseThreats ?? [])];
   return (
@@ -430,12 +460,20 @@ function DetailPanel({ entry, toolNameById }: { entry: LlmCallEntry; toolNameByI
       {entry.toolUses && entry.toolUses.length > 0 && (
         <div className="space-y-0.5">
           <span className="text-dim">tools requested:</span>
-          {entry.toolUses.map((t) => (
-            <div key={t.id} className="ml-4 flex items-center gap-2">
-              <span className="text-accent font-semibold">{t.name}</span>
-              <span className="text-dim text-[10px]">{t.id.slice(0, 12)}</span>
-            </div>
-          ))}
+          {entry.toolUses.map((t) => {
+            const summary = summariseToolInput(t.name, t.input);
+            return (
+              <div key={t.id} className="ml-4 flex items-center gap-2 min-w-0">
+                <span className="text-accent font-semibold shrink-0">{t.name}</span>
+                {summary && (
+                  <span className="text-dim">→</span>
+                )}
+                {summary && (
+                  <span className="text-foreground truncate">{summary}</span>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
       {/* Tool results consumed by this turn — resolve names where possible */}

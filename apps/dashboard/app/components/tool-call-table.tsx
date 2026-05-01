@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type React from 'react';
+import Link from 'next/link';
 
 export interface ToolCallEntry {
   sessionId: string;
@@ -114,7 +115,7 @@ function TableRow({ entry, isNew }: { entry: ToolCallEntry; isNew: boolean }) {
           {formatTimestamp(entry.timestamp)}
         </td>
         <td className="px-4 py-3 max-w-[200px]" title={`${entry.agentId}\n${entry.sessionId}`}>
-          <AgentSessionLabel agentId={entry.agentId} sessionName={entry.sessionName} />
+          <AgentSessionLabel agentId={entry.agentId} sessionId={entry.sessionId} sessionName={entry.sessionName} />
         </td>
         <td className="px-4 py-3 font-mono text-[12px] text-muted max-w-[120px] truncate">
           {entry.serverId}
@@ -329,8 +330,16 @@ function InputDetail({ input, cwd, reason, matchedRule, matchedRuleType, agentId
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-x-6 gap-y-1">
         <DetailRow label="Agent ID" value={agentId} />
-        <DetailRow label="Session ID" value={sessionId} />
-        {sessionName && <DetailRow label="Session Name" value={sessionName} />}
+        <div className="flex gap-2 text-[11px]">
+          <span className="text-dim font-medium w-20 shrink-0">Session</span>
+          <Link
+            href={`/sessions/${sessionId}`}
+            className="font-mono text-accent hover:underline truncate"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {sessionName ?? sessionId.slice(0, 16)}
+          </Link>
+        </div>
         {cwd && <DetailRow label="Working Dir" value={cwd} />}
         {correlationId && <DetailRow label="Correlation" value={correlationId} />}
       </div>
@@ -478,8 +487,9 @@ function formatInput(input: unknown): string {
   }
 }
 
-// Agent + Session label — two-line display: agent type on top, session name below
-function AgentSessionLabel({ agentId, sessionName }: { agentId: string; sessionName?: string }) {
+// Agent + Session label — two-line display: agent type on top, session name below.
+// The session label links to the session timeline page.
+function AgentSessionLabel({ agentId, sessionId, sessionName }: { agentId: string; sessionId: string; sessionName?: string }) {
   const agentLabel = deriveAgentLabel(agentId);
   const sessionLabel = sessionName ?? deriveSessionLabel(agentId);
 
@@ -488,9 +498,13 @@ function AgentSessionLabel({ agentId, sessionName }: { agentId: string; sessionN
       <span className="font-mono text-[11px] text-foreground font-medium truncate">
         {agentLabel}
       </span>
-      <span className="font-mono text-[10px] text-dim truncate">
+      <Link
+        href={`/sessions/${sessionId}`}
+        className="font-mono text-[10px] text-dim truncate hover:text-accent transition-colors"
+        onClick={(e) => e.stopPropagation()}
+      >
         {sessionLabel}
-      </span>
+      </Link>
     </div>
   );
 }
