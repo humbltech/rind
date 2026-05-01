@@ -41,7 +41,13 @@ function buildServer(): McpServer {
 async function handleMcp(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
-  const body = chunks.length > 0 ? JSON.parse(Buffer.concat(chunks).toString()) : undefined;
+
+  let body: unknown;
+  try {
+    body = chunks.length > 0 ? JSON.parse(Buffer.concat(chunks).toString()) : undefined;
+  } catch {
+    body = undefined; // SDK returns 400 for unparseable bodies
+  }
 
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   const server = buildServer();
@@ -56,13 +62,23 @@ export function startVictimService(port = 8081): void {
   const httpServer = createServer((req, res) => {
     if (req.url === '/mcp') {
       handleMcp(req, res).catch((err) => {
-        res.writeHead(500);
-        res.end(String(err));
+        if (!res.headersSent) {
+          res.writeHead(500);
+          res.end(String(err));
+        }
       });
     } else {
       res.writeHead(404);
       res.end();
     }
+  });
+
+  httpServer.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      process.stderr.write(`Error: port ${port} is already in use. Stop the existing process and retry.\n`);
+      process.exit(1);
+    }
+    throw err;
   });
 
   httpServer.listen(port, () => {

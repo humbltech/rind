@@ -101,10 +101,9 @@ function resolveSettingsPath(scope: 'global' | 'local'): string {
   return '.claude/settings.json';
 }
 
-function resolveMcpJsonPath(scope: 'global' | 'local'): string {
-  // .mcp.json always goes in the current working directory for both scopes
-  // (it's a project-level file, unlike settings.json which can be global).
-  // If one already exists, use it; otherwise default to CWD.
+// .mcp.json is always project-local regardless of settings scope — it lives
+// in the CWD, not in ~/.claude. Use whichever path already exists.
+function resolveMcpJsonPath(): string {
   if (existsSync('.mcp.json')) return '.mcp.json';
   if (existsSync('.claude/mcp.json')) return '.claude/mcp.json';
   return '.mcp.json';
@@ -216,7 +215,7 @@ export async function runDemoInit(argv: string[]): Promise<void> {
   const args = parseDemoInitArgs(argv);
   if (!args) { process.exit(1); return; }
 
-  const mcpJsonPath  = resolveMcpJsonPath(args.settingsScope);
+  const mcpJsonPath  = resolveMcpJsonPath();
   const settingsPath = resolveSettingsPath(args.settingsScope);
   const rindUrl      = args.rindUrl;
   const dryRun       = args.dryRun;
