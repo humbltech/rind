@@ -8,10 +8,14 @@
 //               where dashboard visibility matters.
 
 import { createProxyServer, clearSchemaStore } from '@rind/proxy';
+import type { LlmForwardFn } from '@rind/proxy';
+import type { ForwardLlmResult } from '@rind/proxy';
 import type {
   Scenario,
   ScenarioResult,
   ScenarioStep,
+  AgentTurnStep,
+  AgentTurnDetail,
   StepResult,
   SimMode,
   UnprotectedResult,
@@ -159,6 +163,180 @@ async function runStep(
   };
 }
 
+// ─── LLM turn helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Builds an indexed LlmForwardFn from a fixed array of mock turn responses.
+ * First LLM call → turns[0], second → turns[1], etc.
+ * If the index exceeds the array, the last turn is repeated (graceful end_turn handling).
+ */
+function buildLlmForwardFnFromTurns(turns: ForwardLlmResult[]): LlmForwardFn {
+  let index = 0;
+  return async (_path, _headers, _body, _opts) => {
+    const turn = turns[Math.min(index, turns.length - 1)]!;
+    index++;
+    return turn;
+  };
+}
+
+// ─── Agent-turn step runner ───────────────────────────────────────────────────
+
+type AnthropicContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: unknown }
+  | { type: 'tool_result'; tool_use_id: string; content: string };
+
+type AnthropicMessage =
+  | { role: 'user'; content: string | AnthropicContentBlock[] }
+  | { role: 'assistant'; content: AnthropicContentBlock[] };
+
+/**
+ * Runs the full LLM → tool_use → proxy intercept → tool_result → LLM loop.
+ *
+ * Each round:
+ *   1. POST /llm/anthropic/v1/messages with accumulated message history
+ *   2. Parse tool_use blocks from the response
+ *   3. POST /proxy/tool-call for each tool_use
+ *   4. Build tool_result messages (blocked → error string, allowed → output JSON)
+ *   5. Repeat until stop_reason = end_turn or maxRounds reached
+ */
+async function runAgentTurnStep(
+  transport: Transport,
+  step: AgentTurnStep,
+  scenario: Scenario,
+  resolvedSessionId?: string,
+): Promise<StepResult> {
+  const maxRounds = step.maxRounds ?? 5;
+  const messages: AnthropicMessage[] = [
+    { role: 'user', content: step.userMessage },
+  ];
+
+  const toolCalls: AgentTurnDetail['toolCalls'] = [];
+  let anyBlocked = false;
+  let lastToolStatus = 200;
+  let finalStopReason = 'end_turn';
+  let rounds = 0;
+
+  // Convert ToolDefinition[] to Anthropic tool format for the LLM request
+  const anthropicTools = scenario.tools.map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: t.inputSchema,
+  }));
+
+  for (let round = 0; round < maxRounds; round++) {
+    rounds = round + 1;
+
+    // ── Call the LLM via Rind's proxy ──────────────────────────────────────
+    const llmRes = await transport('/llm/anthropic/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        tools: anthropicTools.length > 0 ? anthropicTools : undefined,
+        messages,
+      }),
+    });
+
+    let llmBody: Record<string, unknown>;
+    try {
+      llmBody = await llmRes.json() as Record<string, unknown>;
+    } catch {
+      llmBody = {};
+    }
+
+    const stopReason = (llmBody['stop_reason'] as string | undefined) ?? 'end_turn';
+    finalStopReason = stopReason;
+    const contentBlocks = (llmBody['content'] as AnthropicContentBlock[] | undefined) ?? [];
+    const toolUseBlocks = contentBlocks.filter((b): b is Extract<AnthropicContentBlock, { type: 'tool_use' }> => b.type === 'tool_use');
+
+    // ── No tool calls — conversation is done ──────────────────────────────
+    if (stopReason !== 'tool_use' || toolUseBlocks.length === 0) break;
+
+    // ── Add assistant message with tool_use blocks ─────────────────────────
+    messages.push({ role: 'assistant', content: contentBlocks });
+
+    // ── Execute each tool call through Rind proxy ──────────────────────────
+    const toolResultBlocks: AnthropicContentBlock[] = [];
+
+    for (const block of toolUseBlocks) {
+      // Inject session ID into the tool call body so kill-switch tracking works
+      const toolCallBody: Record<string, unknown> = {
+        agentId: scenario.agentId,
+        serverId: step.serverId,
+        toolName: block.name,
+        input: block.input,
+      };
+      if (resolvedSessionId) {
+        toolCallBody['sessionId'] = resolvedSessionId;
+      }
+
+      const toolRes = await transport('/proxy/tool-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(toolCallBody),
+      });
+
+      const toolBody = await toolRes.json() as Record<string, unknown>;
+      lastToolStatus = toolRes.status;
+      const blocked = toolBody['blocked'] === true;
+      const action = toolBody['action'] as string | undefined;
+
+      toolCalls.push({ toolName: block.name, blocked, action });
+      if (blocked) anyBlocked = true;
+
+      // Feed the result (or error) back to the LLM as a tool_result message
+      const resultContent = blocked
+        ? `Error: ${toolBody['reason'] as string | undefined ?? action ?? 'blocked by policy'}`
+        : JSON.stringify(toolBody['output'] ?? '');
+
+      toolResultBlocks.push({
+        type: 'tool_result',
+        tool_use_id: block.id,
+        content: resultContent,
+      });
+    }
+
+    // ── Feed tool results back into message history ────────────────────────
+    messages.push({ role: 'user', content: toolResultBlocks });
+  }
+
+  // ── Evaluate expectations ──────────────────────────────────────────────────
+  const { expect: exp } = step;
+  const errors: string[] = [];
+
+  if (exp.anyBlocked !== undefined && anyBlocked !== exp.anyBlocked) {
+    errors.push(`Expected anyBlocked=${String(exp.anyBlocked)}, got ${String(anyBlocked)}`);
+  }
+  if (exp.allAllowed !== undefined && (!anyBlocked) !== exp.allAllowed) {
+    errors.push(`Expected allAllowed=${String(exp.allAllowed)}, got ${String(!anyBlocked)}`);
+  }
+  if (exp.calledTool !== undefined && !toolCalls.some((t) => t.toolName === exp.calledTool)) {
+    errors.push(
+      `Expected tool "${exp.calledTool}" to be called; called: ${toolCalls.map((t) => t.toolName).join(', ') || 'none'}`,
+    );
+  }
+  if (exp.blockedTool !== undefined && !toolCalls.some((t) => t.toolName === exp.blockedTool && t.blocked)) {
+    errors.push(
+      `Expected tool "${exp.blockedTool}" to be blocked; blocked: ${toolCalls.filter((t) => t.blocked).map((t) => t.toolName).join(', ') || 'none'}`,
+    );
+  }
+
+  const detail: AgentTurnDetail = { rounds, toolCalls, anyBlocked, finalStopReason };
+
+  return {
+    label: step.label,
+    status: errors.length === 0 ? 'PASS' : 'FAIL',
+    expected: exp,
+    actual: { status: lastToolStatus, body: detail },
+    agentTurnDetail: detail,
+    error: errors.length > 0 ? errors.join('; ') : undefined,
+  };
+}
+
+// ─── Scenario runner ──────────────────────────────────────────────────────────
+
 export async function runScenario(
   scenario: Scenario,
   mode: SimMode,
@@ -223,10 +401,18 @@ export async function runScenario(
       let resolvedSessionId: string | undefined;
 
       for (const step of scenario.steps) {
-        const result = await runStep(transport, step, resolvedSessionId);
+        let result: StepResult;
+
+        if (step.type === 'agent-turn') {
+          // Agent-turn steps work in HTTP mode as long as the proxy has ANTHROPIC_BASE_URL
+          // configured to point to a mock LLM server (or a real LLM API for live demos).
+          result = await runAgentTurnStep(transport, step, scenario, resolvedSessionId);
+        } else {
+          result = await runStep(transport, step as ScenarioStep, resolvedSessionId);
+        }
         stepResults.push(result);
 
-        if (step.endpoint === '/sessions' && step.method === 'POST' && result.status === 'PASS') {
+        if ('endpoint' in step && step.endpoint === '/sessions' && step.method === 'POST' && result.status === 'PASS') {
           const body = result.actual.body as Record<string, unknown>;
           if (typeof body?.['sessionId'] === 'string') {
             resolvedSessionId = body['sessionId'];
@@ -254,13 +440,17 @@ export async function runScenario(
   } else {
     // In-process transport — call the Hono app directly, no network round-trip.
     const forwardFn = createForwardFn(scenario.slug, mode, scenario.toolHandlers);
+    // llmTurns (indexed mock LLM sequence) takes precedence over llmForwardFn (single function).
+    const resolvedLlmForwardFn: LlmForwardFn | undefined = scenario.llmTurns
+      ? buildLlmForwardFnFromTurns(scenario.llmTurns)
+      : scenario.llmForwardFn;
     const { app } = createProxyServer({
       port: 0, // unused — we call the app directly
       agentId: scenario.agentId,
       upstreamMcpUrl: 'http://mock-mcp-unused', // unused when forwardFn is injected
       policy: scenario.policy,
       forwardFn,
-      ...(scenario.llmForwardFn
+      ...(resolvedLlmForwardFn
         ? {
             llmProxy: {
               enabled: true,
@@ -268,7 +458,7 @@ export async function runScenario(
               openaiUpstream: 'http://mock-llm-unused',
               ...scenario.llmProxyConfig,
             },
-            llmForwardFn: scenario.llmForwardFn,
+            llmForwardFn: resolvedLlmForwardFn,
           }
         : {}),
       logLevel: 'error', // suppress logs during scenario runs
@@ -280,11 +470,17 @@ export async function runScenario(
   let resolvedSessionId: string | undefined;
 
   for (const step of scenario.steps) {
-    const result = await runStep(transport, step, resolvedSessionId, /* isInProcess */ !proxyUrl);
+    let result: StepResult;
+
+    if (step.type === 'agent-turn') {
+      result = await runAgentTurnStep(transport, step, scenario, resolvedSessionId);
+    } else {
+      result = await runStep(transport, step as ScenarioStep, resolvedSessionId, /* isInProcess */ !proxyUrl);
+    }
     stepResults.push(result);
 
     // If this step created a session, capture the session ID for subsequent steps
-    if (step.endpoint === '/sessions' && step.method === 'POST' && result.status === 'PASS') {
+    if ('endpoint' in step && step.endpoint === '/sessions' && step.method === 'POST' && result.status === 'PASS') {
       const body = result.actual.body as Record<string, unknown>;
       if (typeof body?.['sessionId'] === 'string') {
         resolvedSessionId = body['sessionId'];
@@ -319,7 +515,8 @@ export async function runScenarioWithoutProxy(
   const stepResults: UnprotectedStepResult[] = [];
 
   for (const step of scenario.steps) {
-    // Only run tool-call steps — skip scan, session, audit log endpoints
+    // Only run regular tool-call steps — skip scan, session, audit log, and agent-turn steps
+    if (step.type === 'agent-turn') continue;
     if (step.endpoint !== '/proxy/tool-call' || step.method !== 'POST') continue;
 
     const body = step.body as Record<string, unknown> | undefined;

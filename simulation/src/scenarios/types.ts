@@ -2,6 +2,7 @@
 // A scenario is the unit of human-testable value — it tells a story and verifies it technically.
 
 import type { PolicyConfig, ToolDefinition, LlmForwardFn, LlmProxyConfig } from '@rind/proxy';
+import type { ForwardLlmResult } from '@rind/proxy';
 
 export type CompanyId = 'meridian' | 'stackline' | 'fortress';
 export type DeploymentId = 'direct-mcp' | 'llm-gateway' | 'framework-sdk' | 'enterprise';
@@ -17,7 +18,8 @@ export type MockToolHandler = (input: unknown) => Promise<{ output: unknown }> |
 // ─── Scenario step ────────────────────────────────────────────────────────────
 
 export interface StepExpectation {
-  status: 200 | 403 | 201 | 404 | 429; // HTTP status from proxy — 429 for rate-limit
+  /** HTTP status from proxy — 429 for rate-limit. Optional for agent-turn steps (no single status). */
+  status?: 200 | 403 | 201 | 404 | 429;
   blocked?: boolean; // response.blocked === true (MCP tool-call path)
   action?: string; // response.action (DENY, BLOCKED_INJECTION, etc.)
   findingCategory?: string; // present in /scan response findings
@@ -28,9 +30,19 @@ export interface StepExpectation {
    * Examples: 'policy_denied', 'rate_limit_exceeded', 'upstream_timeout'
    */
   errorType?: string;
+  // ── Agent-turn step expectations ─────────────────────────────────────────
+  /** True if at least one tool call was blocked during the agent turn. */
+  anyBlocked?: boolean;
+  /** True if all tool calls were allowed (none blocked). */
+  allAllowed?: boolean;
+  /** A specific tool that must have been called at some point. */
+  calledTool?: string;
+  /** A specific tool that must have been blocked by the proxy. */
+  blockedTool?: string;
 }
 
 export interface ScenarioStep {
+  type?: 'step'; // Optional discriminator — defaults to regular step if absent
   label: string; // Human-readable: "Agent attempts DROP TABLE"
   endpoint: string; // "/proxy/tool-call" | "/scan" | "/sessions" | "/sessions/:id"
   method: 'POST' | 'GET' | 'DELETE';
@@ -41,6 +53,25 @@ export interface ScenarioStep {
   // Auto-resolves the pending approval so the step can complete without human interaction.
   // In HTTP/live-demo mode this is ignored — the human approves via the dashboard.
   autoDecision?: 'approve' | 'deny';
+}
+
+// ─── Agent-turn step ──────────────────────────────────────────────────────────
+// Drives a full LLM → tool_use → proxy intercept → tool_result → LLM loop.
+// The runner calls the proxy's /llm/anthropic/v1/messages endpoint, parses tool_use
+// blocks, forwards each tool call to /proxy/tool-call, feeds results back to the LLM,
+// and repeats until stop_reason=end_turn or maxRounds is reached.
+// Requires: scenario.llmTurns to be populated (mock LLM responses, one per round).
+
+export interface AgentTurnStep {
+  type: 'agent-turn';
+  label: string;
+  /** The initial user message that drives the agent conversation. */
+  userMessage: string;
+  /** MCP server ID used for all tool calls in this turn. */
+  serverId: string;
+  /** Max LLM→tool rounds before aborting (default: 5). */
+  maxRounds?: number;
+  expect: StepExpectation;
 }
 
 // ─── Scenario definition ──────────────────────────────────────────────────────
@@ -88,14 +119,29 @@ export interface Scenario {
   llmForwardFn?: LlmForwardFn;
   /** Additional LLM proxy configuration for this scenario (merged with defaults). */
   llmProxyConfig?: Partial<LlmProxyConfig>;
+  /**
+   * Mock LLM turn sequence for agent-turn steps.
+   * The runner builds an indexed llmForwardFn from these responses — one per LLM call.
+   * Index advances automatically on each call (first call → turns[0], second → turns[1], ...).
+   * If the index exceeds the array length, the last turn is repeated (handles extra end_turn calls).
+   * When present: takes precedence over llmForwardFn for proxy setup.
+   */
+  llmTurns?: ForwardLlmResult[];
 
   // Ordered steps — run in sequence against the proxy
-  steps: ScenarioStep[];
+  steps: (ScenarioStep | AgentTurnStep)[];
 }
 
 // ─── Scenario result ─────────────────────────────────────────────────────────
 
 export type StepStatus = 'PASS' | 'FAIL' | 'SKIP';
+
+export interface AgentTurnDetail {
+  rounds: number;
+  toolCalls: Array<{ toolName: string; blocked: boolean; action?: string }>;
+  anyBlocked: boolean;
+  finalStopReason: string;
+}
 
 export interface StepResult {
   label: string;
@@ -105,6 +151,8 @@ export interface StepResult {
     status: number;
     body: unknown;
   };
+  /** Populated for agent-turn steps — describes what happened across all rounds. */
+  agentTurnDetail?: AgentTurnDetail;
   error?: string;
 }
 

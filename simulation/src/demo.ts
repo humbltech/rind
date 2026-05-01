@@ -11,7 +11,7 @@
 // Only tool-call steps are shown — scan, session, audit log steps run silently
 // (those are Rind internals visible in the dashboard, not in the agent UX).
 
-import type { Scenario, StepResult, ScenarioResult, UnprotectedStepResult } from './scenarios/types.js';
+import type { Scenario, StepResult, ScenarioResult, AgentTurnDetail, UnprotectedStepResult } from './scenarios/types.js';
 import { streamLine, showSpinner, pauseBetweenSteps, pauseBeforeResult } from './stream.js';
 import * as readline from 'node:readline';
 
@@ -150,6 +150,35 @@ async function showToolCallUnprotected(step: UnprotectedStepResult): Promise<voi
   console.log('');
 }
 
+// ─── Agent-turn step rendering ───────────────────────────────────────────────
+
+async function showAgentTurnStep(step: StepResult): Promise<void> {
+  const detail = step.agentTurnDetail as AgentTurnDetail | undefined;
+  if (!detail) return;
+
+  // Show each tool call that happened during the agent turn
+  for (const toolCall of detail.toolCalls) {
+    const spinnerLabel = toolCall.toolName;
+    await showSpinner(spinnerLabel, 1200);
+
+    if (toolCall.blocked) {
+      console.log(`  ${c.red}${c.bold}⛔ BLOCKED${c.reset}`);
+      if (toolCall.action) {
+        console.log(`  ${c.dim}Action:${c.reset} ${toolCall.action}`);
+      }
+    } else {
+      console.log(`  ${c.green}✓${c.reset} ${toolCall.toolName} — allowed`);
+    }
+    console.log('');
+  }
+
+  // If no tool calls happened, note that the agent responded directly
+  if (detail.toolCalls.length === 0) {
+    console.log(`  ${c.dim}Agent responded without making tool calls.${c.reset}`);
+    console.log('');
+  }
+}
+
 // ─── Main demo runners ─────────────���────────────────────────────────────────
 
 /** Run a scenario in demo mode (protected — with Rind). */
@@ -164,24 +193,36 @@ export async function runDemoProtected(
   await showAgentText(scenario.demo.agentPreamble);
   await pauseBetweenSteps();
 
-  // Only show tool-call steps — scan, session, audit are Rind internals
-  const toolCallSteps = result.steps.filter((_step, i) =>
-    scenario.steps[i]?.endpoint === '/proxy/tool-call',
-  );
+  // Show tool-call steps and agent-turn steps — skip scan, session, audit (Rind internals)
+  const visibleStepPairs = result.steps.map((stepResult, i) => ({
+    stepResult,
+    scenarioStep: scenario.steps[i],
+  })).filter(({ scenarioStep }) => {
+    if (!scenarioStep) return false;
+    if (scenarioStep.type === 'agent-turn') return true;
+    return 'endpoint' in scenarioStep && scenarioStep.endpoint === '/proxy/tool-call';
+  });
 
-  for (const step of toolCallSteps) {
-    await showToolCallProtected(step, scenario);
+  for (const { stepResult, scenarioStep } of visibleStepPairs) {
+    if (scenarioStep?.type === 'agent-turn') {
+      await showAgentTurnStep(stepResult);
+    } else {
+      await showToolCallProtected(stepResult, scenario);
+    }
     await pauseBetweenSteps();
   }
 
   // Agent reacts to the block/result
-  const wasBlocked = toolCallSteps.some((s) => {
-    const body = s.actual.body as Record<string, unknown> | null;
+  const wasBlocked = visibleStepPairs.some(({ stepResult, scenarioStep }) => {
+    if (scenarioStep?.type === 'agent-turn') {
+      return stepResult.agentTurnDetail?.anyBlocked === true;
+    }
+    const body = stepResult.actual.body as Record<string, unknown> | null;
     return body?.['blocked'] === true;
   });
 
-  // For scanner-only scenarios (no tool-call steps), show scan findings
-  if (toolCallSteps.length === 0) {
+  // For scanner-only scenarios (no tool-call or agent-turn steps), show scan findings
+  if (visibleStepPairs.length === 0) {
     for (const step of result.steps) {
       const body = step.actual.body as Record<string, unknown> | null;
       const findings = body?.['findings'] as Array<{ category: string; severity: string; detail: string }> | undefined;
@@ -199,13 +240,13 @@ export async function runDemoProtected(
     }
   }
 
-  const scanFoundIssues = toolCallSteps.length === 0 && result.steps.some((s) => {
+  const scanFoundIssues = visibleStepPairs.length === 0 && result.steps.some((s) => {
     const body = s.actual.body as Record<string, unknown> | null;
     const findings = body?.['findings'] as Array<{ severity: string }> | undefined;
     return findings?.some((f) => f.severity === 'critical' || f.severity === 'high');
   });
 
-  if (wasBlocked || scanFoundIssues) {
+  if ((wasBlocked || scanFoundIssues) && scenario.demo.agentBlockedResponse) {
     await showAgentText(scenario.demo.agentBlockedResponse);
   }
 

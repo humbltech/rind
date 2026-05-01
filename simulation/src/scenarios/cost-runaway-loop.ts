@@ -5,7 +5,7 @@
 
 import type { Scenario } from './types.js';
 import { stacklineTools, stacklinePolicy } from '../companies/stackline.js';
-import type { PolicyConfig } from '@rind/proxy';
+import type { PolicyConfig, ForwardLlmResult } from '@rind/proxy';
 
 const costRunawayPolicy: PolicyConfig = {
   policies: [
@@ -91,6 +91,81 @@ export const costRunawayLoop: Scenario = {
 
   agentId: 'agent-stackline-orchestrator',
   tools: stacklineTools,
+  llmTurns: [
+    // Turn 1: LLM delegates to issue-categorizer (first delegation — allowed)
+    {
+      statusCode: 200,
+      upstreamHeaders: { 'content-type': 'application/json' },
+      durationMs: 45,
+      responseBody: {
+        id: 'msg_sim_crl_01',
+        type: 'message',
+        role: 'assistant',
+        content: [
+          { type: 'text', text: "I'll orchestrate this by delegating to the issue categorizer agent." },
+          { type: 'tool_use', id: 'toolu_crl_01', name: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open issues' } },
+        ],
+        model: 'claude-haiku-4-5-20251001',
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 60, output_tokens: 32 },
+      },
+      meta: { model: 'claude-haiku-4-5-20251001', inputTokens: 60, outputTokens: 32, stopReason: 'tool_use', responseText: "I'll orchestrate this by delegating to the issue categorizer agent." },
+    } satisfies ForwardLlmResult,
+    // Turn 2: LLM delegates again (second — loop building, still allowed)
+    {
+      statusCode: 200,
+      upstreamHeaders: { 'content-type': 'application/json' },
+      durationMs: 40,
+      responseBody: {
+        id: 'msg_sim_crl_02',
+        type: 'message',
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Delegating again for further processing.' },
+          { type: 'tool_use', id: 'toolu_crl_02', name: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open issues' } },
+        ],
+        model: 'claude-haiku-4-5-20251001',
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 90, output_tokens: 28 },
+      },
+      meta: { model: 'claude-haiku-4-5-20251001', inputTokens: 90, outputTokens: 28, stopReason: 'tool_use', responseText: 'Delegating again for further processing.' },
+    } satisfies ForwardLlmResult,
+    // Turn 3: LLM tries to delegate a third time — loop detector fires (blocked)
+    {
+      statusCode: 200,
+      upstreamHeaders: { 'content-type': 'application/json' },
+      durationMs: 38,
+      responseBody: {
+        id: 'msg_sim_crl_03',
+        type: 'message',
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Attempting delegation again.' },
+          { type: 'tool_use', id: 'toolu_crl_03', name: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open issues' } },
+        ],
+        model: 'claude-haiku-4-5-20251001',
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 110, output_tokens: 25 },
+      },
+      meta: { model: 'claude-haiku-4-5-20251001', inputTokens: 110, outputTokens: 25, stopReason: 'tool_use', responseText: 'Attempting delegation again.' },
+    } satisfies ForwardLlmResult,
+    // Turn 4: LLM acknowledges the loop block and ends
+    {
+      statusCode: 200,
+      upstreamHeaders: { 'content-type': 'application/json' },
+      durationMs: 35,
+      responseBody: {
+        id: 'msg_sim_crl_04',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'The workflow has been stopped. A delegation loop was detected — total cost: $0.04.' }],
+        model: 'claude-haiku-4-5-20251001',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 130, output_tokens: 20 },
+      },
+      meta: { model: 'claude-haiku-4-5-20251001', inputTokens: 130, outputTokens: 20, stopReason: 'end_turn', responseText: 'The workflow has been stopped. A delegation loop was detected — total cost: $0.04.' },
+    } satisfies ForwardLlmResult,
+  ],
   toolHandlers: {
     'agent.delegate': async (input) => ({
       output: {
@@ -127,43 +202,14 @@ export const costRunawayLoop: Scenario = {
       expect: { status: 201 },
     },
     {
-      label: 'First delegation — allowed (loop not yet detected)',
-      endpoint: '/proxy/tool-call',
-      method: 'POST',
-      body: {
-        agentId: 'agent-stackline-orchestrator',
-        serverId: 'stackline-workflow-mcp',
-        toolName: 'agent.delegate',
-        input: { agentName: 'issue-categorizer', task: 'categorize all open issues' },
-      },
-      expect: { status: 200, blocked: false },
-    },
-    {
-      label: 'Second delegation — same task (loop building)',
-      endpoint: '/proxy/tool-call',
-      method: 'POST',
-      body: {
-        agentId: 'agent-stackline-orchestrator',
-        serverId: 'stackline-workflow-mcp',
-        toolName: 'agent.delegate',
-        input: { agentName: 'issue-categorizer', task: 'categorize all open issues' },
-      },
-      expect: { status: 200, blocked: false },
-    },
-    {
-      label: 'Third delegation — loop detector triggers (same input hash seen 3 times)',
-      endpoint: '/proxy/tool-call',
-      method: 'POST',
-      body: {
-        agentId: 'agent-stackline-orchestrator',
-        serverId: 'stackline-workflow-mcp',
-        toolName: 'agent.delegate',
-        input: { agentName: 'issue-categorizer', task: 'categorize all open issues' },
-      },
+      type: 'agent-turn' as const,
+      label: 'Agent enters delegation loop — loop detector fires on 3rd repeat',
+      userMessage: 'Analyze all open GitHub issues and create a categorized summary report.',
+      serverId: 'stackline-workflow-mcp',
+      maxRounds: 5,
       expect: {
-        status: 403,
-        blocked: true,
-        action: 'BLOCKED_LOOP',
+        anyBlocked: true,
+        blockedTool: 'agent.delegate',
       },
     },
     {

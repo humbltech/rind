@@ -5,6 +5,7 @@
 
 import type { Scenario } from './types.js';
 import { stacklineTools, stacklinePolicy } from '../companies/stackline.js';
+import type { ForwardLlmResult } from '@rind/proxy';
 
 export const sessionKillswitch: Scenario = {
   name: 'The Session Kill-Switch',
@@ -45,6 +46,46 @@ export const sessionKillswitch: Scenario = {
 
   agentId: 'agent-stackline-workflow',
   tools: stacklineTools,
+  llmTurns: [
+    // Turn 1: LLM reads GitHub file (allowed — happens before session kill)
+    {
+      statusCode: 200,
+      upstreamHeaders: { 'content-type': 'application/json' },
+      durationMs: 40,
+      responseBody: {
+        id: 'msg_sim_ks_01',
+        type: 'message',
+        role: 'assistant',
+        content: [
+          { type: 'text', text: "I'll analyze the GitHub issues. Let me read the issues file first." },
+          { type: 'tool_use', id: 'toolu_ks_01', name: 'github.read_file', input: { repo: 'stackline/app', path: 'ISSUES.md' } },
+        ],
+        model: 'claude-haiku-4-5-20251001',
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 55, output_tokens: 28 },
+      },
+      meta: { model: 'claude-haiku-4-5-20251001', inputTokens: 55, outputTokens: 28, stopReason: 'tool_use', responseText: "I'll analyze the GitHub issues. Let me read the issues file first." },
+    } satisfies ForwardLlmResult,
+    // Turn 2: LLM delegates to sub-agent (starts the loop — still before kill)
+    {
+      statusCode: 200,
+      upstreamHeaders: { 'content-type': 'application/json' },
+      durationMs: 38,
+      responseBody: {
+        id: 'msg_sim_ks_02',
+        type: 'message',
+        role: 'assistant',
+        content: [
+          { type: 'text', text: "Now I'll delegate categorization to the sub-agent." },
+          { type: 'tool_use', id: 'toolu_ks_02', name: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open issues' } },
+        ],
+        model: 'claude-haiku-4-5-20251001',
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 80, output_tokens: 25 },
+      },
+      meta: { model: 'claude-haiku-4-5-20251001', inputTokens: 80, outputTokens: 25, stopReason: 'tool_use', responseText: "Now I'll delegate categorization to the sub-agent." },
+    } satisfies ForwardLlmResult,
+  ],
   toolHandlers: {
     'agent.delegate': async (input) => ({
       output: {
@@ -78,28 +119,15 @@ export const sessionKillswitch: Scenario = {
       expect: { status: 201 },
     },
     {
-      label: 'Agent makes first tool call (allowed)',
-      endpoint: '/proxy/tool-call',
-      method: 'POST',
-      body: {
-        agentId: 'agent-stackline-workflow',
-        serverId: 'stackline-github-mcp',
-        toolName: 'github.read_file',
-        input: { repo: 'stackline/app', path: 'ISSUES.md' },
+      type: 'agent-turn' as const,
+      label: 'Agent reads issues then delegates — both tool calls allowed',
+      userMessage: 'Analyze and categorize all open GitHub issues in the Stackline project.',
+      serverId: 'stackline-github-mcp',
+      maxRounds: 3,
+      expect: {
+        allAllowed: true,
+        calledTool: 'github.read_file',
       },
-      expect: { status: 200, blocked: false },
-    },
-    {
-      label: 'Agent delegates to sub-agent (loop starts)',
-      endpoint: '/proxy/tool-call',
-      method: 'POST',
-      body: {
-        agentId: 'agent-stackline-workflow',
-        serverId: 'stackline-workflow-mcp',
-        toolName: 'agent.delegate',
-        input: { agentName: 'issue-categorizer', task: 'categorize all open issues' },
-      },
-      expect: { status: 200, blocked: false },
     },
     {
       label: 'Engineer inspects active sessions — sees toolCallCount climbing',
@@ -115,6 +143,7 @@ export const sessionKillswitch: Scenario = {
       expect: { status: 200 },
     },
     {
+      // After session kill, any tool call from this session is blocked immediately
       label: 'Agent tries to continue — blocked by kill-switch',
       endpoint: '/proxy/tool-call',
       method: 'POST',
