@@ -19,6 +19,8 @@ import {
 import { runWrap } from './cli/wrap.js';
 import { runInit } from './cli/init.js';
 import { runUninit } from './cli/uninit.js';
+import { runDemoInit } from './cli/demo-init.js';
+import { runDemoUninit } from './cli/demo-uninit.js';
 
 // ── Subcommand dispatch ────────────────────────────────────────────────────────
 
@@ -33,6 +35,12 @@ if (subcommand === 'wrap') {
 } else if (subcommand === 'uninit') {
   // remove Rind hooks and ANTHROPIC_BASE_URL from Claude Code settings
   runUninit(process.argv);
+} else if (subcommand === 'demo-init') {
+  // set up live demo environment (sim MCP servers + hooks + LLM proxy)
+  runDemoInit(process.argv);
+} else if (subcommand === 'demo-uninit') {
+  // tear down live demo environment
+  runDemoUninit(process.argv);
 } else {
   // Default: HTTP proxy server mode
   // All flags that aren't subcommands are passed through as module toggles

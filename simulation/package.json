@@ -9,15 +9,18 @@
     "sim:replay": "tsx src/cli.ts --mode replay",
     "sim:live": "tsx src/cli.ts --mode live",
     "sim:demo": "tsx src/cli.ts --http http://localhost:7777",
+    "demo-serve": "tsx src/demo-servers/serve.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "@rind/proxy": "workspace:*",
     "hono": "^4.6.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.4.0",
     "vitest": "^2.0.0"

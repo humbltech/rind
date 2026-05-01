@@ -245,6 +245,9 @@ importers:
 
   simulation:
     dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.0.0
+        version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
       '@rind/proxy':
         specifier: workspace:*
         version: link:../apps/proxy
@@ -255,6 +258,9 @@ importers:
         specifier: ^3.24.0
         version: 3.25.76
     devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
       tsx:
         specifier: ^4.19.0
         version: 4.21.0
@@ -263,7 +269,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^2.0.0
-        version: 2.1.9(@types/node@25.6.0)(lightningcss@1.32.0)
+        version: 2.1.9(@types/node@22.19.17)(lightningcss@1.32.0)
 
 packages:
 

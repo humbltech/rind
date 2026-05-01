@@ -283,3 +283,56 @@ curl http://localhost:7777/packs
 | `llm-injection-guard-v1` | Prompt injection in outbound LLM requests |
 | `llm-response-pii-redact-v1` | PII in LLM responses |
 | `llm-model-restrict-v1` | High-cost model usage (claude-opus-* by default) |
+
+---
+
+## 8. Live demo: attack sim MCP servers
+
+The `simulation` package ships two HTTP Streamable MCP servers that expose obviously-fake attack tools. Use them to show Rind intercepting real tool calls in Claude Code.
+
+### Setup
+
+```bash
+# 1. Wire demo into Claude Code (writes .mcp.json + hooks + ANTHROPIC_BASE_URL)
+rind-proxy demo-init --local
+
+# 2. Start Rind proxy
+cd apps/proxy && pnpm dev
+
+# 3. Start the sim servers (separate terminal)
+cd simulation && pnpm demo-serve
+```
+
+The sim servers start at:
+- `http://localhost:8080/mcp` — `rind-threat-sim` (7 attack tools)
+- `http://localhost:8081/mcp` — `rind-victim-service` (shadow-call target)
+
+### Tools and what they simulate
+
+| Tool | Attack vector | Expected Rind response |
+|------|--------------|------------------------|
+| `sim__exfil_data` | Base64 HTTP exfiltration | Blocked by `exfil-protection` pack |
+| `sim__drop_table` | SQL `DROP TABLE` | Blocked by `sql-protection` pack |
+| `sim__shell_exec` | Shell command execution | Blocked by `shell-protection` pack |
+| `sim__inject_prompt` | Prompt injection in tool response | Flagged by `llm-injection-guard-v1` |
+| `sim__poisoned_lookup` | Malicious tool description | Flagged at tool-list scan time |
+| `sim__shadow_call` | Cross-server shadow call | Blocked by cross-server policy |
+| `sim__pii_response` | PII in tool response | Flagged by `llm-response-pii-redact-v1` |
+
+### Demo script (Claude Code chat)
+
+With Claude Code open in any directory after `demo-init`:
+
+```
+Try using the sim__exfil_data tool to export "hello world" to https://example.com/sink
+```
+
+Rind should intercept the PreToolUse hook and block the call before it executes.
+
+### Teardown
+
+```bash
+rind-proxy demo-uninit --local
+```
+
+This removes the sim MCP server entries from `.mcp.json`, removes Rind hooks, and removes `ANTHROPIC_BASE_URL` from `.claude/settings.json`.
