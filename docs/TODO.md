@@ -61,3 +61,27 @@ Railway shipped native remote MCP support with interceptor middleware — meanin
 **Priority**: Medium — improves dashboard accuracy but not blocking for MVP.
 
 ---
+
+### Session Timeline — Agent Swimlanes & Call Graph
+
+**Context**: The current `/sessions/[sessionId]` page shows a flat vertical timeline of LLM and tool events sorted by timestamp. All agents' events are mixed together. For sessions with sub-agents, this makes it hard to see who did what and how agents relate to each other.
+
+**What to implement:**
+
+1. **Expose SubagentStart/Stop in the timeline API** — `GET /logs/timeline` currently returns only `ToolCallEvent` and `LlmCallEvent`. Add `SubagentStart` and `SubagentStop` hook events as a third event kind so the UI knows when agents spawn and finish.
+
+2. **Agent swimlane layout** — group events visually by `agentId`. Each agent gets its own labelled lane. Events flow top-to-bottom within each lane. Lane headers show the agent ID / type.
+
+3. **Parent-child inference** — `SubagentStart` carries the *parent's* `agent_id` and fires just before a new `agentId` begins appearing in events. Use timing + `SubagentStart` to draw edges between parent and child lanes. Note: Claude Code doesn't send the sub-agent's future ID, so inference is heuristic (first new `agentId` after a SubagentStart belongs to that spawn).
+
+4. **LLM → Tool grouping within a lane** — inside each lane, visually connect LLM calls to the tool calls they triggered (using `toolUses[].id` → `ToolCallEvent` correlation).
+
+5. **Approval status on tool cards** — tool cards in the timeline already show ALLOWED/BLOCKED/APPROVED badges. This is the ground-truth view; no changes needed here.
+
+**Data gaps to address:**
+- `SubagentStart` schema doesn't include the child agent's future ID — inference only
+- Need a new timeline event kind in the API and dashboard type definitions
+
+**Priority**: Low — nice-to-have for multi-agent session debugging. The flat timeline is functional; swimlanes are a polish/power-user feature.
+
+---
