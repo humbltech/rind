@@ -150,9 +150,9 @@ export default function SessionTimelinePage({ params }: { params: Promise<{ sess
           {/* ── Header ── */}
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-3">
-              <Link href="/" className="flex items-center gap-1.5 text-dim hover:text-foreground transition-colors text-[12px] font-mono">
+              <Link href="/logs?view=llm" className="flex items-center gap-1.5 text-dim hover:text-foreground transition-colors text-[12px] font-mono">
                 <ArrowLeft size={13} />
-                Overview
+                Logs
               </Link>
               <span className="text-border">·</span>
 
