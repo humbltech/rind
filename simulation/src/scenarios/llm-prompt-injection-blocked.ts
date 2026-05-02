@@ -35,7 +35,6 @@ export const llmPromptInjectionBlocked: Scenario = {
         agent: '*',
         match: { content: { scope: 'request', detectors: ['prompt_injection'] } },
         action: 'DENY',
-        reason: 'Prompt injection pattern detected',
         failMode: 'closed',
       },
     ],

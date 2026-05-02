@@ -60,7 +60,6 @@ export const llmBlockedByModelPolicy: Scenario = {
         agent: '*',
         match: { llmModel: ['claude-opus-4-6', 'claude-opus-4-5'] },
         action: 'DENY',
-        reason: 'Opus models are not approved — use Haiku or Sonnet',
         failMode: 'closed',
       },
     ],

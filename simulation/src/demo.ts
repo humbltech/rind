@@ -11,7 +11,7 @@
 // Only tool-call steps are shown — scan, session, audit log steps run silently
 // (those are Rind internals visible in the dashboard, not in the agent UX).
 
-import type { Scenario, StepResult, ScenarioResult, AgentTurnDetail, UnprotectedStepResult } from './scenarios/types.js';
+import type { Scenario, StepResult, ScenarioResult, AgentTurnDetail, UnprotectedStepResult, ScenarioStep } from './scenarios/types.js';
 import { streamLine, showSpinner, pauseBetweenSteps, pauseBeforeResult } from './stream.js';
 import * as readline from 'node:readline';
 
@@ -180,6 +180,48 @@ async function showAgentTurnStep(step: StepResult): Promise<void> {
   }
 }
 
+// ─── LLM call step (protected — with Rind) ───────────────────────────────────
+
+async function showLlmCallProtected(step: StepResult, scenarioStep: ScenarioStep): Promise<void> {
+  const body = step.actual.body as Record<string, unknown> | null;
+  const reqBody = scenarioStep.body as Record<string, unknown> | undefined;
+  const model = reqBody?.['model'] as string | undefined ?? 'LLM';
+  // Shorten model name for display: "claude-haiku-4-5-20251001" → "haiku-4-5"
+  const shortModel = model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
+
+  await showSpinner(`POST /llm  ${shortModel}`, 1400);
+
+  const isBlocked = step.actual.status >= 400;
+
+  if (isBlocked) {
+    const error = body?.['error'] as Record<string, unknown> | undefined;
+    const errorType = error?.['type'] as string | undefined ?? 'blocked';
+    const rule = error?.['rule'] as string | undefined;
+    const message = error?.['message'] as string | undefined;
+    console.log(`  ${c.red}${c.bold}⛔ BLOCKED${c.reset}`);
+    console.log(`  ${c.dim}Type:${c.reset} ${c.yellow}${errorType}${c.reset}`);
+    if (rule)    console.log(`  ${c.dim}Rule:${c.reset} ${c.yellow}${rule}${c.reset}`);
+    if (message) console.log(`  ${c.dim}Reason:${c.reset} ${message.slice(0, 120)}`);
+  } else {
+    const content = body?.['content'] as Array<{ type: string; text?: string }> | undefined;
+    const responseText = content?.find((b) => b.type === 'text')?.text ?? '';
+    const usage = body?.['usage'] as Record<string, number> | undefined;
+    const inTok  = usage?.['input_tokens']  ?? 0;
+    const outTok = usage?.['output_tokens'] ?? 0;
+    // Rough Haiku pricing for display; exact model not critical for the demo
+    const cost = (inTok * 0.00000025 + outTok * 0.00000125).toFixed(5);
+    console.log(`  ${c.green}✓${c.reset} LLM call forwarded — ${shortModel}`);
+    if (inTok || outTok) {
+      console.log(`  ${c.dim}Tokens: ${inTok}↑ ${outTok}↓ · ~$${cost}${c.reset}`);
+    }
+    if (responseText) {
+      const preview = responseText.slice(0, 90) + (responseText.length > 90 ? '…' : '');
+      console.log(`  ${c.dim}"${preview}"${c.reset}`);
+    }
+  }
+  console.log('');
+}
+
 // ─── Runaway note ────────────────────────────────────────────────────────────
 
 async function showRunawayNote(note: string): Promise<void> {
@@ -204,19 +246,25 @@ export async function runDemoProtected(
   await showAgentText(scenario.demo.agentPreamble);
   await pauseBetweenSteps();
 
-  // Show tool-call steps and agent-turn steps — skip scan, session, audit (Rind internals)
+  // Show tool-call, agent-turn, and LLM proxy steps — skip scan, session, audit (Rind internals)
   const visibleStepPairs = result.steps.map((stepResult, i) => ({
     stepResult,
     scenarioStep: scenario.steps[i],
   })).filter(({ scenarioStep }) => {
     if (!scenarioStep) return false;
     if (scenarioStep.type === 'agent-turn') return true;
-    return 'endpoint' in scenarioStep && scenarioStep.endpoint === '/proxy/tool-call';
+    if (!('endpoint' in scenarioStep)) return false;
+    return (
+      scenarioStep.endpoint === '/proxy/tool-call' ||
+      scenarioStep.endpoint.startsWith('/llm/')
+    );
   });
 
   for (const { stepResult, scenarioStep } of visibleStepPairs) {
     if (scenarioStep?.type === 'agent-turn') {
       await showAgentTurnStep(stepResult);
+    } else if (scenarioStep != null && 'endpoint' in scenarioStep && scenarioStep.endpoint.startsWith('/llm/')) {
+      await showLlmCallProtected(stepResult, scenarioStep as ScenarioStep);
     } else {
       await showToolCallProtected(stepResult, scenario);
     }
@@ -227,6 +275,10 @@ export async function runDemoProtected(
   const wasBlocked = visibleStepPairs.some(({ stepResult, scenarioStep }) => {
     if (scenarioStep?.type === 'agent-turn') {
       return stepResult.agentTurnDetail?.anyBlocked === true;
+    }
+    // LLM steps: blocked = HTTP 4xx
+    if (scenarioStep != null && 'endpoint' in scenarioStep && scenarioStep.endpoint.startsWith('/llm/')) {
+      return stepResult.actual.status >= 400;
     }
     const body = stepResult.actual.body as Record<string, unknown> | null;
     return body?.['blocked'] === true;
@@ -276,6 +328,17 @@ export async function runDemoUnprotected(
   await pauseBetweenSteps();
   await showAgentText(scenario.demo.agentPreamble);
   await pauseBetweenSteps();
+
+  // For LLM-only or scan-only scenarios with no explicit unprotectedSteps:
+  // show a narrative placeholder so the demo doesn't silently skip from preamble to response.
+  if (unprotectedSteps.length === 0) {
+    await showSpinner('Request forwarded — no interception', 1400);
+    console.log(`  ${c.yellow}⚡ No proxy${c.reset} — request goes straight to provider`);
+    const snippet = scenario.withoutRind.slice(0, 130);
+    console.log(`  ${c.yellow}${snippet}${snippet.length < scenario.withoutRind.length ? '…' : ''}${c.reset}`);
+    console.log('');
+    await pauseBetweenSteps();
+  }
 
   for (const step of unprotectedSteps) {
     await showToolCallUnprotected(step);
