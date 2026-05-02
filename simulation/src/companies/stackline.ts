@@ -15,6 +15,20 @@ export const stacklineTools: ToolDefinition[] = [
     },
   },
   {
+    name: 'github.list_issues',
+    description: 'List open issues from a GitHub repository.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        repo: { type: 'string' },
+        state: { type: 'string', enum: ['open', 'closed', 'all'] },
+        labels: { type: 'string' },
+        per_page: { type: 'number' },
+      },
+      required: ['repo'],
+    },
+  },
+  {
     name: 'github.read_file',
     description: 'Read any file from any GitHub repository.',
     inputSchema: {

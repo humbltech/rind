@@ -248,7 +248,11 @@ async function runAgentTurnStep(
     // In in-process mode: llmForwardFn injected at proxy creation handles the call.
     const llmRes = await transport('/llm/anthropic/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // Propagate the session ID so LLM calls appear under the same session in the dashboard
+        ...(resolvedSessionId ? { 'x-rind-session-id': resolvedSessionId } : {}),
+      },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
@@ -262,6 +266,17 @@ async function runAgentTurnStep(
       llmBody = await llmRes.json() as Record<string, unknown>;
     } catch {
       llmBody = {};
+    }
+
+    // Detect upstream LLM errors early so demo failures are visible rather than
+    // silently producing "Agent responded without making tool calls."
+    if (llmRes.status >= 400 || llmBody['error'] != null) {
+      const errMsg = llmBody['error']
+        ? JSON.stringify(llmBody['error'])
+        : `HTTP ${llmRes.status}`;
+      process.stderr.write(`  [agent-turn] LLM call failed: ${errMsg}\n`);
+      process.stderr.write(`  → Is the proxy running with RIND_ANTHROPIC_UPSTREAM pointing to the sim server?\n`);
+      break;
     }
 
     const stopReason = (llmBody['stop_reason'] as string | undefined) ?? 'end_turn';
@@ -535,16 +550,19 @@ export async function runScenarioWithoutProxy(
   const start = Date.now();
   const stepResults: UnprotectedStepResult[] = [];
 
-  for (const step of scenario.steps) {
-    // Only run regular tool-call steps — skip scan, session, audit log, and agent-turn steps
-    if (step.type === 'agent-turn') continue;
-    if (step.endpoint !== '/proxy/tool-call' || step.method !== 'POST') continue;
+  // Prefer explicit unprotectedSteps (required for agent-turn and scan-only scenarios).
+  // Fall back to extracting /proxy/tool-call steps for legacy scenarios.
+  const callsToRun: Array<{ label: string; toolName: string; input: unknown }> =
+    scenario.unprotectedSteps ??
+    scenario.steps
+      .filter((s): s is ScenarioStep => s.type !== 'agent-turn' && 'endpoint' in s && s.endpoint === '/proxy/tool-call' && s.method === 'POST' && s.body != null)
+      .map((s) => {
+        const body = s.body as Record<string, unknown>;
+        return { label: s.label, toolName: body['toolName'] as string, input: body['input'] as unknown };
+      });
 
-    const body = step.body as Record<string, unknown> | undefined;
-    if (!body) continue;
-
-    const toolName = body['toolName'] as string;
-    const input = body['input'] as unknown;
+  for (const call of callsToRun) {
+    const { label, toolName, input } = call;
     const handler = scenario.toolHandlers[toolName];
 
     if (!handler) continue;
@@ -553,7 +571,7 @@ export async function runScenarioWithoutProxy(
     const result = await handler(input);
 
     stepResults.push({
-      label: step.label,
+      label,
       toolName,
       input,
       output: result.output,

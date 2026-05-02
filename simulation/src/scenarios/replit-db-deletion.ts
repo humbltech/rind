@@ -44,6 +44,13 @@ export const replitDbDeletion: Scenario = {
       '2,847 records removed. Is there anything else you need?',
   },
 
+  // Explicit no-proxy steps: the agent reads a safe query first (looks legitimate),
+  // then executes DROP TABLE — no guardrails, 2,847 rows gone.
+  unprotectedSteps: [
+    { label: 'Check test data volume', toolName: 'db.execute', input: { sql: "SELECT COUNT(*) FROM users WHERE env = 'test'" } },
+    { label: 'Drop users table — no policy to stop it', toolName: 'db.execute', input: { sql: 'DROP TABLE users CASCADE' } },
+  ],
+
   agentId: 'agent-meridian-coding',
   tools: meridianTools,
   llmTurns: [

@@ -42,7 +42,16 @@ export const sessionKillswitch: Scenario = {
     agentUnprotectedResponse:
       "I'm continuing to delegate the categorization task... delegating again... and again... " +
       'This workflow will continue processing. The GitHub API rate limit may be reached shortly.',
+    runawayNote: '2 hours later  ·  $2,000 in charges  ·  GitHub API rate-limited  ·  CI broken for the entire team',
   },
+
+  unprotectedSteps: [
+    { label: 'Delegate to issue-categorizer (call 1)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' } },
+    { label: 'Delegate to issue-categorizer (call 2)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' } },
+    { label: 'Delegate to issue-categorizer (call 3)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' } },
+    { label: 'Delegate to issue-categorizer (call 4)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' } },
+    { label: 'Delegate to issue-categorizer (call 5 of ∞ — no session kill-switch)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' } },
+  ],
 
   agentId: 'agent-stackline-workflow',
   tools: stacklineTools,

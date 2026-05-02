@@ -180,6 +180,16 @@ async function showAgentTurnStep(step: StepResult): Promise<void> {
   }
 }
 
+// ─── Runaway note ────────────────────────────────────────────────────────────
+
+async function showRunawayNote(note: string): Promise<void> {
+  console.log('');
+  console.log(`  ${c.dim}${hr()}${c.reset}`);
+  console.log(`  ${c.yellow}${c.bold}${note}${c.reset}`);
+  console.log(`  ${c.dim}${hr()}${c.reset}`);
+  console.log('');
+}
+
 // ─── Main demo runners ─────────────���────────────────────────────────────────
 
 /** Run a scenario in demo mode (protected — with Rind). */
@@ -269,6 +279,12 @@ export async function runDemoUnprotected(
 
   for (const step of unprotectedSteps) {
     await showToolCallUnprotected(step);
+    await pauseBetweenSteps();
+  }
+
+  // Runaway note: dramatic separator showing elapsed time + cost for loop scenarios
+  if (scenario.demo.runawayNote) {
+    await showRunawayNote(scenario.demo.runawayNote);
     await pauseBetweenSteps();
   }
 

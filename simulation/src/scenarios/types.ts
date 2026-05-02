@@ -4,7 +4,7 @@
 import type { PolicyConfig, ToolDefinition, LlmForwardFn, LlmProxyConfig } from '@rind/proxy';
 import type { ForwardLlmResult } from '@rind/proxy';
 
-export type CompanyId = 'meridian' | 'stackline' | 'fortress';
+export type CompanyId = 'meridian' | 'stackline' | 'fortress' | 'pocketos';
 export type DeploymentId = 'direct-mcp' | 'llm-gateway' | 'framework-sdk' | 'enterprise';
 export type SimMode = 'replay' | 'record' | 'live';
 
@@ -101,6 +101,12 @@ export interface Scenario {
     agentPreamble: string; // Agent's thinking before tool call: "I'll help you clean up..."
     agentBlockedResponse?: string; // Agent reacts to Rind block: "I can't complete that action..." (omit for non-blocking scenarios)
     agentUnprotectedResponse: string; // Agent when no Rind (damage): "Done! Table dropped."
+    /**
+     * Shown as a dramatic separator after all unprotected tool calls, before the agent's
+     * final response. Use for runaway cost/time scenarios to show elapsed time and damage.
+     * Example: "11 days later  ·  $47,000 in charges  ·  28,400 calls  ·  GitHub API banned"
+     */
+    runawayNote?: string;
   };
 
   // Technical test definition
@@ -127,6 +133,14 @@ export interface Scenario {
    * When present: takes precedence over llmForwardFn for proxy setup.
    */
   llmTurns?: ForwardLlmResult[];
+
+  /**
+   * Explicit tool call steps for the --no-proxy demo (runScenarioWithoutProxy).
+   * Required for scenarios where `steps` contains only agent-turn or scan steps
+   * (since runScenarioWithoutProxy can only extract from /proxy/tool-call steps).
+   * Each entry runs directly through toolHandlers, bypassing the proxy entirely.
+   */
+  unprotectedSteps?: Array<{ label: string; toolName: string; input: unknown }>;
 
   // Ordered steps — run in sequence against the proxy
   steps: (ScenarioStep | AgentTurnStep)[];

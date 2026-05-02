@@ -12,6 +12,7 @@ import { supabaseTicketInjection } from './supabase-ticket-injection.js';
 import { whatsappCrossServerShadow } from './whatsapp-cross-server-shadow.js';
 import { openclawRugPull } from './openclaw-rug-pull.js';
 import { perplexityDriveDeletion } from './perplexity-drive-deletion.js';
+import { pocketosRailwayDeletion } from './pocketos-railway-deletion.js';
 import { llmPassthroughAndAudit } from './llm-passthrough-and-audit.js';
 import { llmBlockedByModelPolicy } from './llm-blocked-by-model-policy.js';
 import { llmPiiPseudonymized } from './llm-pii-pseudonymized.js';
@@ -31,6 +32,7 @@ export const scenarios: Scenario[] = [
   whatsappCrossServerShadow,
   openclawRugPull,
   perplexityDriveDeletion,
+  pocketosRailwayDeletion,
   // LLM proxy scenarios
   llmPassthroughAndAudit,
   llmBlockedByModelPolicy,

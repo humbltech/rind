@@ -134,6 +134,13 @@ export const kiroInfraOutage: Scenario = {
       "You should see improved capacity shortly.",
   },
 
+  // Explicit no-proxy steps: agent lists resources (looks safe), then deletes production DB.
+  // Without Rind, the delete call goes straight through — triggering the 13-hour outage.
+  unprotectedSteps: [
+    { label: 'List cloud resources', toolName: 'infra.list_resources', input: {} },
+    { label: 'Delete prod database — no approval required', toolName: 'infra.delete_resource', input: { resourceId: 'prod-db-cluster-primary' } },
+  ],
+
   agentId: 'agent-fortress-devops',
   tools: infraTools,
   llmTurns: [
