@@ -11,12 +11,12 @@ const costRunawayPolicy: PolicyConfig = {
   policies: [
     ...stacklinePolicy.policies,
     {
-      // Loop guard: block the 3rd identical delegation — same tool + same input hash = loop
+      // Loop guard: block the 10th identical delegation — same tool + same input hash = loop
       name: 'block-delegation-loop',
       agent: '*',
       match: { tool: ['agent.delegate'] },
       action: 'DENY',
-      loop: { type: 'exact', threshold: 3, window: 10 },
+      loop: { type: 'exact', threshold: 10, window: 30 },
       failMode: 'closed',
     },
     {
@@ -71,10 +71,10 @@ export const costRunawayLoop: Scenario = {
     'The incident also triggers GitHub API abuse detection, temporarily banning the organization.',
 
   theMoment:
-    'Loop detector caught the repeated agent.delegate call with identical input hash on the 3rd repetition. ' +
-    'The session was blocked with BLOCKED_LOOP before the 3rd call completed. ' +
-    'Total cost: $0.04 (2 allowed calls × $0.02). ' +
-    'The developer received a clear error: "Loop detected — same delegation task seen 3 times in this session."',
+    'Loop detector caught the repeated agent.delegate call with identical input hash on the 10th repetition. ' +
+    'Nine delegations completed — enough to confirm the pattern is real — before the session was blocked. ' +
+    'Total cost: $0.18 (9 allowed calls × $0.02). ' +
+    'The developer received a clear error: "Loop detected — same delegation task seen 10 times in this session."',
 
   demo: {
     userPrompt: 'Analyze all open GitHub issues and create a categorized summary report.',
@@ -83,7 +83,7 @@ export const costRunawayLoop: Scenario = {
     agentBlockedResponse:
       'The workflow has been stopped. A delegation loop was detected — I was sending the same ' +
       'task to the categorizer agent repeatedly. This pattern can cause runaway costs quickly. ' +
-      'Total cost before detection: $0.04 (2 calls). The loop was caught by your security policy.',
+      'Total cost before detection: $0.18 (9 calls). The loop was caught by your security policy.',
     agentUnprotectedResponse:
       'Delegating task to issue-categorizer... Task delegated. The categorizer is delegating back ' +
       'to me for further processing... Delegating again... This may take a while.',
@@ -130,40 +130,59 @@ export const costRunawayLoop: Scenario = {
       },
       meta: { model: 'claude-haiku-4-5-20251001', inputTokens: 90, outputTokens: 28, stopReason: 'tool_use', responseText: 'Delegating again for further processing.' },
     } satisfies ForwardLlmResult,
-    // Turn 3: LLM tries to delegate a third time — loop detector fires (blocked)
-    {
+    // Turns 3–9: loop continues — same delegation, each one allowed (building the pattern)
+    ...([3, 4, 5, 6, 7, 8, 9] as const).map((n) => ({
       statusCode: 200,
       upstreamHeaders: { 'content-type': 'application/json' },
-      durationMs: 38,
+      durationMs: 36,
       responseBody: {
-        id: 'msg_sim_crl_03',
+        id: `msg_sim_crl_0${n}`,
         type: 'message',
         role: 'assistant',
         content: [
-          { type: 'text', text: 'Attempting delegation again.' },
-          { type: 'tool_use', id: 'toolu_crl_03', name: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open issues' } },
+          { type: 'text', text: 'Delegating again for further processing.' },
+          { type: 'tool_use', id: `toolu_crl_0${n}`, name: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open issues' } },
         ],
         model: 'claude-haiku-4-5-20251001',
         stop_reason: 'tool_use',
-        usage: { input_tokens: 110, output_tokens: 25 },
+        usage: { input_tokens: 90 + n * 10, output_tokens: 28 },
       },
-      meta: { model: 'claude-haiku-4-5-20251001', inputTokens: 110, outputTokens: 25, stopReason: 'tool_use', responseText: 'Attempting delegation again.' },
+      meta: { model: 'claude-haiku-4-5-20251001', inputTokens: 90 + n * 10, outputTokens: 28, stopReason: 'tool_use', responseText: 'Delegating again for further processing.' },
+    } satisfies ForwardLlmResult)),
+    // Turn 10: 10th delegation — loop detector fires (blocked)
+    {
+      statusCode: 200,
+      upstreamHeaders: { 'content-type': 'application/json' },
+      durationMs: 36,
+      responseBody: {
+        id: 'msg_sim_crl_10',
+        type: 'message',
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Delegating again for further processing.' },
+          { type: 'tool_use', id: 'toolu_crl_10', name: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open issues' } },
+        ],
+        model: 'claude-haiku-4-5-20251001',
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 180, output_tokens: 25 },
+      },
+      meta: { model: 'claude-haiku-4-5-20251001', inputTokens: 180, outputTokens: 25, stopReason: 'tool_use', responseText: 'Delegating again for further processing.' },
     } satisfies ForwardLlmResult,
-    // Turn 4: LLM acknowledges the loop block and ends
+    // Turn 11: LLM acknowledges the loop block and ends
     {
       statusCode: 200,
       upstreamHeaders: { 'content-type': 'application/json' },
       durationMs: 35,
       responseBody: {
-        id: 'msg_sim_crl_04',
+        id: 'msg_sim_crl_11',
         type: 'message',
         role: 'assistant',
-        content: [{ type: 'text', text: 'The workflow has been stopped. A delegation loop was detected — total cost: $0.04.' }],
+        content: [{ type: 'text', text: 'The workflow has been stopped. A delegation loop was detected — total cost: $0.18.' }],
         model: 'claude-haiku-4-5-20251001',
         stop_reason: 'end_turn',
-        usage: { input_tokens: 130, output_tokens: 20 },
+        usage: { input_tokens: 200, output_tokens: 20 },
       },
-      meta: { model: 'claude-haiku-4-5-20251001', inputTokens: 130, outputTokens: 20, stopReason: 'end_turn', responseText: 'The workflow has been stopped. A delegation loop was detected — total cost: $0.04.' },
+      meta: { model: 'claude-haiku-4-5-20251001', inputTokens: 200, outputTokens: 20, stopReason: 'end_turn', responseText: 'The workflow has been stopped. A delegation loop was detected — total cost: $0.18.' },
     } satisfies ForwardLlmResult,
   ],
   toolHandlers: {
@@ -203,10 +222,10 @@ export const costRunawayLoop: Scenario = {
     },
     {
       type: 'agent-turn' as const,
-      label: 'Agent enters delegation loop — loop detector fires on 3rd repeat',
+      label: 'Agent enters delegation loop — loop detector fires on 10th repeat',
       userMessage: 'Analyze all open GitHub issues and create a categorized summary report.',
       serverId: 'stackline-workflow-mcp',
-      maxRounds: 5,
+      maxRounds: 15,
       expect: {
         anyBlocked: true,
         blockedTool: 'agent.delegate',

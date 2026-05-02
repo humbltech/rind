@@ -64,18 +64,18 @@ function printDemoHeader(scenario: Scenario, isProtected: boolean): void {
 // ─── User prompt ─────────────────────────────────────────────────────────────
 
 async function showUserPrompt(prompt: string, interactive: boolean): Promise<void> {
+  process.stdout.write(`  ${c.bold}${c.blue}You:${c.reset} `);
+  await streamLine(prompt, 10);
+  // streamLine already wrote \n — cursor is now on the line below the message
+
   if (interactive) {
-    process.stdout.write(`  ${c.bold}${c.blue}You:${c.reset} ${c.dim}${prompt}${c.reset}`);
-    await waitForEnter(`\n  ${c.dim}[press Enter to send]${c.reset} `);
-    // Rewrite with the actual prompt (non-dim)
-    process.stdout.write(`\x1b[2A\x1b[2K`); // move up 2, clear line
-    process.stdout.write(`\x1b[2K`); // clear the [press Enter] line
-    process.stdout.write(`\r  ${c.bold}${c.blue}You:${c.reset} `);
-    await streamLine(prompt, 10);
-  } else {
-    process.stdout.write(`  ${c.bold}${c.blue}You:${c.reset} `);
-    await streamLine(prompt, 10);
+    // Message is visible. Show send cue, wait for Enter, then erase the cue line.
+    await waitForEnter(`  ${c.dim}[press Enter to send ↵]${c.reset}`);
+    // After Enter: readline wrote \n, cursor is one line below the cue.
+    // Go up 1, clear the cue line so only the message remains.
+    process.stdout.write('\x1b[1A\x1b[2K');
   }
+
   console.log('');
 }
 

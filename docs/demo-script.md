@@ -72,8 +72,9 @@ pnpm sim kiro-infra-outage --http http://localhost:7777 --interactive
 pnpm sim cost-runaway-loop --http http://localhost:7777 --interactive
 ```
 
-- Agent delegates to a sub-agent 3x with identical input
-- On the 3rd call: BLOCKED with `BLOCKED_LOOP`
+- Agent delegates to a sub-agent repeatedly with identical input
+- First 9 calls succeed — the pattern is unmistakable
+- On the 10th call: BLOCKED with `BLOCKED_LOOP`
 - Logs → LLM tab: shows cost accumulating per turn, then stops
 - Stats strip on the session page shows total cost + blocked count
 
