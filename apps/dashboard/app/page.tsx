@@ -60,7 +60,7 @@ export default function DashboardPage() {
           <InsightsSection toolCalls={toolCalls} mcpServers={hookContext?.mcpServers} />
           <ActiveSessionsSection sessions={hookContext?.activeSessions ?? []} workDirs={activeWorkDirs} />
           <ToolCallSection entries={toolCalls} />
-          {llmCalls.length > 0 && <LlmCallSection entries={llmCalls} />}
+          {llmCalls.length > 0 && <LlmCallSection entries={llmCalls} toolCalls={toolCalls} />}
           <McpServerSection servers={hookContext?.mcpServers ?? []} />
           <ScanSection servers={scanResults} />
         </div>
@@ -297,7 +297,7 @@ function LlmStatsGrid({ llmCalls }: { llmCalls: LlmCallEntry[] }) {
   );
 }
 
-function LlmCallSection({ entries }: { entries: LlmCallEntry[] }) {
+function LlmCallSection({ entries, toolCalls }: { entries: LlmCallEntry[]; toolCalls: ToolCallEntry[] }) {
   const recent = useMemo(() => [...entries].sort((a, b) => b.timestamp - a.timestamp).slice(0, 15), [entries]);
 
   return (
@@ -317,7 +317,7 @@ function LlmCallSection({ entries }: { entries: LlmCallEntry[] }) {
         )}
       </SectionLabel>
       <div className="mt-3">
-        <LlmCallTable entries={recent} />
+        <LlmCallTable entries={recent} toolCalls={toolCalls} />
       </div>
     </section>
   );
@@ -400,6 +400,11 @@ function usePrevious(value: number): number | undefined {
 
 // ─── Data polling hook ────────────────────────────────────────────────────────
 
+// Initial fetch brings the 200 most recent events for the overview. Subsequent
+// polls use ?since= for tool/llm calls, and fully refresh status/scan/context
+// (they're lightweight summary endpoints, not ring buffer dumps).
+const OVERVIEW_LIMIT = 200;
+
 function useProxyData() {
   const [status, setStatus]           = useState<ProxyStatus | null>(null);
   const [toolCalls, setToolCalls]     = useState<ToolCallEntry[]>([]);
@@ -408,35 +413,75 @@ function useProxyData() {
   const [llmCalls, setLlmCalls]       = useState<LlmCallEntry[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 
+  const lastToolTs = useRef<number>(0);
+  const lastLlmTs  = useRef<number>(0);
+  const initialized = useRef(false);
+
   useEffect(() => {
     let active = true;
 
-    async function poll() {
+    async function initialLoad() {
       try {
-        const [status, calls, scan, ctx, llm] = await Promise.all([
+        const [st, calls, scan, ctx, llm] = await Promise.all([
           getStatus(),
-          getToolCalls(),
+          getToolCalls({ limit: OVERVIEW_LIMIT }),
           getScanResults(),
           getHookContext(),
-          getLlmCalls(),
+          getLlmCalls({ limit: OVERVIEW_LIMIT }),
         ]);
-
         if (!active) return;
 
-        setStatus(status);
+        setStatus(st);
         setToolCalls(calls);
         setScanResults(scan);
         setHookContext(ctx);
         setLlmCalls(llm);
+        setIsConnected(true);
+        lastToolTs.current = calls.reduce((m, e) => Math.max(m, e.timestamp), 0);
+        lastLlmTs.current  = llm.reduce((m, e) => Math.max(m, e.timestamp), 0);
+        initialized.current = true;
+      } catch {
+        if (active) setIsConnected(false);
+      }
+    }
+
+    async function incrementalPoll() {
+      try {
+        const [st, newCalls, scan, ctx, newLlm] = await Promise.all([
+          getStatus(),
+          lastToolTs.current > 0 ? getToolCalls({ since: lastToolTs.current + 1 }) : Promise.resolve([] as ToolCallEntry[]),
+          getScanResults(),
+          getHookContext(),
+          lastLlmTs.current  > 0 ? getLlmCalls({  since: lastLlmTs.current  + 1 }) : Promise.resolve([] as LlmCallEntry[]),
+        ]);
+        if (!active) return;
+
+        setStatus(st);
+        setScanResults(scan);
+        setHookContext(ctx);
+        if (newCalls.length > 0) {
+          setToolCalls((prev) => [...prev, ...newCalls]);
+          lastToolTs.current = newCalls.reduce((m, e) => Math.max(m, e.timestamp), lastToolTs.current);
+        }
+        if (newLlm.length > 0) {
+          setLlmCalls((prev) => [...prev, ...newLlm]);
+          lastLlmTs.current = newLlm.reduce((m, e) => Math.max(m, e.timestamp), lastLlmTs.current);
+        }
         setIsConnected(true);
       } catch {
         if (active) setIsConnected(false);
       }
     }
 
-    poll();
-    const interval = setInterval(poll, 2000);
-    return () => { active = false; clearInterval(interval); };
+    let intervalId: ReturnType<typeof setInterval> | undefined;
+    initialLoad().then(() => {
+      if (!active) return;
+      intervalId = setInterval(() => {
+        if (initialized.current) incrementalPoll();
+      }, 2000);
+    });
+
+    return () => { active = false; clearInterval(intervalId); };
   }, []);
 
   return { status, toolCalls, scanResults, hookContext, llmCalls, isConnected };

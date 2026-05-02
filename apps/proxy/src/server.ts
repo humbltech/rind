@@ -235,8 +235,21 @@ export function createProxyServer(config: ProxyConfig) {
     app.route('/', llmGateway({ config: llmConfig, bus, policyEngine, logger, forwardFn: config.llmForwardFn, layers: config.layers }));
     logger.info({ logLevel: llmConfig.logLevel }, 'LLM API proxy gateway mounted');
 
+    // Admin endpoint: dynamically update the Anthropic upstream URL.
+    // Used by the sim CLI in HTTP demo mode to route LLM calls to the local mock server
+    // without requiring a proxy restart. Only mutates the in-memory config.
+    app.post('/admin/llm-upstream', async (c) => {
+      let body: unknown;
+      try { body = await c.req.json(); } catch { return c.json({ error: 'Body must be valid JSON' }, 400); }
+      const url = (body as Record<string, unknown> | null)?.['url'];
+      if (typeof url !== 'string' || !url) return c.json({ error: 'Expected { url: string }' }, 400);
+      llmConfig.anthropicUpstream = url;
+      logger.info({ url }, 'LLM anthropic upstream updated via admin API');
+      return c.json({ ok: true, anthropicUpstream: url });
+    });
+
     app.get('/logs/llm-calls', (c) => {
-      const { provider, model, outcome, agentId, since, until } = c.req.query();
+      const { provider, model, outcome, agentId, since, until, limit } = c.req.query();
       let events = llmBuf.toArray();
 
       if (provider) events = events.filter((e) => e.provider === provider);
@@ -251,14 +264,16 @@ export function createProxyServer(config: ProxyConfig) {
         const ts = parseInt(until, 10);
         if (!isNaN(ts)) events = events.filter((e) => e.timestamp <= ts);
       }
+      const limitN = limit ? parseInt(limit, 10) : NaN;
+      if (!isNaN(limitN) && limitN > 0) events = events.slice(-limitN);
 
       return c.json(events);
     });
 
     // Unified timeline: merges tool calls + LLM calls sorted by timestamp.
-    // Supports ?agentId=, ?sessionId=, ?since=, ?until= filters.
+    // Supports ?agentId=, ?sessionId=, ?since=, ?until=, ?limit= filters.
     app.get('/logs/timeline', (c) => {
-      const { agentId, sessionId, since, until } = c.req.query();
+      const { agentId, sessionId, since, until, limit } = c.req.query();
       const sinceTs = since ? parseInt(since, 10) : NaN;
       const untilTs = until ? parseInt(until, 10) : NaN;
 
@@ -276,7 +291,10 @@ export function createProxyServer(config: ProxyConfig) {
         .filter((e) => isNaN(untilTs) || e.timestamp <= untilTs)
         .map((e) => ({ kind: 'llm' as const, timestamp: e.timestamp, data: e }));
 
-      const merged = [...toolEvents, ...llmEvents].sort((a, b) => b.timestamp - a.timestamp);
+      let merged = [...toolEvents, ...llmEvents].sort((a, b) => b.timestamp - a.timestamp);
+      const limitN = limit ? parseInt(limit, 10) : NaN;
+      if (!isNaN(limitN) && limitN > 0) merged = merged.slice(0, limitN);
+
       return c.json(merged);
     });
   }

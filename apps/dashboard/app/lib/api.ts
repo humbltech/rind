@@ -128,18 +128,19 @@ async function del<T>(path: string): Promise<T> {
 export const getStatus = () => get<ProxyStatus>('/status');
 
 // ─── Tool call logs ───────────────────────────────────────────────────────────
-export const getToolCalls = (params?: { agentId?: string; toolName?: string; since?: number; until?: number }) => {
+export const getToolCalls = (params?: { agentId?: string; toolName?: string; since?: number; until?: number; limit?: number }) => {
   const q = new URLSearchParams();
   if (params?.agentId) q.set('agentId', params.agentId);
   if (params?.toolName) q.set('toolName', params.toolName);
   if (params?.since) q.set('since', String(params.since));
   if (params?.until) q.set('until', String(params.until));
+  if (params?.limit) q.set('limit', String(params.limit));
   const qs = q.toString();
   return get<ToolCallEvent[]>(`/logs/tool-calls${qs ? `?${qs}` : ''}`);
 };
 
 // ─── LLM call logs ────────────────────────────────────────────────────────────
-export const getLlmCalls = (params?: { provider?: string; model?: string; outcome?: string; agentId?: string; since?: number; until?: number }) => {
+export const getLlmCalls = (params?: { provider?: string; model?: string; outcome?: string; agentId?: string; since?: number; until?: number; limit?: number }) => {
   const q = new URLSearchParams();
   if (params?.provider) q.set('provider', params.provider);
   if (params?.model) q.set('model', params.model);
@@ -147,17 +148,19 @@ export const getLlmCalls = (params?: { provider?: string; model?: string; outcom
   if (params?.agentId) q.set('agentId', params.agentId);
   if (params?.since) q.set('since', String(params.since));
   if (params?.until) q.set('until', String(params.until));
+  if (params?.limit) q.set('limit', String(params.limit));
   const qs = q.toString();
   return get<LlmCallEvent[]>(`/logs/llm-calls${qs ? `?${qs}` : ''}`);
 };
 
 // ─── Timeline ─────────────────────────────────────────────────────────────────
-export const getTimeline = (params?: { agentId?: string; sessionId?: string; since?: number; until?: number }) => {
+export const getTimeline = (params?: { agentId?: string; sessionId?: string; since?: number; until?: number; limit?: number }) => {
   const q = new URLSearchParams();
   if (params?.agentId) q.set('agentId', params.agentId);
   if (params?.sessionId) q.set('sessionId', params.sessionId);
   if (params?.since) q.set('since', String(params.since));
   if (params?.until) q.set('until', String(params.until));
+  if (params?.limit) q.set('limit', String(params.limit));
   const qs = q.toString();
   return get<TimelineEvent[]>(`/logs/timeline${qs ? `?${qs}` : ''}`);
 };

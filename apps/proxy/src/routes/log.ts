@@ -14,7 +14,7 @@ export function logRoutes({ ringBuffer, hookEventBuffer }: LogRouteDeps): Hono {
   const app = new Hono();
 
   app.get('/logs/tool-calls', (c) => {
-    const { agentId, toolName, since, until } = c.req.query();
+    const { agentId, toolName, since, until, limit } = c.req.query();
     let events = ringBuffer.toArray();
 
     if (agentId) events = events.filter((e) => e.agentId === agentId);
@@ -27,6 +27,8 @@ export function logRoutes({ ringBuffer, hookEventBuffer }: LogRouteDeps): Hono {
       const ts = parseInt(until, 10);
       if (!isNaN(ts)) events = events.filter((e) => e.timestamp <= ts);
     }
+    const limitN = limit ? parseInt(limit, 10) : NaN;
+    if (!isNaN(limitN) && limitN > 0) events = events.slice(-limitN);
 
     return c.json(events);
   });

@@ -4,11 +4,12 @@
 
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import type React from 'react';
 import Link from 'next/link';
 import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import type { ContentInspectionAudit } from '@rind/core';
+import type { ToolCallEntry } from './tool-call-table';
 
 // ─── Data shape ───────────────────────────────────────────────────────────────
 
@@ -164,7 +165,7 @@ function AgentLabel({ agentId, sessionId }: { agentId: string; sessionId: string
 
 // ─── Conversation thread grouping ────────────────────────────────────────────
 
-interface LlmThread {
+export interface LlmThread {
   conversationId: string;
   calls: LlmCallEntry[];      // chronological order
   root: LlmCallEntry;         // first call (model, agent, provider)
@@ -177,9 +178,43 @@ interface LlmThread {
   toolNames: string[];
   /** tool_use_id → tool name — for resolving referencedToolUseIds to names */
   toolNameById: Map<string, string>;
+  /**
+   * Per-call correlation: callId → (tool_use_id → ToolCallEntry).
+   * Lets the detail panel show the actual blocked/allowed outcome next to each tool_use.
+   */
+  toolCallsByCallId: Map<string, Map<string, ToolCallEntry>>;
 }
 
-function groupByConversation(entries: LlmCallEntry[]): LlmThread[] {
+/**
+ * For each tool_use block in an LLM turn, find the matching intercepted tool call event.
+ * Matches by sessionId + toolName within the turn's time window, in order.
+ */
+function correlateToolCalls(
+  toolUses: Array<{ id: string; name: string }> | undefined,
+  sessionId: string,
+  afterMs: number,
+  beforeMs: number,
+  toolCalls: ToolCallEntry[],
+): Map<string, ToolCallEntry> {
+  const result = new Map<string, ToolCallEntry>();
+  if (!toolUses?.length) return result;
+
+  const candidates = toolCalls
+    .filter((tc) => tc.sessionId === sessionId && tc.timestamp >= afterMs && tc.timestamp <= beforeMs)
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  const used = new Set<number>();
+  for (const tu of toolUses) {
+    const idx = candidates.findIndex((tc, i) => !used.has(i) && tc.toolName === tu.name);
+    if (idx !== -1) {
+      used.add(idx);
+      result.set(tu.id, candidates[idx]!);
+    }
+  }
+  return result;
+}
+
+export function groupByConversation(entries: LlmCallEntry[], allToolCalls: ToolCallEntry[] = []): LlmThread[] {
   const map = new Map<string, LlmCallEntry[]>();
   for (const entry of entries) {
     const key = entry.conversationId ?? entry.id;
@@ -212,6 +247,18 @@ function groupByConversation(entries: LlmCallEntry[]): LlmThread[] {
         }
       }
 
+      // Correlate each call's tool_uses with real intercepted tool call events.
+      // Time window: from this call's timestamp to the next call's timestamp (+ 30s buffer).
+      const toolCallsByCallId = new Map<string, Map<string, ToolCallEntry>>();
+      for (let i = 0; i < sorted.length; i++) {
+        const call = sorted[i]!;
+        const nextTs = sorted[i + 1]?.timestamp ?? call.timestamp + 30_000;
+        toolCallsByCallId.set(
+          call.id,
+          correlateToolCalls(call.toolUses, call.sessionId, call.timestamp, nextTs, allToolCalls),
+        );
+      }
+
       return {
         conversationId: convId,
         calls: sorted,
@@ -223,54 +270,396 @@ function groupByConversation(entries: LlmCallEntry[]): LlmThread[] {
         worstOutcome,
         toolNames,
         toolNameById,
+        toolCallsByCallId,
       };
     })
     .sort((a, b) => b.latestTimestamp - a.latestTimestamp);
 }
 
-// ─── Individual call row (indented, inside an expanded thread) ────────────────
+// ─── Conversation flow — vertical timeline of actors ─────────────────────────
 
-function CallRow({ entry, index, toolNameById, consumedToolIds }: { entry: LlmCallEntry; index: number; toolNameById: Map<string, string>; consumedToolIds: Set<string> }) {
-  const [expanded, setExpanded] = useState(false);
+// Actor color tokens — teal for user-side, indigo for LLM, dim for results
+const ACTOR_COLORS = {
+  USER:        'var(--rind-accent)',
+  ASSISTANT:   '#818cf8',
+  TOOL:        'var(--rind-accent)',
+  TOOL_RESULT: 'var(--rind-foreground-dim, #525263)',
+} as const;
+
+// Thin vertical connector between flow blocks
+function FlowConnector() {
+  return <div className="w-px h-3 ml-[5px]" style={{ background: 'var(--rind-border)' }} />;
+}
+
+// Bold caps actor label with a left color stripe
+function ActorLabel({ color, label, children }: { color: string; label: string; children?: React.ReactNode }) {
   return (
-    <>
-      <tr
-        className="border-b border-border/50 hover:bg-overlay/40 transition-colors duration-75 cursor-pointer bg-overlay/20"
-        onClick={() => setExpanded((e) => !e)}
-      >
-        {/* indent + chevron */}
-        <td className="pl-8 pr-2 py-2 w-6">
-          {expanded
-            ? <ChevronDown size={11} className="text-dim" />
-            : <ChevronRight size={11} className="text-dim" />}
-        </td>
-        <td className="px-3 py-2 whitespace-nowrap">
-          <span className="text-[10px] font-mono text-dim">
-            Turn {index + 1} · <RelTime ts={entry.timestamp} />
+    <div className="flex items-center gap-2 min-w-0">
+      <div className="w-0.5 h-3.5 rounded-full shrink-0" style={{ background: color }} />
+      <span className="font-mono text-[9px] font-bold tracking-[0.1em] uppercase shrink-0" style={{ color }}>
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+// Meta line shown in the ASSISTANT header: model · in↑ out↓ · $cost · latency
+function AssistantMeta({ call }: { call: LlmCallEntry }) {
+  const fmt = (ms: number) => ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+  const parts: string[] = [];
+  if (call.inputTokens != null || call.outputTokens != null) {
+    parts.push(`${(call.inputTokens ?? 0).toLocaleString()}\u2191\u00a0${(call.outputTokens ?? 0).toLocaleString()}\u2193`);
+  }
+  if (call.estimatedCostUsd != null) {
+    parts.push(call.estimatedCostUsd < 0.001 ? '<$0.001' : `$${call.estimatedCostUsd.toFixed(4)}`);
+  }
+  if (call.totalDurationMs != null) parts.push(fmt(call.totalDurationMs));
+  else if (call.ttfbMs != null) parts.push(fmt(call.ttfbMs));
+  return (
+    <span className="font-mono text-[10px] text-dim ml-1">
+      {call.model}
+      {parts.length > 0 && <span className="ml-1 text-dim/70">\u00b7 {parts.join(' \u00b7 ')}</span>}
+    </span>
+  );
+}
+
+// Rind intercept verdict indented under a TOOL section
+function RindVerdict({ tc }: { tc: ToolCallEntry }) {
+  const blocked = tc.outcome === 'blocked';
+  const allowed = tc.outcome === 'allowed' || tc.outcome === 'approved';
+  if (!blocked && !allowed) return null;
+  const color = blocked ? '#f87171' : '#4ade80';
+  // For blocked calls: show what error was sent back to the LLM so the user understands
+  // why the next assistant turn says "I was unable to..." — prefer the actual output over the reason.
+  const returnedToLlm = blocked ? (tc.response?.outputPreview ?? tc.reason) : undefined;
+  return (
+    <div className="pl-5 mt-0.5 space-y-0.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="w-0.5 h-3 rounded-full shrink-0" style={{ background: color }} />
+        <span className="font-mono text-[9px] font-bold tracking-[0.1em] uppercase" style={{ color }}>RIND</span>
+        <span
+          className="font-mono text-[9px] px-1.5 py-0.5 rounded"
+          style={{ color, background: `color-mix(in srgb, ${color} 12%, transparent)` }}
+        >
+          {blocked ? '\u26d4 BLOCKED' : '\u2713 ALLOWED'}
+        </span>
+        {tc.matchedRule && (
+          <span className="font-mono text-[9px] text-dim">
+            rule: <span style={{ color: '#fbbf24' }}>{tc.matchedRule}</span>
           </span>
-        </td>
-        <td className="px-3 py-2 max-w-[130px]" />
-        <td className="px-3 py-2">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[11px] text-muted truncate max-w-[180px]">{entry.model}</span>
-            {entry.streaming && <span className="text-[9px] text-dim bg-overlay px-1 rounded">stream</span>}
-            <ThreatIndicator entry={entry} />
-          </div>
-        </td>
-        <td className="px-3 py-2 text-center text-[11px] text-muted">{entry.messageCount}</td>
-        <td className="px-3 py-2"><Tokens entry={entry} /></td>
-        <td className="px-3 py-2"><Cost value={entry.estimatedCostUsd} /></td>
-        <td className="px-3 py-2"><Latency ttfbMs={entry.ttfbMs} totalMs={entry.totalDurationMs} /></td>
-        <td className="px-3 py-2 pr-4"><OutcomeBadge outcome={entry.outcome} /></td>
-      </tr>
-      {expanded && (
-        <tr className="bg-overlay/40 border-b border-border/50">
-          <td colSpan={9} className="pl-12 pr-6 py-3">
-            <DetailPanel entry={entry} toolNameById={toolNameById} consumedToolIds={consumedToolIds} />
-          </td>
-        </tr>
+        )}
+      </div>
+      {returnedToLlm && (
+        <div className="pl-5 flex items-start gap-1 font-mono text-[9px]">
+          <span className="text-dim shrink-0">→ returned to LLM:</span>
+          <span className="text-dim break-all" style={{ color: blocked ? 'color-mix(in srgb, #f87171 70%, var(--rind-foreground-dim))' : 'var(--rind-foreground-dim)' }}>
+            {returnedToLlm.slice(0, 200)}{returnedToLlm.length > 200 ? '…' : ''}
+          </span>
+        </div>
       )}
-    </>
+    </div>
+  );
+}
+
+// A single tool_use block + verdict, indented under ASSISTANT
+function ToolUseBlock({ tu, verdict }: {
+  tu: { id: string; name: string; input: unknown };
+  verdict: ToolCallEntry | undefined;
+}) {
+  const summary = summariseToolInput(tu.name, tu.input);
+  return (
+    <div className="pl-4 mt-1.5">
+      <ActorLabel color={ACTOR_COLORS.TOOL} label="TOOL">
+        <span className="font-mono text-[11px] font-semibold shrink-0" style={{ color: ACTOR_COLORS.TOOL }}>
+          {tu.name}
+        </span>
+        {summary && <span className="font-mono text-[10px] text-dim truncate max-w-[280px]">{summary}</span>}
+      </ActorLabel>
+      {verdict && <RindVerdict tc={verdict} />}
+    </div>
+  );
+}
+
+// USER message block
+function UserBlock({ text, annotations }: { text: string; annotations: TextAnnotation[] }) {
+  const truncated = text.slice(0, 3000);
+  return (
+    <div className="pl-1">
+      <ActorLabel color={ACTOR_COLORS.USER} label="USER" />
+      <div className="mt-1 ml-3 font-mono text-[11px] text-foreground bg-[#0d0d0d] rounded border border-border p-2 max-h-36 overflow-auto leading-relaxed">
+        <AnnotatedText text={truncated} annotations={annotations} />
+        {text.length > 3000 && <span className="text-dim"> …</span>}
+      </div>
+    </div>
+  );
+}
+
+// ASSISTANT response block
+function AssistantBlock({ call, text, toolUses, verdictMap, annotations }: {
+  call: LlmCallEntry;
+  text: string | null;
+  toolUses: Array<{ id: string; name: string; input: unknown }>;
+  verdictMap: Map<string, ToolCallEntry>;
+  annotations: TextAnnotation[];
+}) {
+  const truncated = text ? text.slice(0, 4000) : null;
+  return (
+    <div className="pl-1">
+      <ActorLabel color={ACTOR_COLORS.ASSISTANT} label="ASSISTANT">
+        <AssistantMeta call={call} />
+        {call.outcome !== 'forwarded' && (
+          <span className="ml-1"><OutcomeBadge outcome={call.outcome} /></span>
+        )}
+      </ActorLabel>
+      {truncated ? (
+        <div className="mt-1 ml-3 font-mono text-[11px] text-foreground bg-[#0d0d0d] rounded border border-border p-2 max-h-36 overflow-auto leading-relaxed">
+          <AnnotatedText text={truncated} annotations={annotations} />
+          {text!.length > 4000 && <span className="text-dim"> …</span>}
+        </div>
+      ) : !toolUses.length && (
+        <span className="ml-3 font-mono text-[10px] text-dim italic">response not captured</span>
+      )}
+      {toolUses.map((tu) => (
+        <ToolUseBlock key={tu.id} tu={tu} verdict={verdictMap.get(tu.id)} />
+      ))}
+    </div>
+  );
+}
+
+// TOOL RESULT block
+function ToolResultBlock({ toolName, content }: { toolName: string | undefined; content: string }) {
+  const truncated = content.slice(0, 600);
+  return (
+    <div className="pl-1">
+      <ActorLabel color={ACTOR_COLORS.TOOL_RESULT} label="TOOL RESULT">
+        {toolName && <span className="font-mono text-[10px] text-dim">{toolName}</span>}
+      </ActorLabel>
+      <div className="mt-1 ml-3 font-mono text-[10px] text-dim bg-[#0d0d0d] rounded border border-border/50 p-2 max-h-20 overflow-auto">
+        {truncated}
+        {content.length > 600 && <span className="text-dim"> …</span>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Content parsers for Anthropic message blocks ─────────────────────────────
+
+type ABlock = Record<string, unknown>;
+
+function extractBlockText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return (content as ABlock[])
+    .filter((b) => b['type'] === 'text' && typeof b['text'] === 'string')
+    .map((b) => b['text'] as string)
+    .join('');
+}
+
+function extractToolUseBlocks(content: unknown): Array<{ id: string; name: string; input: unknown }> {
+  if (!Array.isArray(content)) return [];
+  return (content as ABlock[]).filter(
+    (b): b is { type: 'tool_use'; id: string; name: string; input: unknown } =>
+      b['type'] === 'tool_use' && typeof b['id'] === 'string' && typeof b['name'] === 'string',
+  );
+}
+
+function extractToolResultBlocks(content: unknown): Array<{ tool_use_id: string; content: unknown }> {
+  if (!Array.isArray(content)) return [];
+  return (content as ABlock[]).filter(
+    (b): b is { type: 'tool_result'; tool_use_id: string; content: unknown } =>
+      b['type'] === 'tool_result' && typeof b['tool_use_id'] === 'string',
+  );
+}
+
+function toolResultText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return (content as ABlock[])
+      .map((b) => (typeof b['text'] === 'string' ? b['text'] : ''))
+      .filter(Boolean)
+      .join('\n');
+  }
+  if (content == null) return '';
+  return JSON.stringify(content).slice(0, 600);
+}
+
+// ─── Main conversation flow component ────────────────────────────────────────
+
+/**
+ * ConversationFlow — renders the full conversation timeline for an LlmThread.
+ *
+ * Uses the last call's messages array (cumulative history) plus the last call's
+ * response to build the complete flow. Falls back to metadata-only when no
+ * message content is captured (logLevel: metadata).
+ */
+export function ConversationFlow({ thread }: { thread: LlmThread }) {
+  const { calls, toolCallsByCallId, toolNameById } = thread;
+
+  // Flatten all per-call verdict maps into one lookup: tool_use_id → ToolCallEntry
+  const globalVerdictMap = new Map<string, ToolCallEntry>();
+  for (const perCall of toolCallsByCallId.values()) {
+    for (const [useId, tc] of perCall) globalVerdictMap.set(useId, tc);
+  }
+
+  const annotations = calls.flatMap((c) => extractAnnotations(c.contentInspection));
+  const lastCall = calls[calls.length - 1]!;
+  // Use the last call's messages (it contains the full cumulative history)
+  const messages = Array.isArray(lastCall.messages)
+    ? (lastCall.messages as Array<Record<string, unknown>>)
+    : null;
+
+  const hasContent = messages != null || calls.some((c) => c.responseText);
+
+  const allThreats = calls.flatMap((c) => [...(c.requestThreats ?? []), ...(c.responseThreats ?? [])]);
+  const inspections = calls.filter((c) => c.contentInspection?.results.some((r) => r.matchCount > 0));
+
+  return (
+    <div className="space-y-1.5 py-2 text-[11px]">
+      {hasContent ? (
+        <>
+          {messages ? (
+            /* Full message content available — walk the Anthropic messages array */
+            messages.map((msg, i) => {
+              const role = typeof msg['role'] === 'string' ? msg['role'] : null;
+              if (!role) return null;
+
+              if (role === 'user') {
+                const text = extractBlockText(msg['content']);
+                const toolResults = extractToolResultBlocks(msg['content']);
+                return (
+                  <Fragment key={`msg-${i}`}>
+                    {toolResults.map((tr) => (
+                      <Fragment key={tr.tool_use_id}>
+                        <FlowConnector />
+                        <ToolResultBlock
+                          toolName={toolNameById.get(tr.tool_use_id)}
+                          content={toolResultText(tr.content)}
+                        />
+                      </Fragment>
+                    ))}
+                    {text.trim() && (
+                      <>
+                        {(i > 0 || toolResults.length > 0) && <FlowConnector />}
+                        <UserBlock text={text} annotations={annotations} />
+                      </>
+                    )}
+                  </Fragment>
+                );
+              }
+
+              if (role === 'assistant') {
+                const text = extractBlockText(msg['content']);
+                const toolUses = extractToolUseBlocks(msg['content']);
+
+                // Which call does this assistant turn belong to?
+                // Count assistant messages before index i to get the turn index.
+                const assistantIdx = messages.slice(0, i).filter((m) => (m as Record<string, unknown>)['role'] === 'assistant').length;
+                const matchedCall = calls[assistantIdx] ?? lastCall;
+
+                return (
+                  <Fragment key={`msg-${i}`}>
+                    <FlowConnector />
+                    <AssistantBlock
+                      call={matchedCall}
+                      text={text || null}
+                      toolUses={toolUses}
+                      verdictMap={globalVerdictMap}
+                      annotations={annotations}
+                    />
+                  </Fragment>
+                );
+              }
+
+              return null;
+            })
+          ) : null}
+
+          {/* Always append the last call's actual response.
+              The messages array is the INPUT sent to the LLM — it never contains this
+              call's response. responseText / toolUses are always additive here. */}
+          {messages && <FlowConnector />}
+          <AssistantBlock
+            call={lastCall}
+            text={lastCall.responseText ?? null}
+            toolUses={lastCall.toolUses ?? []}
+            verdictMap={globalVerdictMap}
+            annotations={annotations}
+          />
+        </>
+      ) : (
+        /* No content — metadata-only fallback */
+        <div className="space-y-1.5">
+          {calls.map((call, i) => {
+            const callVerdictMap = toolCallsByCallId.get(call.id) ?? new Map<string, ToolCallEntry>();
+            return (
+              <Fragment key={call.id}>
+                {i > 0 && <FlowConnector />}
+                {calls.length > 1 && (
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-mono text-[9px] font-bold text-dim uppercase tracking-wider">Turn {i + 1}</span>
+                    <span className="font-mono text-[9px] text-dim"><RelTime ts={call.timestamp} /></span>
+                    <div className="flex-1 h-px" style={{ background: 'var(--rind-border)' }} />
+                  </div>
+                )}
+                <AssistantBlock
+                  call={call}
+                  text={call.responseText ?? null}
+                  toolUses={call.toolUses ?? []}
+                  verdictMap={callVerdictMap}
+                  annotations={annotations}
+                />
+              </Fragment>
+            );
+          })}
+          <p className="font-mono text-[9px] text-dim italic pt-1 pl-1">
+            Prompt and response not captured — set{' '}
+            <span className="not-italic text-muted">llmProxy.logLevel: full</span> to enable.
+          </p>
+        </div>
+      )}
+
+      {/* Threats */}
+      {allThreats.length > 0 && (
+        <div className="pt-2 space-y-0.5 pl-1 border-t border-border/30 mt-2">
+          <span className="font-mono text-[9px] font-bold text-dim uppercase tracking-wider">Threats</span>
+          {allThreats.map((t, i) => (
+            <div key={i} className="ml-3 flex items-center gap-2 font-mono text-[10px]">
+              <span className="text-high">[{t.severity}]</span>
+              <span className="text-foreground">{t.type}</span>
+              <span className="text-dim">{t.detail}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Content inspection */}
+      {inspections.map((c) =>
+        c.contentInspection ? (
+          <div key={c.id} className="pt-1 pl-1">
+            <InspectionSummary inspection={c.contentInspection} />
+          </div>
+        ) : null,
+      )}
+
+      {/* Errors + matched rules at LLM level */}
+      {calls.some((c) => c.errorMessage || (c.matchedRule && c.outcome !== 'forwarded')) && (
+        <div className="pt-1 pl-1 space-y-0.5">
+          {calls.filter((c) => c.errorMessage).map((c) => (
+            <div key={c.id} className="font-mono text-[10px]">
+              <span className="text-dim">error: </span>
+              <span className="text-critical">{c.errorMessage}</span>
+            </div>
+          ))}
+          {calls.filter((c) => c.matchedRule && c.outcome !== 'forwarded').map((c) => (
+            <div key={c.id} className="font-mono text-[10px]">
+              <span className="text-dim">rule: </span>
+              <span className="text-foreground">{c.matchedRule}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -278,9 +667,7 @@ function CallRow({ entry, index, toolNameById, consumedToolIds }: { entry: LlmCa
 
 function ThreadRow({ thread }: { thread: LlmThread }) {
   const [expanded, setExpanded] = useState(false);
-  const { root, calls, toolNames, toolNameById } = thread;
-  // IDs whose results were consumed in a later turn — used to annotate tool uses as "ran"
-  const consumedToolIds = new Set(calls.flatMap((c) => c.referencedToolUseIds ?? []));
+  const { root, calls, toolNames } = thread;
   const multiTurn = calls.length > 1;
   const hasTokens = thread.totalInputTokens > 0 || thread.totalOutputTokens > 0;
 
@@ -358,17 +745,11 @@ function ThreadRow({ thread }: { thread: LlmThread }) {
         </td>
       </tr>
       {expanded && (
-        <>
-          {multiTurn
-            ? calls.map((call, i) => <CallRow key={call.id} entry={call} index={i} toolNameById={toolNameById} consumedToolIds={consumedToolIds} />)
-            : (
-              <tr className="bg-overlay/30 border-b border-border">
-                <td colSpan={9} className="px-6 py-3">
-                  <DetailPanel entry={root} toolNameById={toolNameById} consumedToolIds={consumedToolIds} />
-                </td>
-              </tr>
-            )}
-        </>
+        <tr className="bg-overlay/20 border-b border-border">
+          <td colSpan={9} className="px-6 py-3">
+            <ConversationFlow thread={thread} />
+          </td>
+        </tr>
       )}
     </>
   );
@@ -529,91 +910,6 @@ function InspectionSummary({ inspection }: { inspection: ContentInspectionAudit 
   );
 }
 
-// ─── Prompt + response blocks ─────────────────────────────────────────────────
-
-function MessageBlock({ messages, annotations }: { messages: unknown; annotations: TextAnnotation[] }) {
-  if (!messages) return null;
-  const lines = Array.isArray(messages)
-    ? messages.map((m: unknown) => {
-        if (typeof m !== 'object' || m === null) return { role: '?', text: String(m) };
-        const msg = m as { role?: string; content?: unknown };
-        const role = msg.role ?? '?';
-        let text = '';
-        if (typeof msg.content === 'string') {
-          text = msg.content;
-        } else if (Array.isArray(msg.content)) {
-          text = msg.content
-            .map((b: unknown) => {
-              if (typeof b === 'object' && b !== null && 'text' in b) return (b as { text: string }).text;
-              if (typeof b === 'object' && b !== null && 'type' in b) return `[${(b as { type: string }).type}]`;
-              return '';
-            })
-            .join('');
-        }
-        return { role, text };
-      })
-    : [{ role: '?', text: String(messages) }];
-
-  const hasSynthetics = annotations.length > 0;
-
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2">
-        <span className="text-dim text-[10px] uppercase tracking-wider">Prompt</span>
-        {hasSynthetics && (
-          <span
-            className="text-[9px] px-1 py-0.5 rounded border"
-            style={{ background: 'rgba(180,120,0,0.15)', color: '#fbbf24', borderColor: 'rgba(251,191,36,0.2)' }}
-          >
-            PII replaced
-          </span>
-        )}
-      </div>
-      <div className="bg-[#0d0d0d] rounded border border-border p-2 max-h-48 overflow-auto space-y-1.5">
-        {lines.map(({ role, text }, i) => {
-          const roleColor = role === 'user' ? 'text-accent' : role === 'assistant' ? 'text-[#10a37f]' : 'text-muted';
-          const truncated = text.slice(0, 2000);
-          const overflow = text.length > 2000;
-          return (
-            <div key={i}>
-              <span className={`${roleColor} font-semibold`}>{role}</span>
-              <span className="text-dim">: </span>
-              <AnnotatedText text={truncated} annotations={annotations} />
-              {overflow && <span className="text-dim">…</span>}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ResponseBlock({ text, annotations }: { text: string; annotations: TextAnnotation[] }) {
-  const truncated = text.slice(0, 4000);
-  const overflow = text.length > 4000;
-  const hasSynthetics = annotations.length > 0 && annotations.some((a) => text.includes(a.value));
-
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2">
-        <span className="text-dim text-[10px] uppercase tracking-wider">Response</span>
-        {hasSynthetics && (
-          <span
-            className="text-[9px] px-1 py-0.5 rounded border"
-            style={{ background: 'rgba(180,120,0,0.15)', color: '#fbbf24', borderColor: 'rgba(251,191,36,0.2)' }}
-          >
-            PII echoed → rehydrated for client
-          </span>
-        )}
-      </div>
-      <div className="bg-[#0d0d0d] rounded border border-border p-2 max-h-48 overflow-auto">
-        <AnnotatedText text={truncated} annotations={annotations} />
-        {overflow && <span className="text-dim">…</span>}
-      </div>
-    </div>
-  );
-}
-
 // Returns the key argument for a tool call — the one detail most useful to show at a glance.
 function summariseToolInput(name: string, input: unknown): string | null {
   if (typeof input !== 'object' || input === null) return null;
@@ -637,91 +933,17 @@ function summariseToolInput(name: string, input: unknown): string | null {
   return null;
 }
 
-function DetailPanel({ entry, toolNameById, consumedToolIds }: { entry: LlmCallEntry; toolNameById?: Map<string, string>; consumedToolIds?: Set<string> }) {
-  const allThreats = [...(entry.requestThreats ?? []), ...(entry.responseThreats ?? [])];
-  const annotations = extractAnnotations(entry.contentInspection);
-  return (
-    <div className="space-y-3 text-[11px] font-mono text-muted">
-      {/* Tools generated by this turn */}
-      {entry.toolUses && entry.toolUses.length > 0 && (
-        <div className="space-y-0.5">
-          <span className="text-dim">tools requested:</span>
-          {entry.toolUses.map((t) => {
-            const summary = summariseToolInput(t.name, t.input);
-            const ran = consumedToolIds?.has(t.id);
-            return (
-              <div key={t.id} className="ml-4 flex items-center gap-2 min-w-0">
-                <span className="text-accent font-semibold shrink-0">{t.name}</span>
-                {summary && <span className="text-dim">→</span>}
-                {summary && <span className="text-foreground truncate">{summary}</span>}
-                {ran && (
-                  <span className="text-[9px] font-mono px-1 py-0.5 rounded shrink-0" style={{ color: '#4ade80', background: 'rgba(74,222,128,0.1)' }}>
-                    ✓ ran
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {/* Tool results consumed by this turn — resolve names where possible */}
-      {entry.referencedToolUseIds && entry.referencedToolUseIds.length > 0 && (
-        <div className="space-y-0.5">
-          <span className="text-dim">tool results consumed:</span>
-          {entry.referencedToolUseIds.map((id) => {
-            const name = toolNameById?.get(id);
-            return (
-              <div key={id} className="ml-4 flex items-center gap-2">
-                {name
-                  ? <span className="text-foreground font-semibold">{name}</span>
-                  : <span className="text-dim text-[10px]">{id.slice(0, 12)}</span>}
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {entry.matchedRule && (
-        <div><span className="text-dim">rule: </span><span className="text-foreground">{entry.matchedRule}</span></div>
-      )}
-      {entry.errorMessage && (
-        <div><span className="text-dim">error: </span><span className="text-critical">{entry.errorMessage}</span></div>
-      )}
-      {allThreats.length > 0 && (
-        <div className="space-y-1">
-          <span className="text-dim">threats:</span>
-          {allThreats.map((t, i) => (
-            <div key={i} className="ml-4 flex items-center gap-2">
-              <span className="text-high">[{t.severity}]</span>
-              <span className="text-foreground">{t.type}</span>
-              <span className="text-dim">— {t.detail}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      {/* Content inspection breakdown — which target matched, what was replaced */}
-      {entry.contentInspection && entry.contentInspection.results.some((r) => r.matchCount > 0) && (
-        <InspectionSummary inspection={entry.contentInspection} />
-      )}
-      {/* Prompt + response content */}
-      {entry.messages != null && <MessageBlock messages={entry.messages} annotations={annotations} />}
-      {entry.responseText && <ResponseBlock text={entry.responseText} annotations={annotations} />}
-      {entry.messages == null && !entry.responseText && (
-        <div className="text-dim italic">
-          No prompt/response captured — set <span className="font-mono not-italic text-muted">llmProxy.logLevel: full</span> in rind config to enable
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface LlmCallTableProps {
   entries: LlmCallEntry[];
   maxHeight?: string;
+  /** Intercepted tool call events — used to show blocked/allowed outcomes inline per tool_use */
+  toolCalls?: ToolCallEntry[];
 }
 
-export function LlmCallTable({ entries, maxHeight = '420px' }: LlmCallTableProps) {
+export function LlmCallTable({ entries, maxHeight = '420px', toolCalls = [] }: LlmCallTableProps) {
   if (entries.length === 0) {
     return (
       <div className="flex items-center justify-center h-24 text-sm text-dim border border-border rounded-lg">
@@ -730,7 +952,7 @@ export function LlmCallTable({ entries, maxHeight = '420px' }: LlmCallTableProps
     );
   }
 
-  const threads = groupByConversation(entries);
+  const threads = groupByConversation(entries, toolCalls);
 
   return (
     <div className="overflow-auto rounded-lg border border-border" style={{ maxHeight }}>
