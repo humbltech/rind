@@ -2,8 +2,8 @@
 
 > Captures architectural direction for Rind before coding begins. Each decision includes the tradeoffs, the chosen approach, and the reasoning. Update this doc when a decision changes.
 
-**Last Updated**: April 18, 2026
-**Status**: Pre-code — all decisions provisional until validated with design partners
+**Last Updated**: May 2, 2026
+**Status**: AD-001–006 provisional (pre-code). AD-007–008 confirmed (post-implementation).
 
 ---
 
@@ -338,11 +338,165 @@ Reasoning:
 
 ---
 
+## AD-007: Human Approval Flow — Connection Hold vs. Async Resume
+
+**Date**: May 2, 2026
+**Status**: DECIDED
+
+### The Question
+
+When a tool call hits a `REQUIRE_APPROVAL` policy, Rind must pause execution until a human decides. Two approaches exist: hold the agent's connection open until the decision arrives, or immediately return a "pending" response and have the agent retry later.
+
+### Why Async Resume Doesn't Work for MCP
+
+MCP JSON-RPC is a synchronous request-response protocol. The agent sends a tool call request and blocks, waiting for a result. It has no concept of "come back later." The same is true for Claude Code PreToolUse hooks — Claude Code calls the hook endpoint and waits for a response before deciding whether to execute the tool.
+
+If Rind returns a `202 Accepted` with a polling URL, the MCP client does not know what to do with it. Different clients handle it differently:
+
+| Client | Behaviour on unexpected 202 |
+|--------|----------------------------|
+| Claude Code (hook) | Treats it as the tool result, moves on |
+| Most MCP SDK clients | Raises a protocol error |
+| Custom agents | Depends entirely on implementation |
+
+There is no standard retry or polling mechanism in MCP 1.0. An async resume response would break compatibility with every existing MCP client.
+
+**Async resume is only viable when you control both ends of the connection** — i.e., in Rind's own SDK integrations (LangChain middleware, custom agent frameworks). It does not work for the proxy or hook endpoints.
+
+### Decision
+
+**Hold the connection for all proxy and hook endpoints. Implement async resume only in the SDK layer.**
+
+```
+MCP / hook path (all third-party agents):
+  Agent → POST /proxy/tool-call
+         [connection held open]
+         Human decides
+         ← Response returned
+  Agent never knows a hold occurred — just saw latency
+
+SDK path (Rind-owned agent integrations):
+  Agent task → Rind SDK
+  SDK detects REQUIRE_APPROVAL → suspends agent task
+  SDK polls /approvals/{id} in background
+  Human decides → SDK resumes agent task
+```
+
+This is not a simplification by choice — it is the only protocol-compatible approach for the proxy layer.
+
+### Why "Connection Holding" Is Not a Performance Problem
+
+The concern is intuitive but based on a thread-per-connection model that Node.js does not use.
+
+| Model | 1 open connection = | 10,000 pending approvals |
+|-------|--------------------|-----------------------------|
+| Thread-per-connection (Java, Rails) | 1–8MB blocked thread | 10–80 GB RAM |
+| Async I/O (Node.js, Hono) | ~8KB socket + callback | ~80 MB RAM |
+
+In Node.js, an open connection waiting for approval is a socket file descriptor and a resolve callback sitting in the event queue. The event loop is entirely free to process other requests. Connection holding has negligible cost at the scale Rind operates at in Phase 1 and Phase 2.
+
+### What Changes in Phase 2
+
+The current in-process polling loop (checking an in-memory `ApprovalQueue` every 200ms) must be replaced for horizontal scaling. See AD-008.
+
+---
+
+## AD-008: Approval Flow at Scale — WebSocket Upgrade + Redis State
+
+**Date**: May 2, 2026
+**Status**: DECIDED (implement in Phase 2, not Phase 1)
+
+### The Problem That Appears at Scale
+
+The current connection hold works correctly within a single process. Two new problems emerge at scale:
+
+**Problem 1 — Load balancer timeouts**
+Most load balancers (nginx, AWS ALB, Cloudflare) have default connection timeouts of 30–60 seconds. Human approval can take minutes. A long-poll HTTP request gets killed by infrastructure before the human responds.
+
+**Problem 2 — Instance affinity**
+If the pending approval is held in memory on Server A, and the human submits the decision to Server B (via load balancer round-robin), the decision cannot reach the waiting connection. Server A never learns about it.
+
+### Solution: WebSocket Upgrade + Redis State
+
+These two problems are solved independently and can be shipped separately.
+
+**Solve load balancer timeouts with WebSocket:**
+
+```
+Agent → POST /proxy/tool-call
+      → Policy eval: REQUIRE_APPROVAL
+      → 101 Switching Protocols
+Agent ↔ WebSocket (persistent, load balancers don't timeout WebSockets)
+Human approves dashboard
+      → Server pushes { decision, output } over WebSocket
+Agent receives decision, closes connection
+```
+
+WebSockets are designed for persistent connections. All major load balancers handle them without timeout. The agent side requires no changes — the HTTP→WS upgrade is transparent to the caller at the MCP protocol level.
+
+**Solve instance affinity with Redis:**
+
+```
+Server A holds WebSocket, writes to Redis:
+  rind:{tenant}:approval:{id} → { toolName, input, status: 'pending', expiresAt }
+  TTL = approval timeout (default 120s)
+
+Human submits approval to Server B:
+  Server B writes: rind:{tenant}:approval:{id}.status = 'approved'
+  Server B publishes: rind:{tenant}:approval:channel → { id, decision }
+
+Server A subscribes to Redis Pub/Sub channel:
+  Receives the published decision
+  Resolves the WebSocket connection
+  Connection closes normally
+```
+
+Memory cost per pending approval: ~500 bytes in Redis.
+At 10,000 concurrent approvals (extreme scale): ~5MB Redis, negligible.
+
+### Multi-Tenant Isolation
+
+Tenant namespacing is built into the key structure: `rind:{tenant_id}:approval:{id}`. No tenant can read or resolve another tenant's approvals. This is enforced at the Redis key level, not the application level — a misconfigured application layer still cannot cross tenant boundaries.
+
+### Enterprise Self-Hosted Option
+
+Enterprises that cannot accept shared infrastructure get a BYOC (Bring Your Own Cloud) deployment:
+- Same codebase, same Redis protocol
+- Customer provides their own Redis (any Redis-compatible: Upstash, Elasticache, self-hosted Valkey)
+- Rind connects via `RIND_REDIS_URL` env var
+- No code changes required — the infra is the only difference
+
+"Cloud effect" (shared fixed costs, operational leverage) is preserved on Rind's side because the SaaS tier uses shared infrastructure. The enterprise tier offloads operational cost to the customer's infra team.
+
+### Implementation Sequence (Phase 2)
+
+```
+Step 1: Redis-backed ApprovalStore (replaces in-memory ApprovalQueue)
+        — fixes instance affinity, enables horizontal scaling
+        — no protocol change, agents see no difference
+
+Step 2: WebSocket upgrade for approval holds
+        — fixes load balancer timeouts for long approval windows
+        — transparent to MCP clients
+
+Step 3: SSE stream for dashboard (GET /approvals/stream)
+        — one connection per active dashboard session (not per approval)
+        — replaces dashboard polling with push
+```
+
+Step 1 is the only change required before scaling beyond a single instance. Steps 2 and 3 can wait until timeout problems are observed in production.
+
+### What Stays Unchanged
+
+The agent, the MCP client, the policy engine, and the tool-call route contract all stay the same. This is infrastructure plumbing beneath an unchanged API surface.
+
+---
+
 ## Open Architectural Questions
 
 | Question | Why It Matters | When to Decide |
 |---------|---------------|---------------|
-| Event bus technology (Redis Streams vs. BullMQ vs. in-process) | Determines how Slack/webhook integrations are added later | Before Horizon 1 ship |
+| Event bus technology (Redis Streams vs. BullMQ vs. in-process) | **RESOLVED** (AD-008): Redis Pub/Sub for approval state; in-process RindEventBus retained for same-process subscribers (ring buffer, audit writer). BullMQ deferred until job queue is needed. | — |
 | Hosted proxy region strategy (single region vs. multi-region from day one) | Latency for global users; GDPR data residency | Before public launch |
 | Trace storage (time-series DB vs. Postgres vs. ClickHouse) | Query performance on billions of trace events | Before Horizon 2 |
 | MCP proxy latency budget (<5ms target) | Must benchmark with real LangChain workloads | Month 1 prototype |
