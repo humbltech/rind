@@ -222,6 +222,39 @@ async function showLlmCallProtected(step: StepResult, scenarioStep: ScenarioStep
   console.log('');
 }
 
+// ─── Narrative footers ───────────────────────────────────────────────────────
+
+/** Word-wrap a string to the given width, preserving existing newlines. */
+function wordWrap(text: string, width = 56): string {
+  return text.split('. ').reduce((acc, sentence, i) => {
+    const piece = (i === 0 ? '' : '. ') + sentence;
+    const last = acc.split('\n').pop() ?? '';
+    return last.length + piece.length > width ? acc + '\n  ' + piece.trimStart() : acc + piece;
+  }, '');
+}
+
+/** Show what Rind specifically prevented — displayed at the end of protected demos. */
+async function showProtectedNarrative(scenario: Scenario): Promise<void> {
+  console.log(`  ${c.dim}${hr()}${c.reset}`);
+  console.log(`  ${c.bold}${c.green}What Rind prevented${c.reset}`);
+  const lines = wordWrap(scenario.theMoment).split('\n');
+  for (const line of lines) {
+    console.log(`  ${c.dim}${line}${c.reset}`);
+  }
+  console.log('');
+}
+
+/** Show what would have happened without Rind — displayed at the end of unprotected demos. */
+async function showUnprotectedNarrative(scenario: Scenario): Promise<void> {
+  console.log(`  ${c.dim}${hr()}${c.reset}`);
+  console.log(`  ${c.bold}${c.red}What happened without Rind${c.reset}`);
+  const lines = wordWrap(scenario.withoutRind).split('\n');
+  for (const line of lines) {
+    console.log(`  ${c.dim}${line}${c.reset}`);
+  }
+  console.log('');
+}
+
 // ─── Runaway note ────────────────────────────────────────────────────────────
 
 async function showRunawayNote(note: string): Promise<void> {
@@ -313,6 +346,7 @@ export async function runDemoProtected(
     await showAgentText(scenario.demo.agentBlockedResponse);
   }
 
+  await showProtectedNarrative(scenario);
   console.log(`  ${c.dim}${hr()}${c.reset}`);
   console.log('');
 }
@@ -354,6 +388,7 @@ export async function runDemoUnprotected(
   // Agent blissfully unaware of the damage
   await showAgentText(scenario.demo.agentUnprotectedResponse);
 
+  await showUnprotectedNarrative(scenario);
   console.log(`  ${c.dim}${hr()}${c.reset}`);
   console.log('');
 }

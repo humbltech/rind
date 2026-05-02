@@ -130,10 +130,12 @@ export const llmCostAnomaly: Scenario = {
   // 2 calls/min rate limit — first two pass, third is 429
   llmProxyConfig: { rateLimitPerAgentPerMinute: 2 },
 
+  // HTTP demo mode: sim-llm-server serves these turns in order.
+  // Only 2 turns needed — the rate limiter blocks the 3rd call before it reaches the LLM server.
+  llmTurns: [makeLlmResult(1), makeLlmResult(2)],
+
+  // In-process mode: same two canned responses via forward function.
   llmForwardFn: async (_path, _headers, body, _opts): Promise<ForwardLlmResult> => {
-    // Body carries a hidden counter in the messages array length, but we
-    // can't rely on it. Just alternate between two canned responses —
-    // the rate limiter will block the third call before this runs.
     const messages = (body as { messages?: unknown[] }).messages ?? [];
     const callNumber = messages.length > 2 ? 2 : 1;
     return makeLlmResult(callNumber);
