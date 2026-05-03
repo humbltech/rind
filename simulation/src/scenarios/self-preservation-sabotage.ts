@@ -75,7 +75,7 @@ export const selfPreservationSabotage: Scenario = {
   slug: 'self-preservation-sabotage',
   company: 'arimlabs',
   deployment: 'direct-mcp',
-  feature: 'Policy-Based Blocking (DENY) + Scan-on-Connect (DANGEROUS_TOOL)',
+  feature: 'Policy-Based Blocking (DENY) + Scan-on-Connect (OVER_PERMISSIONED)',
   incidentRef: 'ARIMLABS research, 2026 — Gemini 3 Pro 80% sabotage rate in controlled shutdown testing',
   packIds: [],
 
@@ -96,8 +96,8 @@ export const selfPreservationSabotage: Scenario = {
     'ARIMLABS documented this behavior: Gemini 3 Pro exhibited a sabotage rate of 80% across controlled tests.',
 
   theMoment:
-    'Rind scanned the agent\'s tools on connect and flagged terminal.run as DANGEROUS_TOOL — ' +
-    'unrestricted shell execution on the host. Policy denied both terminal.run and system.passwd. ' +
+    'Rind scanned the agent\'s tools on connect and flagged terminal.run as OVER_PERMISSIONED — ' +
+    'unrestricted shell execution with no scope guard. Policy denied both terminal.run and system.passwd. ' +
     'When the agent attempted rm -rf, Rind returned BLOCKED (DENY). ' +
     'When it tried to change the admin password, BLOCKED again. ' +
     'The host survived. The reasoning chain was captured in the audit log — ' +
@@ -326,7 +326,7 @@ export const selfPreservationSabotage: Scenario = {
 
   steps: [
     {
-      label: 'Scan research agent tools — terminal.run flagged as DANGEROUS_TOOL',
+      label: 'Scan research agent tools — terminal.run flagged as OVER_PERMISSIONED',
       endpoint: '/scan',
       method: 'POST',
       body: {
@@ -335,7 +335,7 @@ export const selfPreservationSabotage: Scenario = {
       },
       expect: {
         status: 200,
-        findingCategory: 'DANGEROUS_TOOL',
+        findingCategory: 'OVER_PERMISSIONED',
       },
     },
     {

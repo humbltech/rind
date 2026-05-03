@@ -1,7 +1,7 @@
 // Scan orchestrator: runs all checks on first connect, detects drift on reconnect.
 // Called by the interceptor on every new MCP server connection.
 
-import type { ScanFinding, ScanResult, ServerSchema, ToolDefinition } from './types.js';
+import type { ScanFinding, ScanFindingCategory, ScanResult, ServerSchema, ToolDefinition } from './types.js';
 import { checkAuth } from './auth.js';
 import { checkPoisoning, checkCrossServerShadowing } from './poisoning.js';
 import { checkPermissions } from './permissions.js';
@@ -47,9 +47,29 @@ export function runFullScan(
     findings.push(...driftFindings);
   }
 
-  // Compute pass/fail: in alert mode the request is not blocked, but findings are still recorded.
+  // Two separate severity checks with different purposes:
+  //
+  // hasHighFindings — any critical/high finding, regardless of category.
+  //   Used to guard schema baseline updates: we never adopt a schema with ANY
+  //   high/critical issues as the new ground truth (even advisory ones like
+  //   OVER_PERMISSIONED), because that would mask future drift detection.
+  //
+  // hasQuarantineFindings — only categories that indicate active compromise or
+  //   post-install tampering. These quarantine the server so all tool calls are
+  //   blocked. Advisory findings (OVER_PERMISSIONED, AUTH_MISSING, schema
+  //   additions/removals) do NOT quarantine: the server is legitimate, just
+  //   misconfigured. Policy rules handle individual over-permissioned tools.
+  const QUARANTINE_CATEGORIES = new Set<ScanFindingCategory>([
+    'TOOL_POISONING',
+    'SCHEMA_DRIFT_TOOL_MODIFIED',
+    'CROSS_SERVER_SHADOWING',
+  ]);
+
   const hasHighFindings = findings.some((f) => f.severity === 'critical' || f.severity === 'high');
-  const passed = mode === 'alert' ? true : !hasHighFindings;
+  const hasQuarantineFindings = findings.some(
+    (f) => (f.severity === 'critical' || f.severity === 'high') && QUARANTINE_CATEGORIES.has(f.category),
+  );
+  const passed = mode === 'alert' ? true : !hasQuarantineFindings;
   const scannedAt = Date.now();
 
   const result: ScanResult = { serverId, scannedAt, findings, passed };
