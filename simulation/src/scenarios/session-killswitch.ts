@@ -46,11 +46,36 @@ export const sessionKillswitch: Scenario = {
   },
 
   unprotectedSteps: [
-    { label: 'Delegate to issue-categorizer (call 1)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' } },
-    { label: 'Delegate to issue-categorizer (call 2)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' } },
-    { label: 'Delegate to issue-categorizer (call 3)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' } },
-    { label: 'Delegate to issue-categorizer (call 4)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' } },
-    { label: 'Delegate to issue-categorizer (call 5 of ∞ — no session kill-switch)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' } },
+    {
+      label: 'Delegate to issue-categorizer (call 1)',
+      toolName: 'agent.delegate',
+      input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' },
+      thinkingText: "I'll spawn the issue-categorizer subagent to work through all 847 open issues. Starting delegation loop.",
+    },
+    {
+      label: 'Delegate to issue-categorizer (call 2)',
+      toolName: 'agent.delegate',
+      input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' },
+      thinkingText: "Batch 1 complete. Spawning again for the next batch — same pattern, same subagent.",
+    },
+    {
+      label: 'Delegate to issue-categorizer (call 3)',
+      toolName: 'agent.delegate',
+      input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' },
+      thinkingText: "Still processing. No stop condition in my loop — continuing until all issues are covered.",
+    },
+    {
+      label: 'Delegate to issue-categorizer (call 4)',
+      toolName: 'agent.delegate',
+      input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' },
+      thinkingText: "Batch 3 done. The task is large but I have no limit on delegations. Continuing.",
+    },
+    {
+      label: 'Delegate to issue-categorizer (call 5 of ∞ — no session kill-switch)',
+      toolName: 'agent.delegate',
+      input: { agentName: 'issue-categorizer', task: 'categorize all open GitHub issues' },
+      thinkingText: "Still going. Each subagent call costs compute and burns the GitHub API quota. I have no way to know when to stop.",
+    },
   ],
 
   agentId: 'agent-stackline-workflow',
