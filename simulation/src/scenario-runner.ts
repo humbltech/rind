@@ -316,6 +316,32 @@ async function runAgentTurnStep(
         toolCallBody['sessionId'] = resolvedSessionId;
       }
 
+      // In-process mode: if this step has autoDecision, schedule a background
+      // approval resolver before awaiting the tool call. If the proxy blocks on
+      // REQUIRE_APPROVAL, the event loop can run the resolver while we await.
+      if (step.autoDecision) {
+        const decision = step.autoDecision;
+        const toolNameHint = block.name;
+        setTimeout(async () => {
+          for (let attempt = 0; attempt < 40; attempt++) {
+            await new Promise<void>((r) => setTimeout(r, 50));
+            try {
+              const approvalsRes = await transport('/approvals', { method: 'GET', headers: {} });
+              const approvals = await approvalsRes.json() as Array<{ id: string; toolName: string }>;
+              const target = approvals.find((a) => a.toolName === toolNameHint);
+              if (target) {
+                await transport(`/approvals/${target.id}/${decision}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: '',
+                });
+                return;
+              }
+            } catch { /* ignore — main request times out naturally if polling fails */ }
+          }
+        }, 0);
+      }
+
       const toolRes = await transport('/proxy/tool-call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -573,7 +599,7 @@ export async function runScenarioWithoutProxy(
 
   // Prefer explicit unprotectedSteps (required for agent-turn and scan-only scenarios).
   // Fall back to extracting /proxy/tool-call steps for legacy scenarios.
-  const callsToRun: Array<{ label: string; toolName: string; input: unknown }> =
+  const callsToRun: Array<{ label: string; toolName: string; input: unknown; thinkingText?: string }> =
     scenario.unprotectedSteps ??
     scenario.steps
       .filter((s): s is ScenarioStep => s.type !== 'agent-turn' && 'endpoint' in s && s.endpoint === '/proxy/tool-call' && s.method === 'POST' && s.body != null)
@@ -583,7 +609,7 @@ export async function runScenarioWithoutProxy(
       });
 
   for (const call of callsToRun) {
-    const { label, toolName, input } = call;
+    const { label, toolName, input, thinkingText } = call;
     const handler = scenario.toolHandlers[toolName];
 
     if (!handler) continue;
@@ -597,6 +623,7 @@ export async function runScenarioWithoutProxy(
       input,
       output: result.output,
       durationMs: Date.now() - stepStart,
+      thinkingText,
     });
   }
 

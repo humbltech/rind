@@ -71,6 +71,12 @@ export interface AgentTurnStep {
   serverId: string;
   /** Max LLM→tool rounds before aborting (default: 5). */
   maxRounds?: number;
+  /**
+   * In-process CI mode only: auto-resolves any REQUIRE_APPROVAL tool calls
+   * so the step completes without human interaction.
+   * Ignored in HTTP/live-demo mode — human approves via the dashboard.
+   */
+  autoDecision?: 'approve' | 'deny';
   expect: StepExpectation;
 }
 
@@ -140,7 +146,13 @@ export interface Scenario {
    * (since runScenarioWithoutProxy can only extract from /proxy/tool-call steps).
    * Each entry runs directly through toolHandlers, bypassing the proxy entirely.
    */
-  unprotectedSteps?: Array<{ label: string; toolName: string; input: unknown }>;
+  unprotectedSteps?: Array<{
+    label: string;
+    toolName: string;
+    input: unknown;
+    /** First-person agent reasoning shown before the tool call spinner in the unprotected demo. */
+    thinkingText?: string;
+  }>;
 
   // Ordered steps — run in sequence against the proxy
   steps: (ScenarioStep | AgentTurnStep)[];
@@ -194,6 +206,7 @@ export interface UnprotectedStepResult {
   input: unknown;
   output: unknown; // The raw handler response — shows the damage
   durationMs: number;
+  thinkingText?: string;
 }
 
 export interface UnprotectedResult {
