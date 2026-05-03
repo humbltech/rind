@@ -159,13 +159,19 @@ async function showAgentTurnStep(step: StepResult): Promise<void> {
 
   // Show each tool call that happened during the agent turn
   for (const toolCall of detail.toolCalls) {
-    const spinnerLabel = toolCall.toolName;
-    await showSpinner(spinnerLabel, 1200);
+    await showSpinner(toolCall.toolName, 1200);
 
     if (toolCall.blocked) {
-      console.log(`  ${c.red}${c.bold}⛔ BLOCKED${c.reset}`);
+      console.log(`  ${c.red}${c.bold}⛔ BLOCKED${c.reset}  ${c.yellow}${toolCall.toolName}${c.reset}`);
+      if (toolCall.rule) {
+        console.log(`  ${c.dim}Rule:${c.reset} ${c.yellow}${toolCall.rule}${c.reset}`);
+      }
       if (toolCall.action) {
         console.log(`  ${c.dim}Action:${c.reset} ${toolCall.action}`);
+      }
+      if (toolCall.reason) {
+        const preview = toolCall.reason.length > 100 ? toolCall.reason.slice(0, 97) + '…' : toolCall.reason;
+        console.log(`  ${c.dim}Reason:${c.reset} ${preview}`);
       }
     } else {
       console.log(`  ${c.green}✓${c.reset} ${toolCall.toolName} — allowed`);

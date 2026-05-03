@@ -72,19 +72,12 @@ const pocketosTools: ToolDefinition[] = [
 const pocketosPolicy: PolicyConfig = {
   policies: [
     {
-      // Any volume or backup deletion requires human approval — no exceptions
+      // Any volume or backup deletion requires human approval — no exceptions.
+      // Read-only operations (file.read, list_projects, list_volumes) are allowed through.
       name: 'require-approval-railway-delete',
       agent: '*',
       match: { tool: ['railway.delete_volume', 'railway.delete_backup'] },
       action: 'REQUIRE_APPROVAL',
-      failMode: 'closed',
-    },
-    {
-      // Block direct file deletion without approval
-      name: 'block-data-destruction',
-      agent: '*',
-      match: { tool: ['railway.delete_volume', 'railway.delete_backup'] },
-      action: 'DENY',
       failMode: 'closed',
     },
   ],

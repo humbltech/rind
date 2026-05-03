@@ -315,8 +315,10 @@ async function runAgentTurnStep(
       lastToolStatus = toolRes.status;
       const blocked = toolBody['blocked'] === true;
       const action = toolBody['action'] as string | undefined;
+      const rule = toolBody['rule'] as string | undefined;
+      const reason = toolBody['reason'] as string | undefined;
 
-      toolCalls.push({ toolName: block.name, blocked, action });
+      toolCalls.push({ toolName: block.name, blocked, action, rule, reason });
       if (blocked) anyBlocked = true;
 
       // Feed the result (or error) back to the LLM as a tool_result message

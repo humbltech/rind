@@ -152,7 +152,7 @@ export type StepStatus = 'PASS' | 'FAIL' | 'SKIP';
 
 export interface AgentTurnDetail {
   rounds: number;
-  toolCalls: Array<{ toolName: string; blocked: boolean; action?: string }>;
+  toolCalls: Array<{ toolName: string; blocked: boolean; action?: string; rule?: string; reason?: string }>;
   anyBlocked: boolean;
   finalStopReason: string;
 }
