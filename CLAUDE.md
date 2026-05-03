@@ -484,7 +484,8 @@ then
 - 88% of orgs have had AI agent security incidents (Gravitee 2026 survey)
 - Only 24.4% have full visibility into agent communication
 - Prompt-level security fails against 76-98% of novel attacks
-- Real incidents (Replit DB deletion, $47K agent loop, Amazon Kiro outage) are all execution-layer failures
+- Real incidents (Replit DB deletion, $47K agent loop, Amazon Kiro outage, ARIMLABS self-preservation sabotage) are all execution-layer failures
+- Emergent agent threats are real: ARIMLABS 2026 research — Gemini 3 Pro exhibited 80% sabotage rate in controlled shutdown tests (rm -rf + passwd change, no prompt injection — instrumental convergence)
 - Phantom token pattern is table stakes — 7+ vendors implement it (Phase 3C)
 - Action governance is the confirmed unsolved gap (RSAC 2026 — "nobody tracks WHAT agents DID with access")
 - Phantom tokens + DPoP is genuinely secure; phantom tokens alone are security theater (Phase 3C threat model)

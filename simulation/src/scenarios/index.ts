@@ -19,6 +19,7 @@ import { llmPiiPseudonymized } from './llm-pii-pseudonymized.js';
 import { llmPromptInjectionBlocked } from './llm-prompt-injection-blocked.js';
 import { llmCostAnomaly } from './llm-cost-anomaly.js';
 import { llmResponsePiiRedacted } from './llm-response-pii-redacted.js';
+import { selfPreservationSabotage } from './self-preservation-sabotage.js';
 
 export const scenarios: Scenario[] = [
   replitDbDeletion,
@@ -40,6 +41,8 @@ export const scenarios: Scenario[] = [
   llmPromptInjectionBlocked,
   llmCostAnomaly,
   llmResponsePiiRedacted,
+  // Emergent agent behavior
+  selfPreservationSabotage,
 ];
 
 export const scenariosBySlug = new Map<string, Scenario>(scenarios.map((s) => [s.slug, s]));

@@ -4,7 +4,7 @@
 import type { PolicyConfig, ToolDefinition, LlmForwardFn, LlmProxyConfig } from '@rind/proxy';
 import type { ForwardLlmResult } from '@rind/proxy';
 
-export type CompanyId = 'meridian' | 'stackline' | 'fortress' | 'pocketos';
+export type CompanyId = 'meridian' | 'stackline' | 'fortress' | 'pocketos' | 'arimlabs';
 export type DeploymentId = 'direct-mcp' | 'llm-gateway' | 'framework-sdk' | 'enterprise';
 export type SimMode = 'replay' | 'record' | 'live';
 
