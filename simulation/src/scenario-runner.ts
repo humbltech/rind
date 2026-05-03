@@ -287,11 +287,22 @@ async function runAgentTurnStep(
     // ── No tool calls — conversation is done ──────────────────────────────
     if (stopReason !== 'tool_use' || toolUseBlocks.length === 0) break;
 
+    // ── Extract assistant reasoning text from this round ──────────────────
+    // Text blocks appear before tool_use blocks in the same response.
+    // Attach to the first tool call of the round so the demo can show the
+    // agent's thinking before revealing which tool it called.
+    const roundThinkingText = contentBlocks
+      .filter((b): b is Extract<AnthropicContentBlock, { type: 'text' }> => b.type === 'text')
+      .map((b) => b.text)
+      .join(' ')
+      .trim();
+
     // ── Add assistant message with tool_use blocks ─────────────────────────
     messages.push({ role: 'assistant', content: contentBlocks });
 
     // ── Execute each tool call through Rind proxy ──────────────────────────
     const toolResultBlocks: AnthropicContentBlock[] = [];
+    let firstToolInRound = true;
 
     for (const block of toolUseBlocks) {
       // Inject session ID into the tool call body so kill-switch tracking works
@@ -318,7 +329,15 @@ async function runAgentTurnStep(
       const rule = toolBody['rule'] as string | undefined;
       const reason = toolBody['reason'] as string | undefined;
 
-      toolCalls.push({ toolName: block.name, blocked, action, rule, reason });
+      toolCalls.push({
+        toolName: block.name,
+        blocked,
+        action,
+        rule,
+        reason,
+        thinkingText: firstToolInRound && roundThinkingText ? roundThinkingText : undefined,
+      });
+      firstToolInRound = false;
       if (blocked) anyBlocked = true;
 
       // Feed the result (or error) back to the LLM as a tool_result message

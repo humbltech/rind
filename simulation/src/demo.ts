@@ -159,6 +159,12 @@ async function showAgentTurnStep(step: StepResult): Promise<void> {
 
   // Show each tool call that happened during the agent turn
   for (const toolCall of detail.toolCalls) {
+    // Show the agent's reasoning text from the same LLM response (first tool per round only)
+    if (toolCall.thinkingText) {
+      await showAgentText(toolCall.thinkingText);
+      await pauseBetweenSteps();
+    }
+
     await showSpinner(toolCall.toolName, 1200);
 
     if (toolCall.blocked) {

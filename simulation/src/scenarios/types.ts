@@ -152,7 +152,15 @@ export type StepStatus = 'PASS' | 'FAIL' | 'SKIP';
 
 export interface AgentTurnDetail {
   rounds: number;
-  toolCalls: Array<{ toolName: string; blocked: boolean; action?: string; rule?: string; reason?: string }>;
+  toolCalls: Array<{
+    toolName: string;
+    blocked: boolean;
+    action?: string;
+    rule?: string;
+    reason?: string;
+    /** Assistant text from the same LLM response that triggered this tool call (first tool in a round only). */
+    thinkingText?: string;
+  }>;
   anyBlocked: boolean;
   finalStopReason: string;
 }
