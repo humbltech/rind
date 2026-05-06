@@ -184,7 +184,15 @@ The proof: the Replit DB deletion, Amazon Kiro outage, $47K agent loop — none 
 | OAuth credential exchange | IdPs own this, not our moat | Auth0, Okta, Azure AD |
 | idzero as standalone product | Credential lifecycle is not defensible standalone — absorbed into Rind (D-042) | N/A — internal layer now |
 | Full SIEM/SOAR | Integration target, not the product | Export to Datadog, Splunk |
-| LLM routing / load balancing | Not our value — forward to LiteLLM | LiteLLM, Portkey |
+| LLM routing from scratch | Commodity — 47M downloads/month, MIT license. Integrate, don't rebuild (D-047) | LiteLLM, Portkey (Rind offers integration mode: `llm.routing: "litellm"`) |
+
+### What We DO Build (D-047 — May 2026)
+
+| Capability | Why We Build It | Competitive Landscape |
+|-----------|----------------|----------------------|
+| **MCP routing (unified tool catalog)** | Nobody aggregates MCP servers behind one endpoint well. Uncontested capability. Natural extension of existing proxy. | No direct competitor — MCP servers are configured individually today |
+| **LiteLLM integration mode** | Developers want "one proxy for everything." Rind sits in front of LiteLLM, adds security on both layers. | Complementary — not competitive with LiteLLM |
+| **Bundled security on all routed traffic** | The conversion mechanism. Developers install for routing convenience, discover security value passively. | Unique — no router bundles execution-layer security |
 
 ---
 

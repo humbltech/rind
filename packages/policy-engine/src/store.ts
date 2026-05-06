@@ -9,7 +9,7 @@
 //   Phase 3: PersistentPolicyStore (DB-backed, pg_notify / Redis pub/sub for invalidation)
 
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
-import type { PolicyConfig, PolicyRule } from '@rind/core';
+import type { PolicyConfig, PolicyRule, PolicyRuleWithMeta } from '@rind/core';
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 
@@ -131,7 +131,14 @@ export class InMemoryPolicyStore implements PolicyStore {
   private persist(): void {
     if (!this.persistPath) return;
     try {
-      writeFileSync(this.persistPath, JSON.stringify(this.config.policies, null, 2), 'utf-8');
+      // Only persist custom rules — exclude pack-sourced rules (source: 'pack:*').
+      // Pack rules are ephemeral: they are re-enabled on startup from rind.policy.yaml
+      // `packs:` section, or via API after restart. Persisting pack rules caused the
+      // llm-injection-guard-v1 false-positive to survive proxy restarts indefinitely.
+      const customRules = this.config.policies.filter(
+        (r) => !(r as PolicyRuleWithMeta)._meta?.source.startsWith('pack:'),
+      );
+      writeFileSync(this.persistPath, JSON.stringify(customRules, null, 2), 'utf-8');
     } catch {
       // Persistence failure is non-fatal — policies remain in memory
     }

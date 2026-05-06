@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "rind-threat-sim": {
+      "type": "http",
+      "url": "http://localhost:8080/mcp"
+    },
+    "rind-victim-service": {
+      "type": "http",
+      "url": "http://localhost:8081/mcp"
+    }
+  }
+}

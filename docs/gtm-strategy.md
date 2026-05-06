@@ -543,6 +543,13 @@ Based on competitive analysis, these positioning opportunities are underserved:
 - All verified servers lack authentication
 - **Rind Story:** "The security layer MCP needs"
 
+#### 5. "One Proxy for AI Agents" (D-047 — May 2026)
+- **Gap:** Developers assemble multiple tools — LiteLLM for routing, LangSmith for observability, Lakera for security. No single proxy handles routing + security.
+- **Rind Opportunity:** MCP routing (unified tool catalog) + LiteLLM integration + bundled security in one proxy
+- **Messaging:** "One proxy. Routes your tools, secures your actions." Routing is the convenience hook; safety is the moat.
+- **Entry funnel:** Developer installs for routing convenience → security scanning runs on all traffic (can't turn off) → dashboard reveals unexpected behavior → "oh shit" moment → paid conversion
+- **Note:** Routing is a CAPABILITY, not the product identity. Lead with safety (D-006), discover routing.
+
 ### 6.3 Category Creation Considerations
 
 **Expert Advice (Former Gartner Analyst):** "Don't!" create a new category. It's risky, costly, and often unnecessary.

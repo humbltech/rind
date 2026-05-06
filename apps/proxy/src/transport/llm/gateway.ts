@@ -122,6 +122,9 @@ const ACCUMULATOR_FACTORIES: Record<string, typeof createAnthropicAccumulator> =
  * without storing the actual key.
  */
 function deriveSessionId(headers: Record<string, string>): string {
+  // Explicit session ID (e.g. passed by simulation runner or Claude Code hook) takes precedence
+  const explicit = headers['x-rind-session-id'];
+  if (explicit) return explicit;
   const key =
     headers['x-api-key'] ??
     headers['authorization']?.replace(/^Bearer\s+/i, '') ??

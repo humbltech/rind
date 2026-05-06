@@ -129,27 +129,49 @@ async function disablePack(proxyUrl: string, packId: string): Promise<void> {
 // ─── Sim LLM server lifecycle ─────────────────────────────────────────────────
 // In HTTP mode, auto-start the sim LLM server so LLM calls route through the real
 // proxy (full dashboard visibility) without needing a real Anthropic API key.
-// The proxy must be started with: RIND_ANTHROPIC_UPSTREAM=http://localhost:4099
+//
+// After starting the server, we immediately configure the running proxy to route
+// LLM calls to it via POST /admin/llm-upstream — no proxy restart required.
 
 async function maybeStartSimLlmServer(proxyUrl: string | undefined): Promise<SimLlmServer | undefined> {
   if (!proxyUrl) return undefined; // in-process mode uses injected llmForwardFn
 
+  let srv: SimLlmServer | undefined;
   try {
-    const srv = await startSimLlmServer(SIM_LLM_PORT);
+    srv = await startSimLlmServer(SIM_LLM_PORT);
     console.log(`  ✓ Sim LLM server started on port ${SIM_LLM_PORT}`);
-    console.log(`    (proxy must be started with RIND_ANTHROPIC_UPSTREAM=${SIM_LLM_URL})\n`);
-    return srv;
   } catch (err) {
     // Port already in use — server may already be running, which is fine
     const isAddrInUse = err instanceof Error && (err as NodeJS.ErrnoException).code === 'EADDRINUSE';
     if (isAddrInUse) {
-      console.log(`  ✓ Sim LLM server already running on port ${SIM_LLM_PORT}\n`);
+      console.log(`  ✓ Sim LLM server already running on port ${SIM_LLM_PORT}`);
     } else {
       console.warn(`  ⚠ Could not start sim LLM server: ${String(err)}`);
       console.warn(`    LLM calls will go to real Anthropic (requires ANTHROPIC_API_KEY)\n`);
+      return undefined;
     }
-    return undefined; // non-fatal — scenario runner falls through to real proxy
   }
+
+  // Point the running proxy at the sim LLM server so LLM calls appear in the
+  // dashboard without needing a real API key — no proxy restart required.
+  try {
+    const base = proxyUrl.replace(/\/$/, '');
+    const res = await fetch(`${base}/admin/llm-upstream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: SIM_LLM_URL }),
+    });
+    if (res.ok) {
+      console.log(`  ✓ Proxy LLM upstream → ${SIM_LLM_URL}`);
+    } else {
+      console.warn(`  ⚠ Could not configure proxy upstream (${res.status}) — restart proxy with RIND_ANTHROPIC_UPSTREAM=${SIM_LLM_URL}`);
+    }
+  } catch {
+    console.warn(`  ⚠ Could not reach proxy at ${proxyUrl} — restart proxy with RIND_ANTHROPIC_UPSTREAM=${SIM_LLM_URL}`);
+  }
+  console.log('');
+
+  return srv;
 }
 
 // ─── Demo mode (single scenario — chat format) ─────────────────────────────

@@ -72,7 +72,7 @@
 
 | Tier | Price | Policy Evals | Agents | Users | Key Features |
 |------|-------|--------------|--------|-------|--------------|
-| **Free** | $0 | 10K/mo | 5 | 1 | Basic policies, 7-day audit |
+| **Free** | $0 | 10K/mo | 5 | 1 | Basic policies, 7-day audit, MCP routing (≤3 servers), basic security scanning |
 | **Starter** | $99/mo | 100K/mo | 25 | 3 | All policy types, 30-day audit, email alerts |
 | **Team** | $399/mo | 1M/mo | 100 | 10 | Lakera integration, Slack alerts, 90-day audit |
 | **Business** | $999/mo | 10M/mo | 500 | 25 | SSO, approvals, priority support, 1-year audit |
@@ -84,6 +84,9 @@
 - 10K policy evaluations = ~100 tool calls/day with 3 policies each
 - Enough for a developer testing, not enough for production
 - 5 agents = one small project
+- MCP routing: ≤3 upstream MCP servers (unified tool catalog). Unlimited servers = paid. (D-047)
+- Basic security scanning on all traffic (bundled, can't turn off) — the conversion mechanism
+- LLM routing: via LiteLLM integration mode (≤2 providers free, unlimited = Starter+)
 
 **Starter ($99/mo):**
 - 100K evals = ~3K tool calls/day = small production deployment

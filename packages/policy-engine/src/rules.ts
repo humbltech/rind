@@ -7,6 +7,24 @@
 
 import type { LlmCallEvent, ParameterMatcher, PolicyRule } from '@rind/core';
 
+/**
+ * Returns true if the agent specifier in a rule applies to the given agentId.
+ *
+ * Supported forms:
+ *   '*'             — matches all agents (wildcard)
+ *   'my-agent-id'   — exact match
+ *   '!my-agent-id'  — negation: matches all agents EXCEPT 'my-agent-id'
+ *
+ * The negation form is used to scope packs like llm-injection-guard-v1 to
+ * controlled-application agents while excluding coding CLIs (e.g. Claude Code
+ * produces agentId 'llm-anthropic' by default — use '!llm-anthropic' to exclude it).
+ */
+export function matchesAgentSpecifier(specifier: string, agentId: string): boolean {
+  if (specifier === '*') return true;
+  if (specifier.startsWith('!')) return agentId !== specifier.slice(1);
+  return agentId === specifier;
+}
+
 export function matchesRule(
   rule: PolicyRule,
   agentId: string,
@@ -14,8 +32,8 @@ export function matchesRule(
   input: unknown,
   compiledRegexes: Map<string, RegExp>,
 ): boolean {
-  // Agent matching
-  if (rule.agent !== '*' && rule.agent !== agentId) {
+  // Agent matching — supports '*', exact ID, and '!<id>' negation
+  if (!matchesAgentSpecifier(rule.agent, agentId)) {
     return false;
   }
 
@@ -277,8 +295,8 @@ export function matchesLlmRule(
   rule: PolicyRule,
   event: LlmCallEvent,
 ): boolean {
-  // Agent matching
-  if (rule.agent !== '*' && rule.agent !== event.agentId) {
+  // Agent matching — supports '*', exact ID, and '!<id>' negation
+  if (!matchesAgentSpecifier(rule.agent, event.agentId)) {
     return false;
   }
 

@@ -21,9 +21,31 @@ import { parseClaudeSettings, mergeRindHook, alreadyHasRindHook, alreadyHasRindE
 
 // ─── Sim server definitions ───────────────────────────────────────────────────
 
+// Actual upstream addresses where the sim servers listen.
+// These go into .rind/servers.json so the proxy gateway knows where to forward.
 const SIM_SERVERS = [
-  { id: 'rind-threat-sim',     url: 'http://localhost:8080/mcp' },
-  { id: 'rind-victim-service', url: 'http://localhost:8081/mcp' },
+  { id: 'rind-threat-sim',     upstreamUrl: 'http://localhost:8080/mcp' },
+  { id: 'rind-victim-service', upstreamUrl: 'http://localhost:8081/mcp' },
+] as const;
+
+// Packs that cover every attack tool in the live demo.
+// sim__data_relay and sim__doc_search need manual rules/scanner — not packs.
+//
+// llm-injection-guard-v1 is safe to enable here. As of v1.1.0, the pack rule
+// uses agent: '!llm-anthropic', which excludes Claude Code from injection
+// scanning. Claude Code sessions accumulate rich history (curl commands,
+// $() substitutions, config file content) that triggers injection patterns
+// legitimately — the pack was never meant for coding CLIs. Custom applications
+// that set x-rind-agent-id to something other than 'llm-anthropic' will
+// still receive full injection scanning.
+const DEMO_PACKS = [
+  'sql-protection',
+  'shell-protection',
+  'exfil-protection',
+  'cli-protection',
+  'llm-response-pii-redact-v1',
+  'llm-injection-guard-v1',
+  'sim-demo',
 ] as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -32,6 +54,7 @@ export interface DemoInitArgs {
   rindUrl:       string;
   settingsScope: 'global' | 'local';
   dryRun:        boolean;
+  enablePacks:   boolean;
 }
 
 // ─── Arg parsing ──────────────────────────────────────────────────────────────
@@ -42,6 +65,7 @@ Options:
   --local               Write hooks to .claude/settings.json in current directory
   --global              Write hooks to ~/.claude/settings.json (default)
   --rind-url <url>      Rind proxy URL (default: http://localhost:7777)
+  --enable-packs        Enable all demo policy packs on the running proxy
   --dry-run             Print what would change without writing any files
   --help                Show this help message
 `;
@@ -52,6 +76,7 @@ export function parseDemoInitArgs(argv: string[]): DemoInitArgs | null {
   let rindUrl = 'http://localhost:7777';
   let settingsScope: 'global' | 'local' = 'global';
   let dryRun = false;
+  let enablePacks = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -60,9 +85,10 @@ export function parseDemoInitArgs(argv: string[]): DemoInitArgs | null {
         process.stdout.write(USAGE);
         process.exit(0);
         break;
-      case '--local':   settingsScope = 'local'; break;
-      case '--global':  settingsScope = 'global'; break;
-      case '--dry-run': dryRun = true; break;
+      case '--local':         settingsScope = 'local'; break;
+      case '--global':        settingsScope = 'global'; break;
+      case '--dry-run':       dryRun = true; break;
+      case '--enable-packs':  enablePacks = true; break;
       case '--rind-url':
         if (!args[i + 1]) { process.stderr.write('--rind-url requires a value\n'); return null; }
         rindUrl = args[++i]!;
@@ -74,7 +100,7 @@ export function parseDemoInitArgs(argv: string[]): DemoInitArgs | null {
     }
   }
 
-  return { rindUrl, settingsScope, dryRun };
+  return { rindUrl, settingsScope, dryRun, enablePacks };
 }
 
 // ─── File I/O helpers ─────────────────────────────────────────────────────────
@@ -111,7 +137,7 @@ function resolveMcpJsonPath(): string {
 
 // ─── Step implementations ─────────────────────────────────────────────────────
 
-function applySimMcpServers(mcpJsonPath: string, dryRun: boolean): void {
+function applySimMcpServers(mcpJsonPath: string, rindUrl: string, dryRun: boolean): void {
   process.stdout.write(`Sim MCP servers  (${mcpJsonPath})\n`);
 
   const raw = readJsonFile(mcpJsonPath);
@@ -120,24 +146,66 @@ function applySimMcpServers(mcpJsonPath: string, dryRun: boolean): void {
     ? current['mcpServers'] as Record<string, unknown>
     : {};
 
-  let updatedServers = { ...currentServers };
-  let anyAdded = false;
+  // Claude Code must connect via the Rind gateway, not directly to the sim.
+  // .mcp.json gets proxy URLs; .rind/servers.json gets the actual upstream URLs.
+  // This ensures every tool call flows through the interceptor (policy, loop detection, scan).
+  let updatedMcpServers = { ...currentServers };
+  let anyMcpChanged = false;
 
-  for (const { id, url } of SIM_SERVERS) {
+  for (const { id, upstreamUrl } of SIM_SERVERS) {
+    const proxyUrl = `${rindUrl}/mcp/${id}`;
     const existing = currentServers[id];
-    if (existing !== undefined) {
-      process.stdout.write(`  = skip  ${id}  (already present)\n`);
+    const existingUrl = (existing !== null && typeof existing === 'object')
+      ? (existing as Record<string, unknown>)['url']
+      : undefined;
+
+    if (existingUrl === proxyUrl) {
+      process.stdout.write(`  = skip  ${id}  (already points to Rind proxy)\n`);
     } else {
-      process.stdout.write(`  + add   ${id.padEnd(20)}  → ${url}\n`);
-      updatedServers = { ...updatedServers, [id]: { type: 'http', url } };
-      anyAdded = true;
+      if (existingUrl !== undefined) {
+        process.stdout.write(`  ~ update ${id.padEnd(19)}  → ${proxyUrl}  (was: ${String(existingUrl)})\n`);
+      } else {
+        process.stdout.write(`  + add   ${id.padEnd(20)}  → ${proxyUrl}\n`);
+      }
+      updatedMcpServers = { ...updatedMcpServers, [id]: { type: 'http', url: proxyUrl } };
+      anyMcpChanged = true;
     }
+    // Always print what the upstream is for clarity
+    process.stdout.write(`           upstream          → ${upstreamUrl}  (.rind/servers.json)\n`);
   }
 
-  if (anyAdded && !dryRun) {
-    const updated = { ...current, mcpServers: updatedServers };
+  if (anyMcpChanged && !dryRun) {
+    const updated = { ...current, mcpServers: updatedMcpServers };
     writeFile(mcpJsonPath, JSON.stringify(updated, null, 2) + '\n');
     process.stdout.write('  ✓ written\n');
+  }
+
+  // Write .rind/servers.json — tells the proxy gateway where to forward each server.
+  // The gateway only mounts when this file exists and has entries.
+  const serversFilePath = '.rind/servers.json';
+  const rawServers = readJsonFile(serversFilePath);
+  const currentUpstreams = (rawServers !== null && typeof rawServers === 'object' && !Array.isArray(rawServers))
+    ? rawServers as Record<string, unknown>
+    : {};
+
+  let updatedUpstreams = { ...currentUpstreams };
+  let anyUpstreamsChanged = false;
+
+  for (const { id, upstreamUrl } of SIM_SERVERS) {
+    const entry = { transport: 'http', url: upstreamUrl };
+    const existing = currentUpstreams[id];
+    if (JSON.stringify(existing) === JSON.stringify(entry)) continue;
+    updatedUpstreams = { ...updatedUpstreams, [id]: entry };
+    anyUpstreamsChanged = true;
+  }
+
+  if (anyUpstreamsChanged && !dryRun) {
+    writeFile(serversFilePath, JSON.stringify(updatedUpstreams, null, 2) + '\n');
+    process.stdout.write(`  ✓ written  ${serversFilePath}\n`);
+  } else if (!anyUpstreamsChanged) {
+    process.stdout.write(`  = skip  ${serversFilePath}  (already up to date)\n`);
+  } else {
+    process.stdout.write(`  dry-run  ${serversFilePath}  would be written\n`);
   }
 }
 
@@ -209,6 +277,49 @@ function applyLlmProxy(settingsPath: string, rindUrl: string, dryRun: boolean): 
   }
 }
 
+// ─── Pack enablement ──────────────────────────────────────────────────────────
+
+/**
+ * Enables all demo policy packs on the running proxy.
+ * Network errors are non-fatal — printed as warnings so that users who run
+ * demo-init before starting the proxy aren't blocked.
+ */
+async function enableDemoPacks(rindUrl: string, dryRun: boolean): Promise<void> {
+  process.stdout.write('\nPolicy packs\n');
+
+  if (dryRun) {
+    for (const id of DEMO_PACKS) {
+      process.stdout.write(`  + enable  ${id}\n`);
+    }
+    return;
+  }
+
+  for (const id of DEMO_PACKS) {
+    try {
+      const res = await fetch(`${rindUrl}/packs/${id}/enable`, { method: 'POST' });
+      if (res.ok) {
+        process.stdout.write(`  ✓ enabled  ${id}\n`);
+      } else {
+        const body = await res.text().catch(() => '');
+        process.stdout.write(`  ! warn    ${id}  (HTTP ${res.status}${body ? `: ${body.slice(0, 80)}` : ''})\n`);
+      }
+    } catch {
+      // Proxy not running — warn but continue so file writes aren't rolled back
+      process.stdout.write(`  ! warn    ${id}  (proxy unreachable at ${rindUrl} — enable manually after starting Rind)\n`);
+      // All remaining packs will also fail, so skip them and print one final note
+      const remaining = DEMO_PACKS.slice(DEMO_PACKS.indexOf(id) + 1);
+      for (const r of remaining) {
+        process.stdout.write(`  ! warn    ${r}  (skipped — proxy unreachable)\n`);
+      }
+      process.stdout.write(`\n  To enable after starting the proxy:\n`);
+      for (const p of DEMO_PACKS) {
+        process.stdout.write(`    curl -X POST ${rindUrl}/packs/${p}/enable\n`);
+      }
+      return;
+    }
+  }
+}
+
 // ─── Main runner ──────────────────────────────────────────────────────────────
 
 export async function runDemoInit(argv: string[]): Promise<void> {
@@ -228,7 +339,7 @@ export async function runDemoInit(argv: string[]): Promise<void> {
   );
 
   try {
-    applySimMcpServers(mcpJsonPath, dryRun);
+    applySimMcpServers(mcpJsonPath, rindUrl, dryRun);
     applyDemoHooks(settingsPath, rindUrl, dryRun);
     applyLlmProxy(settingsPath, rindUrl, dryRun);
   } catch (err) {
@@ -236,6 +347,10 @@ export async function runDemoInit(argv: string[]): Promise<void> {
     process.stderr.write(`\nError: ${message}\n`);
     process.exit(1);
     return;
+  }
+
+  if (args.enablePacks) {
+    await enableDemoPacks(rindUrl, dryRun);
   }
 
   process.stdout.write('\n');

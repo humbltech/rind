@@ -196,3 +196,37 @@ describe('PolicyEngine — disabled rules', () => {
     expect(makeEngine(cfg).evaluate(makeEvent('action')).action).toBe('ALLOW');
   });
 });
+
+// ─── Agent negation matching ──────────────────────────────────────────────────
+// Validates the '!<agentId>' specifier used by llm-injection-guard-v1 to scope
+// injection scanning to custom agents while excluding coding CLIs like Claude Code
+// (default agentId: 'llm-anthropic').
+
+describe('PolicyEngine — agent negation (! prefix)', () => {
+  const negationCfg: PolicyConfig = {
+    policies: [
+      {
+        name: 'block-for-all-except-claude-code',
+        agent: '!llm-anthropic',
+        match: { tool: ['action'] },
+        action: 'DENY',
+        failMode: 'closed',
+      },
+    ],
+  };
+  const engine = makeEngine(negationCfg);
+
+  it('denies for agents that are NOT the excluded agent', () => {
+    // Custom application agent — should be blocked
+    expect(engine.evaluate(makeEvent('action', 'my-custom-agent')).action).toBe('DENY');
+  });
+
+  it('allows for the excluded agent (Claude Code default agentId)', () => {
+    // Claude Code produces 'llm-anthropic' — should be excluded from this rule
+    expect(engine.evaluate(makeEvent('action', 'llm-anthropic')).action).toBe('ALLOW');
+  });
+
+  it('denies for wildcard agent ID (not the excluded one)', () => {
+    expect(engine.evaluate(makeEvent('action', 'llm-openai')).action).toBe('DENY');
+  });
+});

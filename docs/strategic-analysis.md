@@ -86,6 +86,9 @@ Each entry: Decision → Date → Reasoning → Confidence → Outcome (updated 
 | A-014 | LiteLLM is not a substitute — devs recognize tool-call vs. LLM-call distinction | UNTESTED | LiteLLM only intercepts LLM API, not tool execution — but devs may not know this | Ask in first 10 design partner conversations | Month 2 |
 | A-015 | Cloud-hosted proxy has low enough friction (env var change sufficient) | UNTESTED | Helicone succeeds with this model; should work | Time from signup to first intercepted tool call | Month 1 |
 | A-016 | BSL license does not create enterprise legal objections | UNTESTED | BSL used by CockroachDB, MariaDB successfully | Check with first 3 enterprise prospects | Month 6 |
+| A-017 | Developers want unified MCP tool catalog (not individual server config) | UNTESTED | Colleagues reached for LiteLLM for routing | Ask in first 10 design partner conversations + keyword research | Month 1 |
+| A-018 | "One proxy for everything" is more compelling than "best security proxy" | UNTESTED | Logical but untested — convenience vs. depth | A/B test positioning with design partners | Month 2 |
+| A-019 | LiteLLM integration mode satisfies teams that need LLM routing | UNTESTED | Team already uses LiteLLM | Test with colleagues who reached for LiteLLM | Month 1 |
 
 ---
 
@@ -824,6 +827,10 @@ Documented gap      —                  File I/O in VS Code-based editors (no b
 
 **The question**: Given D-040 Phase A complete (Claude Code 100% coverage, MCP interception for all tools), what gets built next and in what order?
 
+**Phase 1.5 — MCP Routing (D-047, build now, ~1 week)**:
+0. **Unified MCP tool catalog + tool-name-based routing** — aggregate `tools/list` from all upstream servers into one namespace. Client calls a tool, Rind resolves which server owns it. Time-boxed to 1 week (R-016). Files: `transport/gateway.ts`, new `transport/tool-registry.ts`.
+0b. **LiteLLM integration mode** — config switch: `llm.routing: "litellm"`. Rind proxies through LiteLLM, adds security on both layers. Small effort.
+
 **Phase 2 — Enterprise Readiness (build now, ~3 weeks)**:
 1. **Agent identity / API keys** (D-011) — per-agent API keys, agentId derived from key lookup. Self-reported agentId is a real security hole for agent-scoped policies. Enterprise security teams ask "who made this call?" as their first question. This closes it.
 2. **Real-time dashboard SSE** — replace 2-second polling with SSE stream. Developer experience differentiator; dashboard feels alive, not lagged. Infrastructure already exists (ring buffer + event bus).
@@ -1102,5 +1109,137 @@ Layer 5 ("Execution-layer control plane") now has partial coverage:
 **Kill Criteria**:
 - First 3 developer installs fail on Windows → prioritize Windows hook implementation immediately
 - `rind scan` requires a fully open-source license incompatible with `@rind/agent` → split into `@rind/scan`
+
+---
+
+### D-047: Routing as GTM Wedge — Conditional Accept (MCP Routing Yes, LLM Routing No)
+**Date**: May 4, 2026
+**Council mode**: Quick (5 phases). Triggered by colleagues reaching for LiteLLM for routing needs.
+
+**Decision**: Add MCP routing as a capability of the Rind proxy. Do NOT build LLM routing — offer LiteLLM integration mode instead. Routing is a CAPABILITY of the control plane, NOT the product identity.
+
+**What we are doing**:
+1. Build **unified MCP tool catalog** — aggregate `tools/list` from all upstream MCP servers into one namespace. Uncontested capability, nobody does this well.
+2. Build **tool-name-based routing** — client calls a tool, Rind resolves which upstream server owns it. Natural extension of existing proxy.
+3. Offer **LiteLLM integration mode** — `llm.routing: "litellm"` in config. Rind proxies through LiteLLM and adds security on both layers. One proxy for the developer, two engines under the hood.
+4. **Freemium MCP routing** — ≤3 servers free, unlimited paid. Tests demand without giving away the store.
+5. **Bundle basic security on all routing traffic** — can't be turned off. This is the conversion mechanism.
+6. **DO NOT change primary positioning.** Keep "safety layer" (D-006) as the hook. Routing is a discovered capability, not the pitch.
+
+**What we are NOT doing**:
+- ❌ Building LLM model routing from scratch (LiteLLM has 47M downloads/month, MIT license — can't out-feature them)
+- ❌ Leading marketing with "routing" (confused positioning — Rind is a control plane, not a router)
+- ❌ Competing with LiteLLM, Portkey, Cloudflare AI Gateway on routing features
+- ❌ Making routing the free tier hook (security is the conversion mechanism, not routing)
+
+**Reasoning (strategic council analysis)**:
+- **MCP routing is uncontested** — nobody aggregates MCP servers behind a unified tool catalog. This is genuinely differentiated.
+- **LLM routing is commodity** — LiteLLM, Portkey, Cloudflare, Kong all do this. Building "good enough" LLM routing is a trap that invites unfavorable comparisons.
+- **Integration > competition** — "Rind sits in front of LiteLLM and adds security" is clearer positioning than "Rind replaces LiteLLM."
+- **Routing as capability, not identity** — Vercel is "the frontend platform," not "the CDN with deployment." Rind is "the control plane for AI agents," not "the MCP router with security."
+- **The conversion path works** — developer installs for MCP routing convenience → security scanning runs on all traffic (bundled, can't turn off) → dashboard shows blocked threats + cost intelligence → "oh shit" moment → paid conversion
+
+**Top 3 assumptions challenged**:
+| Assumption | Status | Mitigation |
+|-----------|--------|-----------|
+| MCP routing demand exists as a category | **UNTESTED — highest risk** | Validate via keyword research + design partner conversations before heavy investment |
+| Routing users will discover and convert on security | PLAUSIBLE | Bundled security (can't turn off) + cost intelligence as passive conversion bridge |
+| Adding routing won't dilute security positioning | RISKY | Routing is a CAPABILITY, not the IDENTITY. Marketing leads with safety, not routing. |
+
+**Minimum viable wedge combination for launch**:
+1. MCP unified tool catalog + routing (unique differentiator)
+2. Claude Code hooks (already done)
+3. Bundled security scanning (can't turn off)
+4. Cost intelligence in dashboard (conversion bridge)
+
+**Surviving challenges from strategic council**:
+1. MCP routing demand is unvalidated — no keyword data, no evidence devs search for this
+2. LLM routing via integration mode still invites "why not just use LiteLLM directly?" objection
+
+**Full wedge analysis**: See `docs/wedge-strategy.md` — 28+ wedges evaluated, prioritized into 4 tiers.
+
+**Confidence**: 6/10 — conditional on demand validation
+**Kill criteria**:
+- Keyword research shows zero search volume for "MCP router" / "MCP gateway" / "unified MCP tools" → deprioritize routing, revert to security-first entry
+- LiteLLM ships MCP tool-call routing → routing differentiation disappears, revert to security-only
+- First 5 design partners say "I don't need routing, I need security" → revert to current funnel
+- First 5 design partners say "I already use LiteLLM, why would I switch?" → integration mode only
+
+**New assumptions added**:
+| ID | Assumption | Status | How to Validate |
+|----|-----------|--------|----------------|
+| A-017 | Developers want unified MCP tool catalog (not individual server config) | UNTESTED | Ask in first 10 design partner conversations + keyword research |
+| A-018 | "One proxy for everything" is more compelling than "best security proxy" | UNTESTED | A/B test positioning with design partners |
+| A-019 | LiteLLM integration mode satisfies teams that need LLM routing | UNTESTED | Test with colleagues who originally reached for LiteLLM |
+
+**New risks added**:
+| ID | Risk | Severity | Likelihood | Signal | Mitigation |
+|----|------|----------|-----------|--------|-----------|
+| R-016 | MCP routing feature takes engineering time away from security moat | 6 | 5 | Unified tool catalog takes >2 weeks to build | Time-box to 1 week. If it takes longer, the architecture is wrong. |
+| R-017 | "Good enough default" positioning creates "master of none" perception | 7 | 4 | Developer reviews/comments compare Rind unfavorably to specialized tools | Marketing NEVER positions Rind as a router. Always "control plane" with routing as one capability. |
+
+---
+
+### D-048: MCP Server Archetypes — Policy Engine Implications for Three Design Patterns
+**Date**: May 4, 2026
+**Trigger**: Research into how real MCP servers are designed (Sentry, Cloudflare, Excalidraw) revealed three fundamentally different archetypes that Rind's policy engine must handle differently.
+
+**Decision**: Rind must recognize and enforce policy across three MCP server archetypes. Each requires a different inspection strategy. The policy engine's archetype-aware enforcement is a moat — no competitor thinks about MCP servers this way.
+
+**The Three Archetypes**:
+
+| Archetype | Example | Tool Surface | Policy Challenge |
+|-----------|---------|-------------|-----------------|
+| **Intent Service** | Sentry, GitHub, Linear | Few high-level tools with clear names | Tool-name + argument matching (CURRENT ENGINE HANDLES THIS) |
+| **Code Sandbox** | Cloudflare (`search` + `execute`) | 2 tools, arbitrary code as argument | Tool-name policy is useless — must inspect CODE CONTENT inside arguments |
+| **MCP App** | Excalidraw | Interactive HTML, bidirectional flow | Must inspect resource access, back-channel tool invocations, data exfiltration via render payload |
+
+**Policy Strategy Per Archetype**:
+
+**1. Intent Service (handled today)**:
+- Tool-name glob matching: `sentry.*`, `github.create_issue`
+- Argument-value matching: parameter constraints (e.g., `amount < 1000`)
+- Agent-scoped rules: agent X can `search_issues` but not `begin_sentry_issue_fix`
+- **No new engine work required** — existing `matchesRule()` + parameter matching covers this
+
+**2. Code Sandbox (NEW — requires payload inspector)**:
+- Tool-name matching is insufficient: `execute` tells you nothing about intent
+- **Code-argument inspection**: When a tool's argument is executable code, Rind must:
+  - Phase 1: Regex scan for dangerous patterns (DELETE, DROP, destroy, rm, credential access)
+  - Phase 1: Resource-name allowlisting (agent can only reference resources it's authorized for)
+  - Phase 2: Lightweight AST parse for JS/Python to detect semantic violations (data flowing from secret → external endpoint)
+  - Phase 2: Sandbox scope enforcement (block `fetch()` to unauthorized URLs in code)
+- **Policy DSL extension needed**: `argumentType: "code"` flag on rules to trigger deep inspection
+- **Detection approach**: Same `extractStrings` + pattern matching already used in response inspector, applied to tool ARGUMENTS instead of responses
+- This is Rind's strongest moat argument: a tool-name-only policy engine (every competitor) is BLIND to code sandbox attacks
+
+**3. MCP App (FUTURE — Phase 3)**:
+- Bidirectional communication creates new attack surface: the rendered app can invoke tools back into the agent
+- **Resource access policy**: Which `ui://` resources an MCP server can expose
+- **Back-channel tool policy**: What tools the interactive app can invoke (the app calling back to the LLM is a tool-call in reverse)
+- **Render payload inspection**: Check HTML/JS payload for data exfiltration before it reaches the client
+- **Priority**: LOW for now — MCP Apps spec is new, adoption is minimal. Design the data model to accommodate it; don't build the inspector yet.
+
+**Implementation Sequence**:
+1. ✅ Intent Service — already done (Phase 1 policy engine)
+2. 🔜 Code Sandbox — add `argumentType: "code"` + code-argument inspector (Phase 2, after D-047 routing)
+3. 📋 MCP App — design data model now, build when MCP Apps adoption grows (Phase 3)
+
+**Why this matters strategically**:
+- **Cloudflare's code-mode pattern is spreading** — any API with 100+ endpoints will adopt "2 tools + code execution" to avoid token bloat. This will become the dominant pattern for infrastructure MCP servers.
+- A policy engine that only matches tool names is like a firewall that only matches port numbers — it misses everything inside the payload.
+- Rind inspecting code arguments is the execution-layer equivalent of a WAF inspecting HTTP bodies — it's where the real threats live.
+- **Competitive moat**: No competitor (Aembit, MS Toolkit, Akeyless) inspects tool argument payloads. They all assume tool names carry semantic meaning. Code sandbox breaks that assumption.
+
+**What to validate**:
+- How many production MCP servers use code-sandbox pattern today? (Cloudflare confirmed; check AWS, GCP, Azure)
+- Is regex sufficient for code-argument inspection, or do we need AST parsing from day 1?
+- What's the latency cost of code-argument inspection? Must stay within <10ms budget.
+
+**Confidence**: 7/10 — archetypes are validated by research; implementation approach needs benchmarking
+**Kill criteria**:
+- Code sandbox pattern doesn't spread beyond Cloudflare → deprioritize code-argument inspector
+- AST parsing exceeds latency budget → stay with regex-only (still better than competitors who inspect nothing)
+- MCP Apps spec dies or stays niche → never build Phase 3 inspector
 
 ---

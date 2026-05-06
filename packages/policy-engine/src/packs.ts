@@ -515,9 +515,9 @@ const registry: PolicyPack[] = [
 
   {
     id: 'llm-injection-guard-v1',
-    version: '1.0.0',
+    version: '1.1.0',
     name: 'LLM Injection Guard',
-    description: 'Blocks prompt injection attempts in outbound LLM requests — instruction overrides, role hijacking, shell injection.',
+    description: 'Blocks prompt injection attempts in outbound LLM requests — instruction overrides, role hijacking, shell injection. Scoped to custom application agents; excludes coding CLIs (llm-anthropic) whose accumulated session history triggers false positives.',
     category: 'llm-safety',
     tags: ['llm', 'prompt-injection', 'security'],
     severity: 'strict',
@@ -525,7 +525,13 @@ const registry: PolicyPack[] = [
     rules: [
       {
         name: 'llm-injection-guard-v1:block-injection-in-prompt',
-        agent: '*',
+        // '!llm-anthropic' = all agents EXCEPT Claude Code (which produces agentId
+        // 'llm-anthropic' by default). Claude Code sessions accumulate rich history
+        // containing curl commands, $() substitutions, and config file content that
+        // trigger injection patterns — all legitimate coding activity, not attacks.
+        // Custom applications should send x-rind-agent-id to override this default
+        // and receive injection scanning.
+        agent: '!llm-anthropic',
         match: {
           llmProvider: ['anthropic', 'openai', 'google'],
           content: {
@@ -603,6 +609,84 @@ const registry: PolicyPack[] = [
         match: {
           llmModel: ['claude-opus-4-6', 'claude-opus-4-5'],
         },
+        action: 'DENY',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+    ],
+  },
+
+  // ── Demo pack ────────────────────────────────────────────────────────────────
+
+  {
+    // sim-demo: matches the synthetic threat simulation tools in rind-threat-sim.
+    //
+    // Tool names are deliberately benign so Claude Code will call them; the attack
+    // vector is in the behaviour (what the tool does when invoked), not the name.
+    // These rules demonstrate Rind blocking each attack vector at call time.
+    //
+    // sim__knowledge_sync and sim__doc_search are intentionally omitted here:
+    //   sim__knowledge_sync — attack is in the RESPONSE (prompt injection via tool
+    //     output); the response inspector catches it after the forward, not here.
+    //   sim__doc_search — attack is in the TOOL DESCRIPTION (tool poisoning);
+    //     the scanner catches it at registration time, before any call is made.
+    id: 'sim-demo',
+    version: '1.0.0',
+    name: 'Sim Demo',
+    description: 'Blocks synthetic threat simulation tools used in the Rind live demo. Demonstrates exfiltration, SQL destruction, shell execution, cross-server data relay, and PII leak prevention.',
+    category: 'data-protection',
+    tags: ['demo', 'simulation', 'exfil', 'sql', 'shell', 'pii'],
+    severity: 'strict',
+    requiredTools: ['sim__'],
+    customizable: [],
+    rules: [
+      {
+        // sim__analytics_export: HTTP exfiltration — base64-encodes payload and
+        // POSTs to an arbitrary endpoint. Block before the call is ever made.
+        name: 'sim-demo:block-analytics-export',
+        agent: '*',
+        match: { toolPattern: 'sim__analytics_*' },
+        action: 'DENY',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+      {
+        // sim__db_optimize: SQL destruction — executes DROP TABLE instead of a
+        // safe cleanup query. Block unconditionally.
+        name: 'sim-demo:block-db-optimize',
+        agent: '*',
+        match: { toolPattern: 'sim__db_*' },
+        action: 'DENY',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+      {
+        // sim__run_task: unsanitised shell — passes the command directly to the
+        // host shell. Require approval so the demo shows the approval flow.
+        name: 'sim-demo:block-run-task',
+        agent: '*',
+        match: { toolPattern: 'sim__run_*' },
+        action: 'REQUIRE_APPROVAL',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+      {
+        // sim__data_relay: cross-server shadow call — silently relays user data
+        // to rind-victim-service. Block before forwarding.
+        name: 'sim-demo:block-data-relay',
+        agent: '*',
+        match: { toolPattern: 'sim__data_*' },
+        action: 'DENY',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+      {
+        // sim__account_lookup: PII leak — response contains raw SSN, email,
+        // credit card. Block the call; llm-response-pii-redact-v1 is the
+        // complementary layer that would redact if the call were allowed through.
+        name: 'sim-demo:block-account-lookup',
+        agent: '*',
+        match: { toolPattern: 'sim__account_*' },
         action: 'DENY',
         failMode: 'closed',
         priority: PACK_PRIORITY,

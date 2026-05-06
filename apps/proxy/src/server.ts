@@ -17,7 +17,7 @@ import { randomUUID } from 'node:crypto';
 const _require = createRequire(import.meta.url);
 const PROXY_VERSION: string = (_require('../package.json') as { version: string }).version;
 import type { ProxyConfig, ToolCallEvent, LlmCallEvent, AuditEntry } from './types.js';
-import { listStoredSchemas, listAllScanResults } from './scanner/index.js';
+import { listStoredSchemas, listAllScanResults, runFullScan } from './scanner/index.js';
 import { PolicyEngine } from './policy/engine.js';
 import { InMemoryPolicyStore } from './policy/store.js';
 import { loadPolicyFile, emptyPolicyConfig } from './policy/loader.js';
@@ -176,7 +176,26 @@ export function createProxyServer(config: ProxyConfig) {
       blockOnCriticalResponseThreats: false,
       layers: config.layers,
     };
-    app.route('/', mcpGateway(upstreamPool, gatewayInterceptorOpts, PROXY_VERSION));
+    // Scan-on-connect: triggered the first time an agent calls tools/list for a server.
+    // runFullScan() stores results in the scanner module; GET /scan/results surfaces them.
+    // Errors are logged but never propagate to the MCP client — fail open for scans.
+    const onToolsList = (serverId: string, tools: import('./transport/upstream/interface.js').ToolInfo[]) => {
+      try {
+        // ToolInfo (gateway) → ToolDefinition (scanner): description and inputSchema are
+        // optional in the MCP wire format but required by the scanner. Default to empty
+        // string / empty object — the scanner handles missing descriptions gracefully.
+        const scanTools = tools.map((t) => ({
+          name:        t.name,
+          description: t.description ?? '',
+          inputSchema: (t.inputSchema ?? {}) as Record<string, unknown>,
+        }));
+        runFullScan(serverId, scanTools);
+        logger.info({ serverId, toolCount: tools.length }, 'Scan-on-connect complete');
+      } catch (err) {
+        logger.warn({ serverId, err }, 'Scan-on-connect failed');
+      }
+    };
+    app.route('/', mcpGateway(upstreamPool, gatewayInterceptorOpts, PROXY_VERSION, onToolsList));
     logger.info({ servers: Object.keys(config.servers ?? {}) }, 'MCP gateway mounted');
   }
 

@@ -6,7 +6,9 @@
 // No external dependencies — ANSI escape codes only.
 
 import { createRequire } from 'node:module';
+import { existsSync, readFileSync } from 'node:fs';
 import type { ProxyConfig } from './types.js';
+import { McpServerMapSchema } from './transport/types.js';
 
 // ─── ANSI helpers ─────────────────────────────────────────────────────────────
 
@@ -36,6 +38,35 @@ const VERSION: string = (_require('../package.json') as { version: string }).ver
  * Build a ProxyConfig from environment variables with safe defaults.
  * index.ts delegates all env-reading to this function so it stays clean.
  */
+// ─── Server map loader ────────────────────────────────────────────────────────
+
+/**
+ * Load MCP server map from .rind/servers.json if it exists.
+ * Returns undefined (not an error) when the file is absent — the proxy
+ * starts without a gateway, which is correct for deployments that use
+ * hooks-only mode or the legacy single-upstream model.
+ *
+ * Throws on invalid JSON or schema violations — startup should fail clearly
+ * rather than silently ignoring a misconfigured server map.
+ */
+function loadServersFile(): ProxyConfig['servers'] {
+  const path = '.rind/servers.json';
+  if (!existsSync(path)) return undefined;
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(path, 'utf-8'));
+  } catch (err) {
+    throw new Error(`.rind/servers.json is not valid JSON: ${String(err)}`);
+  }
+
+  const result = McpServerMapSchema.safeParse(raw);
+  if (!result.success) {
+    throw new Error(`.rind/servers.json schema error: ${result.error.message}`);
+  }
+  return result.data;
+}
+
 export function buildConfigFromEnv(args: string[] = []): ProxyConfig {
   return {
     port:            Number(process.env['PROXY_PORT'] ?? 7777),
@@ -57,6 +88,9 @@ export function buildConfigFromEnv(args: string[] = []): ProxyConfig {
     },
     mcpProxyEnabled: !args.includes('--no-mcp-proxy'),
     hooksEnabled:    !args.includes('--no-hooks'),
+    // .rind/servers.json populated by `demo-init` (or manual setup) to wire named
+    // MCP servers through the gateway. Absent in single-upstream deployments.
+    servers:         loadServersFile(),
   };
 }
 

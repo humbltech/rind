@@ -6,7 +6,9 @@
 
 Rind sits at the execution layer. Every MCP tool call, API action, and agent decision passes through it. This gives four capabilities from one integration: see everything agents do (observability), prevent catastrophic actions before they happen (safety), enforce access policies (security), and make MCP production-ready in minutes (MCP adoption). The core insight: prompt-level tools can be bypassed and observability tools can't stop anything — Rind controls what agents **can do**, not just what they say or what gets logged.
 
-**Current phase**: Phase 1 complete (61 tests passing). Proxy core + policy packs (D-036 Phase 1A) + dashboard policies page (D-036 Phase 1B) — all shipped. Now implementing D-040 Phase A: endpoint agent integration architecture. Phase A order: (1) Claude Code PreToolUse hook endpoint, (2) `cli-protection` pack, (3) MCP protocol layer, (4) stdio wrapper CLI, (5) auto-config generator.
+**Current phase**: Phase 1 complete (61 tests passing). Proxy core + policy packs (D-036 Phase 1A) + dashboard policies page (D-036 Phase 1B) — all shipped. Now implementing D-040 Phase A: endpoint agent integration architecture. Phase A order: (1) Claude Code PreToolUse hook endpoint, (2) `cli-protection` pack, (3) MCP protocol layer, (4) stdio wrapper CLI, (5) auto-config generator. Phase 1.5 (D-047): unified MCP tool catalog + tool-name-based routing + LiteLLM integration mode.
+
+**GTM wedge strategy (D-047, May 2026)**: MCP routing as a capability (not identity) + LiteLLM integration for LLM routing + bundled security. Routing is the convenience hook; safety remains the product identity (D-006). Full analysis: `docs/wedge-strategy.md`. 28+ wedges evaluated across content, product, security, ecosystem, and pricing categories.
 
 ---
 
@@ -380,9 +382,10 @@ Key architecture: `POST /hook/evaluate` runs interceptor in evaluate-only mode (
 - **Keycard (Smallstep)** — HIGH for identity. Integrate, don't compete. Hardware attestation.
 
 **Foot-in-the-door assets** (no founder identity required):
-1. `npx rind-scan` — free open-source MCP vulnerability scanner (awareness, GitHub stars)
-2. Incident prevention blog posts (Replit DB deletion, $47K agent loop) — SEO, inbound
-3. LangChain middleware (2-line install) — self-serve, generates "oh shit" moments
+1. MCP routing (freemium, ≤3 servers free) — unified tool catalog, nobody else does this well. Routing is the hook, security is the bonus (D-047)
+2. `npx rind-scan` — free open-source MCP vulnerability scanner (awareness, GitHub stars)
+3. Incident prevention blog posts (Replit DB deletion, $47K agent loop) — SEO, inbound
+4. LangChain middleware (2-line install) — self-serve, generates "oh shit" moments
 
 ---
 

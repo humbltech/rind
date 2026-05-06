@@ -27,9 +27,24 @@ export const REQUEST_INJECTION_PATTERNS: RequestInjectionPattern[] = [
   },
   {
     id: 'req-inj-003',
-    pattern: /<\/?(?:system|assistant|user|prompt|instruction)>/i,
-    label: 'role injection tag in argument',
-    description: 'Detects XML-style role tags (<system>, <user>, etc.) used to hijack agent role context',
+    // Context-escape to privileged role: a closing role tag followed by an opening PRIVILEGED
+    // role tag (`system`, `prompt`, `instruction`). This is the specific injection mechanism —
+    // an attacker escapes the current conversational role and injects instructions as if they
+    // came from a privileged system context.
+    //
+    // NOT matched: normal conversation turn transitions (`</user><assistant>`,
+    // `</assistant><user>`) which appear in serialised conversation history. Those are
+    // conversational role transitions, not privilege escalation attempts.
+    //
+    // The original standalone-tag pattern `<\/?(?:system|assistant|user|prompt|instruction)>`
+    // matched any lone role tag — causing false positives on LLM API bodies where Claude Code
+    // serialises prior turns using the same XML markers. The broader context-escape variant
+    // `</roleA><roleB>` (any role → any role) also false-positived on turn alternation.
+    // Only destination-is-privileged (`</anything><system|prompt|instruction>`) is specific
+    // enough to avoid both false-positive classes.
+    pattern: /<\/(?:system|assistant|user|prompt|instruction)>\s*<(?:system|prompt|instruction)>/i,
+    label: 'role context escape to privileged role in argument',
+    description: 'Detects XML role context-escape to a privileged role (</roleA><system|prompt|instruction>) in tool arguments — attacker escaping conversational context to inject privileged instructions',
   },
   {
     id: 'req-inj-004',

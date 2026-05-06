@@ -12,7 +12,7 @@
 import { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
 import type { UpstreamPool } from './pool.js';
-import type { UpstreamClient } from './upstream/interface.js';
+import type { UpstreamClient, ToolInfo } from './upstream/interface.js';
 import type { InterceptorOptions } from '../interceptor.js';
 import { intercept } from '../interceptor.js';
 import type { ToolCallEvent } from '../types.js';
@@ -38,13 +38,17 @@ import {
  * Creates a Hono sub-app that handles MCP JSON-RPC routing.
  * Mount it on the parent app: `app.route('/', mcpGateway(pool, opts, version))`
  *
- * @param version - proxy version string, injected by the caller from package.json
- *                  to avoid a createRequire path that breaks when bundled
+ * @param version      - proxy version string, injected by the caller from package.json
+ *                       to avoid a createRequire path that breaks when bundled
+ * @param onToolsList  - optional callback fired after tools/list succeeds, used by
+ *                       server.ts to trigger scan-on-connect; fire-and-forget, errors logged
+ *                       by the caller, never propagated to the MCP client
  */
 export function mcpGateway(
   pool: UpstreamPool,
   interceptorOpts: InterceptorOptions,
   version: string,
+  onToolsList?: (serverId: string, tools: ToolInfo[]) => void,
 ): Hono {
   const app = new Hono();
 
@@ -91,6 +95,7 @@ export function mcpGateway(
       c.req.header('x-agent-id'),
       interceptorOpts,
       version,
+      onToolsList,
     );
 
     // MCP notifications must not receive a JSON-RPC response body (protocol requirement)
@@ -114,6 +119,7 @@ export async function dispatchRequest(
   agentIdHeader:  string | undefined,
   interceptorOpts: InterceptorOptions,
   version:        string,
+  onToolsList?:   (serverId: string, tools: ToolInfo[]) => void,
 ): Promise<McpResponseMessage> {
   const { id } = request;
 
@@ -130,6 +136,10 @@ export async function dispatchRequest(
   if (request.method === 'tools/list') {
     try {
       const tools = await upstream.listTools();
+      // Fire scan-on-connect after returning the tool list to the client.
+      // onToolsList is injected by server.ts to trigger runFullScan(); it is
+      // fire-and-forget so a slow or failing scan never delays the MCP response.
+      if (onToolsList) onToolsList(serverId, tools);
       return buildToolsList(id, tools);
     } catch {
       return buildInternalError(id);

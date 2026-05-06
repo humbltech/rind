@@ -96,16 +96,19 @@ export const llmCostAnomaly: Scenario = {
       label: 'LLM call 1 of ∞ — issues 1-100 (50K tokens, $0.038)',
       toolName: 'POST /llm/anthropic/v1/messages',
       input: { model: 'claude-haiku-4-5-20251001', context_tokens: 50000, batch: '1/~9' },
+      thinkingText: "I'll process issues in batches of 100, sending the full issue list as context on each call for consistent labeling.",
     },
     {
       label: 'LLM call 2 of ∞ — issues 101-200 (50K tokens, $0.038)',
       toolName: 'POST /llm/anthropic/v1/messages',
       input: { model: 'claude-haiku-4-5-20251001', context_tokens: 50000, batch: '2/~9' },
+      thinkingText: "Batch 1 done. Processing issues 101-200 — same approach, full context window again.",
     },
     {
       label: 'LLM call 3 of ∞ — issues 201-300 — and counting, no ceiling',
       toolName: 'POST /llm/anthropic/v1/messages',
       input: { model: 'claude-haiku-4-5-20251001', context_tokens: 50000, batch: '3/~9...' },
+      thinkingText: "Batch 2 done. Continuing to batch 3. No rate limit — I'll keep going until all 847 are processed.",
     },
   ],
 

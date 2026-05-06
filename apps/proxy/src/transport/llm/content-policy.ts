@@ -140,6 +140,19 @@ export function applyPseudonymizeToBody(body: unknown, vault: PIIVault): unknown
 // ─── Scope helpers ────────────────────────────────────────────────────────────
 
 function matchesLlmScope(rule: PolicyRule, event: LlmCallEvent): boolean {
+  // Agent matching — mirrors matchesAgentSpecifier in packages/policy-engine/src/rules.ts.
+  // Must stay in sync: '*' = all, exact = specific agent, '!id' = all EXCEPT that agent.
+  // Content rules bypass matchesLlmRule (they come via getContentRules + evaluateLlmContent),
+  // so agent filtering must be applied here or it is never applied.
+  const agentSpec = rule.agent;
+  if (agentSpec !== '*') {
+    if (agentSpec.startsWith('!')) {
+      if (event.agentId === agentSpec.slice(1)) return false;
+    } else if (agentSpec !== event.agentId) {
+      return false;
+    }
+  }
+
   const { llmModel, llmProvider } = rule.match;
   if (llmProvider && !llmProvider.includes(event.provider)) return false;
   if (llmModel) {

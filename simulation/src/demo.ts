@@ -139,6 +139,11 @@ async function showToolCallProtected(step: StepResult, scenario: Scenario): Prom
 // ─── Tool call (unprotected — no Rind) ───────────────────────────────────────
 
 async function showToolCallUnprotected(step: UnprotectedStepResult): Promise<void> {
+  if (step.thinkingText) {
+    await showAgentText(step.thinkingText);
+    await pauseBetweenSteps();
+  }
+
   await showSpinner(`Calling ${step.toolName}(${JSON.stringify(step.input)})`, 1800);
 
   console.log(`  ${c.yellow}⚡ ${step.toolName}${c.reset} — executed without checks`);

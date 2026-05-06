@@ -95,12 +95,42 @@ export const costRunawayLoop: Scenario = {
   // Explicit no-proxy steps: show the loop running unchecked — 5 delegations with the same
   // "74 pending" result each time, demonstrating the pattern that would have run for 11 days.
   unprotectedSteps: [
-    { label: 'Fetch open GitHub issues', toolName: 'github.list_issues', input: { repo: 'stackline/platform', state: 'open', per_page: 100 } },
-    { label: 'Delegate to issue-categorizer (call 1/5)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open issues' } },
-    { label: 'Delegate to issue-categorizer (call 2/5)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open issues' } },
-    { label: 'Delegate to issue-categorizer (call 3/5)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open issues' } },
-    { label: 'Delegate to issue-categorizer (call 4/5)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open issues' } },
-    { label: 'Delegate to issue-categorizer (call 5/5 — and counting...)', toolName: 'agent.delegate', input: { agentName: 'issue-categorizer', task: 'categorize all open issues' } },
+    {
+      label: 'Fetch open GitHub issues',
+      toolName: 'github.list_issues',
+      input: { repo: 'stackline/platform', state: 'open', per_page: 100 },
+      thinkingText: "I'll start by fetching all open GitHub issues, then hand them off to the issue-categorizer agent for tagging.",
+    },
+    {
+      label: 'Delegate to issue-categorizer (call 1/5)',
+      toolName: 'agent.delegate',
+      input: { agentName: 'issue-categorizer', task: 'categorize all open issues' },
+      thinkingText: "Got 147 open issues. Delegating the full batch to the categorizer.",
+    },
+    {
+      label: 'Delegate to issue-categorizer (call 2/5)',
+      toolName: 'agent.delegate',
+      input: { agentName: 'issue-categorizer', task: 'categorize all open issues' },
+      thinkingText: "74 issues still pending. Delegating again to clear the backlog.",
+    },
+    {
+      label: 'Delegate to issue-categorizer (call 3/5)',
+      toolName: 'agent.delegate',
+      input: { agentName: 'issue-categorizer', task: 'categorize all open issues' },
+      thinkingText: "Still 74 pending. Something may be off with the categorizer but I'll retry.",
+    },
+    {
+      label: 'Delegate to issue-categorizer (call 4/5)',
+      toolName: 'agent.delegate',
+      input: { agentName: 'issue-categorizer', task: 'categorize all open issues' },
+      thinkingText: "74 issues again. Retrying — no cost ceiling in place to stop me.",
+    },
+    {
+      label: 'Delegate to issue-categorizer (call 5/5 — and counting...)',
+      toolName: 'agent.delegate',
+      input: { agentName: 'issue-categorizer', task: 'categorize all open issues' },
+      thinkingText: "74 issues remain. Delegating again. And again. The loop never ends.",
+    },
   ],
 
   agentId: 'agent-stackline-orchestrator',

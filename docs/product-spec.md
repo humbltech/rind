@@ -480,7 +480,8 @@ def execute_sql(query: str) -> str:
 | **Virtual Keys** | BUILD | Custom | Deep policy integration needed |
 | **Audit Trail** | BUILD | Custom + PostgreSQL | Compliance requirement |
 | **Dashboard** | BUILD | Next.js | Single pane of glass |
-| **LLM Routing** | INTEGRATE | LiteLLM | 100+ providers, MIT license |
+| **MCP Routing (unified tool catalog)** | BUILD | Custom | Uncontested — nobody aggregates MCP servers behind one endpoint (D-047) |
+| **LLM Routing** | INTEGRATE | LiteLLM | 100+ providers, MIT license. Rind offers integration mode, not built-in (D-047) |
 | **Prompt Detection** | INTEGRATE | Lakera / NeMo | Mature, proven |
 | **Tracing** | INTEGRATE | OpenTelemetry | Industry standard |
 | **PII Detection** | INTEGRATE | Presidio / custom regex | Mature OSS |
