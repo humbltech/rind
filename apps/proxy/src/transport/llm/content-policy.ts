@@ -31,6 +31,7 @@ import { runPIIDetector } from '../../detectors/pii.js';
 import { runInjectionDetector } from '../../detectors/injection.js';
 import { runDLPDetector } from '../../detectors/dlp.js';
 import type { DetectorRunResult } from '../../detectors/types.js';
+import { redactCredentialString } from '../../inspector/response.js';
 
 // ─── Public result type ───────────────────────────────────────────────────────
 
@@ -95,10 +96,24 @@ function extractText(
         parts.push(m['content']);
       } else if (Array.isArray(m['content'])) {
         for (const block of m['content']) {
-          if (typeof block === 'object' && block !== null &&
-              (block as Record<string, unknown>)['type'] === 'text') {
-            const text = (block as Record<string, unknown>)['text'];
+          if (typeof block !== 'object' || block === null) continue;
+          const b = block as Record<string, unknown>;
+          if (b['type'] === 'text') {
+            const text = b['text'];
             if (typeof text === 'string') parts.push(text);
+          } else if (b['type'] === 'tool_result') {
+            // Tool result content: string or array of text blocks
+            if (typeof b['content'] === 'string') {
+              parts.push(b['content']);
+            } else if (Array.isArray(b['content'])) {
+              for (const inner of b['content']) {
+                if (typeof inner === 'object' && inner !== null &&
+                    (inner as Record<string, unknown>)['type'] === 'text') {
+                  const t = (inner as Record<string, unknown>)['text'];
+                  if (typeof t === 'string') parts.push(t);
+                }
+              }
+            }
           }
         }
       }
@@ -394,11 +409,30 @@ function applyRedaction(
         return {
           ...m,
           content: m['content'].map((block) => {
-            if (typeof block === 'object' && block !== null &&
-                (block as Record<string, unknown>)['type'] === 'text') {
-              const b2 = block as Record<string, unknown>;
+            if (typeof block !== 'object' || block === null) return block;
+            const b2 = block as Record<string, unknown>;
+            if (b2['type'] === 'text') {
               const text = b2['text'];
               return { ...b2, text: typeof text === 'string' ? redactString(text) : text };
+            }
+            // tool_result: surgical credential replacement preserves agent context
+            if (b2['type'] === 'tool_result') {
+              if (typeof b2['content'] === 'string') {
+                return { ...b2, content: redactCredentialString(b2['content']) };
+              }
+              if (Array.isArray(b2['content'])) {
+                return {
+                  ...b2,
+                  content: b2['content'].map((inner) => {
+                    if (typeof inner === 'object' && inner !== null &&
+                        (inner as Record<string, unknown>)['type'] === 'text') {
+                      const t = inner as Record<string, unknown>;
+                      return { ...t, text: typeof t['text'] === 'string' ? redactCredentialString(t['text']) : t['text'] };
+                    }
+                    return inner;
+                  }),
+                };
+              }
             }
             return block;
           }),

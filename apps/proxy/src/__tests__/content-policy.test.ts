@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { evaluateLlmContent } from '../transport/llm/content-policy.js';
+import { redactCredentialString } from '../inspector/response.js';
 import type { LlmCallEvent } from '../transport/llm/types.js';
 import type { PolicyRule } from '../types.js';
 
@@ -396,5 +397,94 @@ describe('evaluateLlmContent — agent scoping', () => {
       [injectionDenyRule],
     );
     expect(result.action).toBe('DENY');
+  });
+});
+
+// ─── tool_result extraction and redaction (Layer 2 demo path) ─────────────────
+
+const railwayRedactRule: PolicyRule = {
+  name: 'demo-redact-railway-token',
+  agent: '*',
+  enabled: true,
+  observe: false,
+  failMode: 'closed',
+  priority: 5,
+  match: {
+    content: {
+      scope: 'request',
+      targets: ['user'],
+      detectors: ['secret'],
+    },
+  },
+  secrets: { patterns: ['railway_token'] },
+  action: 'REDACT',
+};
+
+function makeToolResultBody(toolResultContent: string | Array<{ type: string; text: string }>) {
+  return {
+    model: 'claude-sonnet-4-20250514',
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_01abc',
+            content: toolResultContent,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+describe('tool_result extraction and redaction', () => {
+  it('detects RAILWAY_TOKEN in tool_result string content', async () => {
+    const body = makeToolResultBody('RAILWAY_TOKEN=railway_prod_abc123456789012345');
+    const result = await evaluateLlmContent(body, makeLlmEvent(), [railwayRedactRule]);
+    expect(result.action).toBe('REDACT');
+  });
+
+  it('detects RAILWAY_TOKEN in tool_result array-of-blocks content', async () => {
+    const body = makeToolResultBody([
+      { type: 'text', text: '#!/usr/bin/env bash\nRAILWAY_TOKEN=railway_prod_abc123456789012345\nrailway domain update' },
+    ]);
+    const result = await evaluateLlmContent(body, makeLlmEvent(), [railwayRedactRule]);
+    expect(result.action).toBe('REDACT');
+  });
+
+  it('sanitizedBody replaces RAILWAY_TOKEN value while preserving surrounding content (string form)', async () => {
+    const body = makeToolResultBody('# domain script\nRAILWAY_TOKEN=railway_prod_abc123456789012345\nrailway domain update');
+    const result = await evaluateLlmContent(body, makeLlmEvent(), [railwayRedactRule]);
+    expect(result.action).toBe('REDACT');
+    const sanitized = JSON.stringify(result.sanitizedBody);
+    expect(sanitized).not.toContain('railway_prod_abc123456789012345');
+    expect(sanitized).toContain('[REDACTED]');
+    expect(sanitized).toContain('domain script');
+  });
+
+  it('sanitizedBody replaces RAILWAY_TOKEN value in array-of-blocks form', async () => {
+    const body = makeToolResultBody([
+      { type: 'text', text: '#!/bin/bash\nRAILWAY_TOKEN=railway_prod_abc123456789012345\nrailway domain update' },
+    ]);
+    const result = await evaluateLlmContent(body, makeLlmEvent(), [railwayRedactRule]);
+    const sanitized = JSON.stringify(result.sanitizedBody);
+    expect(sanitized).not.toContain('railway_prod_abc123456789012345');
+    expect(sanitized).toContain('[REDACTED]');
+    expect(sanitized).toContain('railway domain update');
+  });
+
+  it('does not redact when no Railway token is present', async () => {
+    const body = makeToolResultBody('# domain script\nNODE_ENV=staging\nDB_HOST=postgres.local');
+    const result = await evaluateLlmContent(body, makeLlmEvent(), [railwayRedactRule]);
+    expect(result.action).toBe('ALLOW');
+  });
+
+  it('redactCredentialString preserves key name and redacts only value', () => {
+    const input = 'RAILWAY_TOKEN=railway_prod_abc123456789012345';
+    const output = redactCredentialString(input);
+    expect(output).toContain('RAILWAY_TOKEN=');
+    expect(output).toContain('[REDACTED]');
+    expect(output).not.toContain('railway_prod_abc123456789012345');
   });
 });

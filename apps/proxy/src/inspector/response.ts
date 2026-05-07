@@ -28,6 +28,20 @@ export {
  * Used in the MCP response path when a credential is detected but we want to return
  * a sanitized response instead of blocking entirely.
  */
+/**
+ * Surgically replaces matched credential patterns in a plain string, preserving key names.
+ * Example: RAILWAY_TOKEN=railway_prod_abc → RAILWAY_TOKEN=[REDACTED]
+ * Used by the LLM content policy to redact credentials from tool_result content.
+ */
+export function redactCredentialString(text: string): string {
+  let result = text;
+  for (const { pattern } of CREDENTIAL_PATTERNS) {
+    const globalPattern = new RegExp(pattern.source, `${pattern.flags.includes('i') ? 'i' : ''}g`);
+    result = result.replace(globalPattern, redactMatch);
+  }
+  return result;
+}
+
 export function redactCredentialsInOutput(
   output: unknown,
   threats: ResponseThreat[],

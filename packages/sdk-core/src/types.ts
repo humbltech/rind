@@ -435,7 +435,8 @@ export type BuiltinSecretPattern =
   | 'jwt'
   | 'private_key'
   | 'bearer_token'
-  | 'generic_api_key';
+  | 'generic_api_key'
+  | 'railway_token';
 
 /** Config for the 'secret' detector */
 export interface SecretDetectorConfig extends DetectionStrategy {

@@ -103,6 +103,7 @@ const PiiDetectorConfigSchema = DetectionStrategySchema.extend({
 const BuiltinSecretPatternSchema = z.enum([
   'openai_key', 'anthropic_key', 'aws_access_key', 'github_token',
   'stripe_key', 'jwt', 'private_key', 'bearer_token', 'generic_api_key',
+  'railway_token',
 ]);
 
 const SecretDetectorConfigSchema = DetectionStrategySchema.extend({

@@ -34,6 +34,7 @@ const BUILTIN_ALIASES: Record<string, string[]> = {
   // No built-in bearer token pattern — too generic to match reliably — no-op
   bearer_token:    [],
   generic_api_key: ['API key'],
+  railway_token:   ['Railway API token'],
 };
 
 // ─── Detector ─────────────────────────────────────────────────────────────────
