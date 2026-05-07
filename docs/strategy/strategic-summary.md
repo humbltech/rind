@@ -269,14 +269,14 @@ Phase 3C research (April 2026) confirmed: credential injection is table stakes (
 
 | Document | Location | Purpose |
 |----------|----------|---------|
-| Vision & Goals | `docs/vision.md` | Mission, success metrics, target market |
+| Vision & Goals | `docs/product/vision.md` | Mission, success metrics, target market |
 | Product Ideas | `docs/ideas.md` | Architecture options (proxy, endpoint, sandbox) |
-| Competition Overview | `docs/competition.md` | 40+ competitors across 9 categories |
-| Competitor Deep Dive | `docs/competitor-deep-dive.md` | Detailed analysis of top 8 competitors |
-| Emerging Players | `docs/emerging-players.md` | YC startups, underdogs, acquisition targets |
-| User Pain Points | `docs/user-pain-points.md` | Real feedback from Reddit, G2, conferences |
-| GTM Strategy | `docs/gtm-strategy.md` | Marketing, sales, positioning playbook |
-| Market Research | `docs/market-research.md` | Market size, segments, financial projections |
+| Competition Overview | `docs/competitive/competition.md` | 40+ competitors across 9 categories |
+| Competitor Deep Dive | `docs/competitive/_snapshots/competitor-deep-dive.md` | Detailed analysis of top 8 competitors |
+| Emerging Players | `docs/competitive/emerging-players.md` | YC startups, underdogs, acquisition targets |
+| User Pain Points | `docs/research/user-pain-points.md` | Real feedback from Reddit, G2, conferences |
+| GTM Strategy | `docs/strategy/gtm-strategy.md` | Marketing, sales, positioning playbook |
+| Market Research | `docs/research/market-research.md` | Market size, segments, financial projections |
 
 ---
 

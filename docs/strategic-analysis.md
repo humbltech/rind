@@ -1156,7 +1156,7 @@ Layer 5 ("Execution-layer control plane") now has partial coverage:
 1. MCP routing demand is unvalidated — no keyword data, no evidence devs search for this
 2. LLM routing via integration mode still invites "why not just use LiteLLM directly?" objection
 
-**Full wedge analysis**: See `docs/wedge-strategy.md` — 28+ wedges evaluated, prioritized into 4 tiers.
+**Full wedge analysis**: See `docs/strategy/wedge-strategy.md` — 28+ wedges evaluated, prioritized into 4 tiers.
 
 **Confidence**: 6/10 — conditional on demand validation
 **Kill criteria**:

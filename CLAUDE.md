@@ -8,7 +8,7 @@ Rind sits at the execution layer. Every MCP tool call, API action, and agent dec
 
 **Current phase**: Phase 1 complete (61 tests passing). Proxy core + policy packs (D-036 Phase 1A) + dashboard policies page (D-036 Phase 1B) — all shipped. Now implementing D-040 Phase A: endpoint agent integration architecture. Phase A order: (1) Claude Code PreToolUse hook endpoint, (2) `cli-protection` pack, (3) MCP protocol layer, (4) stdio wrapper CLI, (5) auto-config generator. Phase 1.5 (D-047): unified MCP tool catalog + tool-name-based routing + LiteLLM integration mode.
 
-**GTM wedge strategy (D-047, May 2026)**: MCP routing as a capability (not identity) + LiteLLM integration for LLM routing + bundled security. Routing is the convenience hook; safety remains the product identity (D-006). Full analysis: `docs/wedge-strategy.md`. 28+ wedges evaluated across content, product, security, ecosystem, and pricing categories.
+**GTM wedge strategy (D-047, May 2026)**: MCP routing as a capability (not identity) + LiteLLM integration for LLM routing + bundled security. Routing is the convenience hook; safety remains the product identity (D-006). Full analysis: `docs/strategy/wedge-strategy.md`. 28+ wedges evaluated across content, product, security, ecosystem, and pricing categories.
 
 ---
 
@@ -306,17 +306,26 @@ rind/                                   # Repo root
 ├── tools/
 │   └── simulation/                     # Cassette-based scenario runner
 ├── docs/
-│   ├── vision.md                       # Mission, goals, target market
-│   ├── technical-strategy.md           # Feature prioritization, build sequence
 │   ├── strategic-analysis.md           # Living decision log (update after every session)
+│   ├── strategy/                       # Strategic planning docs
+│   │   ├── technical-strategy.md       # Feature prioritization, build sequence
+│   │   ├── gtm-strategy.md             # Go-to-market strategy
+│   │   ├── wedge-strategy.md           # 28+ wedges evaluated
+│   │   ├── mvp-roadmap.md              # 12-week development plan
+│   │   └── pricing-strategy.md         # Pricing tiers and positioning
+│   ├── product/                        # Product definition
+│   │   ├── vision.md                   # Mission, goals, target market
+│   │   ├── product-spec.md             # Complete product spec
+│   │   └── policy-dsl.md              # Policy language specification
+│   ├── competitive/                    # All competitive intelligence
+│   │   ├── positioning.md             # Competitive map, messaging by persona
+│   │   ├── competition.md             # 40+ competitors across 9 categories
+│   │   ├── competitor-deep-dive-framework.md
+│   │   └── profiles/                  # Individual competitor deep dives
 │   ├── architecture/                   # System design, tech stack, data models
-│   ├── product-spec.md                 # Complete product spec
-│   ├── policy-dsl.md                   # Policy language specification
-│   ├── mvp-roadmap.md                  # 12-week development plan
-│   ├── pricing-strategy.md             # Pricing tiers and positioning
-│   ├── competition.md                  # 40+ competitors across 9 categories
-│   └── gtm-strategy.md                 # Go-to-market strategy
-└── research/                           # Market research, user pain points
+│   ├── simulation/                     # Simulation docs
+│   ├── research/                       # Market research, user pain points
+│   └── _plans/                        # Dated session plans and specs
 ```
 
 ---
@@ -358,7 +367,7 @@ Key architecture: `POST /hook/evaluate` runs interceptor in evaluate-only mode (
 
 ## Competitive Positioning (Quick Reference)
 
-> Full map: `docs/positioning.md`
+> Full map: `docs/competitive/positioning.md`
 
 **The six market layers and where Rind plays (updated April 2026 — Phase 3C):**
 
@@ -469,14 +478,14 @@ then
 ## Key Documents to Read First
 
 1. `docs/strategic-analysis.md` — Current decision state (living document, read first)
-2. `docs/positioning.md` — Competitive map, 5 market layers, messaging by persona, developer discovery strategy
+2. `docs/competitive/positioning.md` — Competitive map, 5 market layers, messaging by persona, developer discovery strategy
 3. `docs/architecture/architecture-decisions.md` — AD-001 through AD-006: proxy model, SDK/proxy feature split, UX modes, zero trust permissions, personas, tech stack
-4. `docs/agent-deployment-patterns.md` — How each persona deploys agents; "wow" installation flows per persona
-5. `docs/vision.md` — Mission and goals
-6. `docs/technical-strategy.md` — Evidence-based feature prioritization
+4. `docs/product/agent-deployment-patterns.md` — How each persona deploys agents; "wow" installation flows per persona
+5. `docs/product/vision.md` — Mission and goals
+6. `docs/strategy/technical-strategy.md` — Evidence-based feature prioritization
 7. `docs/architecture/README.md` — System design overview
-8. `docs/competition.md` — Full 40+ competitor landscape
-9. `docs/competitor-deep-dive-framework.md` — Framework for running quarterly competitor analysis
+8. `docs/competitive/competition.md` — Full 40+ competitor landscape
+9. `docs/competitive/competitor-deep-dive-framework.md` — Framework for running quarterly competitor analysis
 
 ---
 

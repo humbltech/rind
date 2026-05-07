@@ -50,16 +50,16 @@ Enterprises adopting AI agents face critical challenges:
 ## Documentation
 
 ### Product
-- [**Product Specification**](docs/product-spec.md) - Complete product spec with architecture
-- [**Policy DSL**](docs/policy-dsl.md) - Full policy language specification
-- [**MVP Roadmap**](docs/mvp-roadmap.md) - 12-week development plan
-- [**Pricing Strategy**](docs/pricing-strategy.md) - Pricing tiers and positioning
+- [**Product Specification**](docs/product/product-spec.md) - Complete product spec with architecture
+- [**Policy DSL**](docs/product/policy-dsl.md) - Full policy language specification
+- [**MVP Roadmap**](docs/strategy/mvp-roadmap.md) - 12-week development plan
+- [**Pricing Strategy**](docs/strategy/pricing-strategy.md) - Pricing tiers and positioning
 
 ### Strategy
-- [**Strategic Summary**](docs/strategic-summary.md) - Executive overview and action plan
-- [**Technical Strategy**](docs/technical-strategy.md) - Feature prioritization, build sequence
-- [Vision & Goals](docs/vision.md) - Mission, success metrics, target market
-- [Market Research](docs/market-research.md) - Market size, segments, financials
+- [**Strategic Summary**](docs/strategy/strategic-summary.md) - Executive overview and action plan
+- [**Technical Strategy**](docs/strategy/technical-strategy.md) - Feature prioritization, build sequence
+- [Vision & Goals](docs/product/vision.md) - Mission, success metrics, target market
+- [Market Research](docs/research/market-research.md) - Market size, segments, financials
 
 ### Architecture
 - [**Architecture Overview**](docs/architecture/README.md) - System design and technology stack
@@ -72,13 +72,13 @@ Enterprises adopting AI agents face critical challenges:
 - [Product Ideas](docs/ideas.md) - Architecture options (proxy, endpoint, sandbox)
 
 ### Competitive Intelligence
-- [Competition Overview](docs/competition.md) - 40+ competitors across 9 categories
-- [Competitor Deep Dive](docs/competitor-deep-dive.md) - Detailed analysis of top 8 players
-- [Emerging Players](docs/emerging-players.md) - YC startups, underdogs, acquisition targets
+- [Competition Overview](docs/competitive/competition.md) - 40+ competitors across 9 categories
+- [Competitor Deep Dive](docs/competitive/_snapshots/competitor-deep-dive.md) - Detailed analysis of top 8 players
+- [Emerging Players](docs/competitive/emerging-players.md) - YC startups, underdogs, acquisition targets
 
 ### Go-to-Market
-- [GTM Strategy](docs/gtm-strategy.md) - Marketing, sales, positioning playbook
-- [User Pain Points](docs/user-pain-points.md) - Real feedback from users and enterprises
+- [GTM Strategy](docs/strategy/gtm-strategy.md) - Marketing, sales, positioning playbook
+- [User Pain Points](docs/research/user-pain-points.md) - Real feedback from users and enterprises
 
 ---
 

@@ -1,196 +1,142 @@
 # Rind Documentation Index
 
-**Last Updated:** April 2026
+**Last Updated:** May 2026
 
 ---
 
-## Quick Links
+## Start Here
 
 | Document | Purpose |
 |----------|---------|
-| [Product Spec](./product-spec.md) | Core product vision, architecture, pricing |
-| [Technical Strategy](./technical-strategy.md) | Build vs. integrate decisions, roadmap |
-| [Policy DSL](./policy-dsl.md) | Complete policy language reference |
+| [Strategic Analysis](./strategic-analysis.md) | Living decision log — read this first |
+| [Product Vision](./product/vision.md) | Mission, goals, target market |
+| [Product Spec](./product/product-spec.md) | Core product architecture and scope |
+| [Competitive Positioning](./competitive/positioning.md) | Market layers, messaging by persona |
 
 ---
 
 ## Documentation Structure
 
 ```
-rind/docs/
-├── README.md                          ← You are here
-├── product-spec.md                    ← Core product specification
-├── technical-strategy.md              ← Technical decisions & roadmap
-├── policy-dsl.md                      ← Policy language reference
-├── gtm-strategy.md                    ← Go-to-market strategy
-├── design-partner-strategy.md         ← Design partner approach
-├── user-pain-points.md                ← Customer research
-├── ideas.md                           ← Feature ideas backlog
+docs/
+├── strategic-analysis.md          ← Living decision log (primary reference)
 │
-├── architecture/
-│   ├── README.md                      ← Architecture overview
-│   ├── human-in-the-loop.md          ← HITL approval workflow spec
-│   ├── tool-discovery-policy-generation.md ← Auto-discovery & AI policies
-│   ├── sdk-langchain.md               ← LangChain integration
-│   └── data-models.md                 ← Database schema
+├── strategy/                      ← Strategic planning
+│   ├── technical-strategy.md      ← Build vs. integrate decisions, roadmap
+│   ├── gtm-strategy.md            ← Go-to-market approach
+│   ├── wedge-strategy.md          ← 28+ wedges evaluated
+│   ├── mvp-roadmap.md             ← 12-week development plan
+│   ├── pricing-strategy.md        ← Pricing tiers and positioning
+│   ├── design-partner-strategy.md ← Design partner approach
+│   ├── strategic-summary.md       ← High-level summary
+│   ├── strategy.md                ← Strategy overview
+│   └── demo-script.md             ← Demo talking points
 │
-└── simulation/
-    ├── simulation-strategy.md         ← Simulation approach
-    ├── simulation-scenarios.md        ← Test scenarios
-    └── simulation-technical-specs.md  ← Simulation tech details
-
-rind/research/
-├── competitive-analysis-lakera-2026.md    ← Lakera deep dive (new)
-├── market-targeting-rsac-2026.md          ← Market analysis (new)
-├── case-studies-incident-prevention.md    ← Real incidents & prevention (new)
-├── enterprise-ai-agent-deployment-patterns.md ← Enterprise research
-└── community-research.md                   ← Community feedback
+├── product/                       ← Product definition
+│   ├── vision.md                  ← Mission, goals, target market
+│   ├── product-spec.md            ← Complete product specification
+│   ├── policy-dsl.md              ← Policy language reference
+│   ├── use-case-scenarios.md      ← Use cases by persona
+│   ├── hook-expansion-plan.md     ← Claude Code hook integration plan
+│   ├── ui-guidelines.md           ← Design language and UI standards
+│   ├── agent-deployment-patterns.md ← How agents are deployed, "wow" install flows
+│   └── coverage-matrix.md         ← D-040 Phase A coverage tracking
+│
+├── competitive/                   ← All competitive intelligence
+│   ├── positioning.md             ← Market layers, messaging by persona
+│   ├── competition.md             ← 40+ competitor landscape
+│   ├── competitive-coverage-matrix.md ← Feature comparison across vendors
+│   ├── defensibility-analysis.md  ← Moat analysis
+│   ├── emerging-players.md        ← New entrants to watch
+│   ├── targeted-opportunities.md  ← Gaps and attack vectors
+│   ├── competitor-deep-dive-framework.md ← Framework for quarterly analysis
+│   ├── community-intelligence-report.md ← Community signal mining
+│   ├── community-research.md      ← Community feedback
+│   ├── profiles/                  ← Individual competitor deep dives
+│   │   ├── aembit.md
+│   │   ├── api-stronghold.md
+│   │   ├── bifrost.md
+│   │   ├── check-point-lakera.md
+│   │   ├── geordie-ai.md
+│   │   ├── lasso-security.md
+│   │   ├── ms-toolkit.md
+│   │   ├── noma-security.md
+│   │   ├── operant-ai.md
+│   │   ├── pointguard-ai.md
+│   │   └── straiker.md
+│   └── _snapshots/                ← Dated competitive snapshots
+│       ├── competitive-landscape-april-21.md
+│       ├── competitor-deep-dive.md
+│       └── competitive-analysis-lakera-2026.md
+│
+├── architecture/                  ← System design and ADRs
+│   ├── architecture-decisions.md  ← AD-001 through AD-009
+│   └── _archived/
+│
+├── simulation/                    ← Simulation docs
+│   ├── simulation-quickstart.md
+│   ├── simulation-scenarios.md
+│   ├── simulation-strategy.md
+│   ├── simulation-technical-specs.md
+│   ├── simulation-how-to-run.md
+│   ├── simulation-standalone.md
+│   └── simulation-companies.md
+│
+├── research/                      ← Market research and signals
+│   ├── agent-incidents/           ← Real incident research
+│   ├── competitors/               ← Raw competitive data (stats, HN)
+│   ├── design-partner-signals/    ← Public signal mining
+│   ├── content/                   ← Content drafts
+│   ├── market-research.md
+│   ├── user-pain-points.md
+│   ├── enterprise-ai-agent-deployment-patterns.md
+│   ├── case-studies-incident-prevention.md
+│   ├── market-targeting-rsac-2026.md
+│   └── simulation-archive/        ← Archived pre-April-2026 simulation data
+│
+├── private/                       ← Sensitive business docs
+│
+└── _plans/                        ← Dated session plans and design specs
+    ├── plans/
+    └── specs/
 ```
 
 ---
 
 ## Key Documents by Topic
 
-### Market & Strategy
+### Strategy
 
 | Document | Key Content |
 |----------|-------------|
-| [Market Targeting](../research/market-targeting-rsac-2026.md) | Why mid-market, not SMB. ICP definitions. |
-| [Competitive Analysis](../research/competitive-analysis-lakera-2026.md) | Lakera features, Check Point acquisition impact |
-| [Case Studies](../research/case-studies-incident-prevention.md) | Real incidents, how Rind prevents them |
-| [GTM Strategy](./gtm-strategy.md) | Go-to-market approach |
+| [Strategic Analysis](./strategic-analysis.md) | All decisions D-001 through D-047, open questions |
+| [Technical Strategy](./strategy/technical-strategy.md) | Build vs. integrate decisions, 90-day plan |
+| [GTM Strategy](./strategy/gtm-strategy.md) | Go-to-market motion, channels |
+| [Wedge Strategy](./strategy/wedge-strategy.md) | MCP routing wedge, 28+ options evaluated |
+| [MVP Roadmap](./strategy/mvp-roadmap.md) | 12-week plan |
 
-### Product & Architecture
-
-| Document | Key Content |
-|----------|-------------|
-| [Product Spec](./product-spec.md) | Vision, architecture, pricing, MVP scope |
-| [Human-in-the-Loop](./architecture/human-in-the-loop.md) | HITL approval workflow design |
-| [Tool Discovery](./architecture/tool-discovery-policy-generation.md) | Auto-discovery, AI policy generation, packs |
-| [Policy DSL](./policy-dsl.md) | Complete policy language spec |
-
-### Technical
+### Product
 
 | Document | Key Content |
 |----------|-------------|
-| [Technical Strategy](./technical-strategy.md) | Build vs. integrate, 90-day plan |
-| [SDK - LangChain](./architecture/sdk-langchain.md) | LangChain integration spec |
-| [Data Models](./architecture/data-models.md) | Database schema |
+| [Product Spec](./product/product-spec.md) | Vision, architecture, pricing, MVP scope |
+| [Policy DSL](./product/policy-dsl.md) | Complete policy language spec |
+| [Hook Expansion Plan](./product/hook-expansion-plan.md) | D-040 endpoint agent integration |
 
----
+### Competitive
 
-## Recent Updates (April 2026)
+| Document | Key Content |
+|----------|-------------|
+| [Positioning](./competitive/positioning.md) | 6 market layers, differentiation, messaging |
+| [Competition](./competitive/competition.md) | Full 40+ competitor landscape |
+| [Coverage Matrix](./competitive/competitive-coverage-matrix.md) | Feature-by-feature vendor comparison |
+| [Competitor Profiles](./competitive/profiles/) | Individual deep dives (11 vendors) |
 
-### New Documents
+### Research
 
-1. **[competitive-analysis-lakera-2026.md](../research/competitive-analysis-lakera-2026.md)**
-   - Lakera technical specs (98% detection, <50ms latency)
-   - Check Point acquisition analysis ($300M)
-   - Feature gap analysis (where Rind differentiates)
-   - Pricing comparison
-
-2. **[market-targeting-rsac-2026.md](../research/market-targeting-rsac-2026.md)**
-   - RSAC 2026 key findings (Zscaler ThreatLabz)
-   - Why SMB is risky, mid-market is the sweet spot
-   - ICP definitions for both target segments
-   - Budget benchmarks ($1,200-2,500/employee/year)
-
-3. **[case-studies-incident-prevention.md](../research/case-studies-incident-prevention.md)**
-   - Replit production database deletion
-   - Amazon Kiro 13-hour outage
-   - EchoLeak zero-click data exfiltration
-   - $47K agent infinite loop
-   - ROI calculator (18x return)
-
-4. **[human-in-the-loop.md](./architecture/human-in-the-loop.md)**
-   - Complete HITL architecture
-   - Slack/email notification design
-   - Database schema for approvals
-   - Timeout handling
-   - Security considerations
-
-5. **[tool-discovery-policy-generation.md](./architecture/tool-discovery-policy-generation.md)**
-   - Tool discovery from LangChain, MCP, OpenAI
-   - Tool catalog structure
-   - AI policy generation pipeline
-   - Policy packs (SQL, filesystem, etc.)
-   - Human review workflow
-
-### Updated Documents
-
-1. **[product-spec.md](./product-spec.md)**
-   - Added RSAC 2026 market context
-   - Added catastrophic action prevention as P0
-   - Updated pricing for mid-market focus
-   - Added self-hosted model support architecture
-   - Added real incident references
-
-2. **[policy-dsl.md](./policy-dsl.md)**
-   - Added policy packs reference
-   - Added tool catalog section
-   - Updated version to 1.1
-
----
-
-## Core Concepts
-
-### Policy Layers (Hybrid Approach)
-
-```
-LAYER 3: Simple Toggles (90% of users)
-         "Enable production database protection" [ON/OFF]
-
-LAYER 2: Pre-built Packs (power users)
-         SQL Pack, Filesystem Pack, Payment Pack, etc.
-
-LAYER 1: Custom DSL (advanced users)
-         Full policy language for unique requirements
-```
-
-### Tool Discovery Flow
-
-```
-Agent Connects → Discover Tools → Classify (Catalog or AI)
-                                        │
-                        ┌───────────────┴───────────────┐
-                        │                               │
-                  Catalog Match                   AI Generated
-                        │                               │
-                        ▼                               ▼
-                 Auto-apply policy            Human review required
-```
-
-### Risk Tiers
-
-| Tier | Risk | Control | Examples |
-|------|------|---------|----------|
-| 0 | Low | ALLOW | Read operations, list, get |
-| 1 | Medium | ALLOW + Audit | Write, create, update |
-| 2 | High | REQUIRE_APPROVAL | Delete, bulk operations |
-| 3 | Critical | DENY or REQUIRE_APPROVAL (2 approvers) | DROP, shell exec |
-
----
-
-## Key Differentiators
-
-### Rind vs. Lakera
-
-| Capability | Lakera | Rind |
-|------------|--------|-------|
-| Prompt injection | ✅ Yes | ✅ Integrate |
-| Tool call control | ❌ No | ✅ **Yes** |
-| Human-in-the-loop | ❌ No | ✅ **Yes** |
-| MCP security | ❌ No | ✅ **Yes** |
-| Cost controls | ❌ No | ✅ **Yes** |
-| Auto-discovery | ❌ No | ✅ **Yes** |
-| AI policy generation | ❌ No | ✅ **Yes** |
-
----
-
-## Getting Started
-
-1. **Understand the product**: Read [Product Spec](./product-spec.md)
-2. **See the market opportunity**: Read [Market Targeting](../research/market-targeting-rsac-2026.md)
-3. **Understand competition**: Read [Competitive Analysis](../research/competitive-analysis-lakera-2026.md)
-4. **See real-world value**: Read [Case Studies](../research/case-studies-incident-prevention.md)
-5. **Dive into architecture**: Read [HITL](./architecture/human-in-the-loop.md) and [Tool Discovery](./architecture/tool-discovery-policy-generation.md)
+| Document | Key Content |
+|----------|-------------|
+| [Case Studies](./research/case-studies-incident-prevention.md) | Replit DB, Kiro outage, EchoLeak, $47K loop |
+| [Market Targeting](./research/market-targeting-rsac-2026.md) | ICP, RSAC 2026 findings |
+| [Design Partner Signals](./research/design-partner-signals/) | Public signal mining |
+| [Agent Incidents](./research/agent-incidents/) | Incident research 2026 |
