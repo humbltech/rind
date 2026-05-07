@@ -30,6 +30,9 @@ export interface RindEventMap {
   'llm:response': LlmCallEvent;
   'llm:blocked': { event: LlmCallEvent; reason: string };
   'llm:cost-anomaly': { event: LlmCallEvent; thresholdUsd: number };
+  'server:shadow-attempt': { serverId: string; timestamp: number };
+  'server:registered': { serverId: string; transport: string };
+  'server:unregistered': { serverId: string };
 }
 
 type EventHandler<K extends keyof RindEventMap> = (payload: RindEventMap[K]) => void;

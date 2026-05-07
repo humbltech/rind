@@ -46,6 +46,37 @@ export class UpstreamPool {
   }
 
   /**
+   * Registers a new upstream server at runtime, or replaces an existing one.
+   * If a client is already open for this ID it is closed before the new config takes effect.
+   */
+  register(id: string, config: UpstreamServerConfig): void {
+    const existing = this.clients.get(id);
+    if (existing) {
+      existing.close().catch(() => undefined);
+      this.clients.delete(id);
+    }
+    this.servers[id] = config;
+  }
+
+  /**
+   * Removes a server and closes its upstream connection.
+   * Safe to call when no client is open — no-op on the connection side in that case.
+   */
+  async unregister(id: string): Promise<void> {
+    const client = this.clients.get(id);
+    if (client) {
+      await client.close();
+      this.clients.delete(id);
+    }
+    delete this.servers[id];
+  }
+
+  /** Returns all registered server IDs and their configs (credentials not stripped here — callers must redact before exposing via API). */
+  list(): Array<{ id: string; config: UpstreamServerConfig }> {
+    return Object.entries(this.servers).map(([id, config]) => ({ id, config }));
+  }
+
+  /**
    * Closes all open upstream connections.
    * Errors from individual clients are collected rather than swallowed — the caller
    * receives an AggregateError if any close failed, enabling logging at the call site.

@@ -49,6 +49,7 @@ export function mcpGateway(
   interceptorOpts: InterceptorOptions,
   version: string,
   onToolsList?: (serverId: string, tools: ToolInfo[]) => void,
+  onShadowAttempt?: (serverId: string) => void,
 ): Hono {
   const app = new Hono();
 
@@ -69,8 +70,9 @@ export function mcpGateway(
 
     const upstream = pool.get(serverId);
     if (!upstream) {
+      onShadowAttempt?.(serverId);
       return c.json(
-        buildError(null, JSON_RPC.INVALID_REQUEST, `Unknown MCP server: "${serverId}"`),
+        buildError(null, JSON_RPC.INVALID_REQUEST, `MCP server "${serverId}" is not registered. Register it via POST /servers before connecting.`),
         404,
       );
     }

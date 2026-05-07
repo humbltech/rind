@@ -36,6 +36,7 @@ import { mcpGateway } from './transport/gateway.js';
 import { llmGateway } from './transport/llm/gateway.js';
 import { defaultLlmProxyConfig } from './transport/llm/types.js';
 import { policyRoutes } from './routes/policy.js';
+import { serverRoutes } from './routes/servers.js';
 import { sessionRoutes } from './routes/session.js';
 import { scanRoutes } from './routes/scan.js';
 import { logRoutes } from './routes/log.js';
@@ -140,8 +141,10 @@ export function createProxyServer(config: ProxyConfig) {
   // ── Runtime safety (D-017) ────────────────────────────────────────────────────
   const rateLimiter = new RateLimiter();
 
-  // ── Upstream pool (D-040 Phase A3) ───────────────────────────────────────────
-  // Manages lazy connections to all configured MCP servers.
+  // ── Upstream pool (D-040 Phase A3 + D-049) ──────────────────────────────────
+  // Manages lazy connections to all registered MCP servers.
+  // Servers from startup config are pre-populated; additional servers can be
+  // registered at runtime via POST /servers without restarting the proxy.
   const upstreamPool = new UpstreamPool(config.servers ?? {}, createUpstreamClient);
 
   // ── Hono app ──────────────────────────────────────────────────────────────────
@@ -153,7 +156,9 @@ export function createProxyServer(config: ProxyConfig) {
   // ─── MCP protocol gateway (D-040 Phase A3) ───────────────────────────────────
   // /mcp/:serverId — receives MCP JSON-RPC from Claude Code, Cursor, Windsurf, etc.
   // Intercepts tools/call through the policy engine; proxies everything else.
-  if (config.mcpProxyEnabled !== false && Object.keys(config.servers ?? {}).length > 0) {
+  // Gateway is always mounted when mcpProxyEnabled — servers can be registered
+  // dynamically via POST /servers even if none are configured at startup.
+  if (config.mcpProxyEnabled !== false) {
     const gatewayInterceptorOpts = {
       policyEngine,
       loopDetector,
@@ -214,7 +219,12 @@ export function createProxyServer(config: ProxyConfig) {
         logger.warn({ serverId, err }, 'Scan-on-connect failed');
       }
     };
-    app.route('/', mcpGateway(upstreamPool, gatewayInterceptorOpts, PROXY_VERSION, onToolsList));
+    const onShadowAttempt = (serverId: string) => {
+      bus.emit('server:shadow-attempt', { serverId, timestamp: Date.now() });
+      logger.warn({ serverId }, 'Shadow MCP server attempt — server not registered, access blocked');
+    };
+
+    app.route('/', mcpGateway(upstreamPool, gatewayInterceptorOpts, PROXY_VERSION, onToolsList, onShadowAttempt));
     logger.info({ servers: Object.keys(config.servers ?? {}) }, 'MCP gateway mounted');
   }
 
@@ -369,6 +379,7 @@ export function createProxyServer(config: ProxyConfig) {
 
   // ─── Route modules ────────────────────────────────────────────────────────────
   app.route('/', policyRoutes({ policyEngine, policyStore, bus, logger }));
+  app.route('/', serverRoutes({ pool: upstreamPool, bus, logger }));
   app.route('/', sessionRoutes({ bus, config, logger, sessionStore }));
   app.route('/', scanRoutes({ bus, logger, serverScannerMode: config.layers?.['server-scanner']?.mode }));
   app.route('/', logRoutes({ ringBuffer, hookEventBuffer }));
