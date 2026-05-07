@@ -1342,3 +1342,34 @@ Layer 5 ("Execution-layer control plane") now has partial coverage:
 **Kill criteria**: Enterprise customer explicitly requires DPoP in procurement → accelerate
 
 ---
+
+### Backlog: rind mcp setup — Zero-Friction Onboarding Command
+**Logged**: May 7, 2026
+**Status**: Backlog — do not build until server registration API + agent key issuance are shipped and validated
+
+**Vision**: `npx rind mcp setup` (or `rind init`) discovers all MCP servers configured on the developer's machine, authenticates with Rind, and registers everything automatically with minimal user input.
+
+**Full flow**:
+1. Scan known MCP config locations (`.mcp.json`, `~/.claude/settings.json`, `.cursor/mcp.json`, VS Code settings) → build a list of all configured MCP servers
+2. Open a browser to complete OAuth 2.1 + PKCE login to Rind (or prompt for an existing API token)
+3. For each discovered server: show name + URL, ask the user to confirm or skip
+4. For servers requiring upstream auth: wizard step — "this server needs credentials. Paste your API key:" (stored encrypted, never in config files)
+5. Register all confirmed servers via `POST /servers` with the user's Rind key
+6. Update ALL config files that referenced the old direct URL to point to the Rind proxy URL
+7. Print a summary: "7 servers registered. Your MCP config files have been updated. Agents will now route through Rind."
+
+**Two paths** (both needed):
+- **Admin path**: Admin generates a server registration in the Rind dashboard → exports a config snippet → distributes to team → developers run `rind mcp apply <config>` to apply it
+- **Developer self-serve path**: Developer runs `rind mcp setup`, authenticates, wizard handles everything — no admin involvement needed for individual setup
+
+**Key design constraints**:
+- Must be idempotent — running twice doesn't duplicate servers or break configs
+- Config file updates must be reversible (`rind mcp detach` restores original URLs)
+- Must handle the case where the user has no Rind account yet — `rind mcp setup` becomes the signup flow
+- Zero manual URL editing — the entire value is "one command, done"
+
+**Why this is the wedge**: The onboarding UX is the entire product for self-serve adoption. A developer who types one command and sees all their MCP servers appear in the Rind dashboard has experienced the product. This is the "oh shit" moment for the routing wedge (D-047).
+
+**Build after**: server registration API ✓, agent key issuance, `npx rind-scan` CLI scaffold
+
+---
