@@ -37,6 +37,8 @@ import { llmGateway } from './transport/llm/gateway.js';
 import { defaultLlmProxyConfig } from './transport/llm/types.js';
 import { policyRoutes } from './routes/policy.js';
 import { serverRoutes } from './routes/servers.js';
+import { keyRoutes } from './routes/keys.js';
+import { ApiKeyStore } from './key-store.js';
 import { sessionRoutes } from './routes/session.js';
 import { scanRoutes } from './routes/scan.js';
 import { logRoutes } from './routes/log.js';
@@ -140,6 +142,9 @@ export function createProxyServer(config: ProxyConfig) {
 
   // ── Runtime safety (D-017) ────────────────────────────────────────────────────
   const rateLimiter = new RateLimiter();
+
+  // ── API key store (D-050) ─────────────────────────────────────────────────────
+  const keyStore = new ApiKeyStore();
 
   // ── Upstream pool (D-040 Phase A3 + D-049) ──────────────────────────────────
   // Manages lazy connections to all registered MCP servers.
@@ -380,6 +385,7 @@ export function createProxyServer(config: ProxyConfig) {
   // ─── Route modules ────────────────────────────────────────────────────────────
   app.route('/', policyRoutes({ policyEngine, policyStore, bus, logger }));
   app.route('/', serverRoutes({ pool: upstreamPool, bus, logger }));
+  app.route('/', keyRoutes({ keyStore, bus, logger }));
   app.route('/', sessionRoutes({ bus, config, logger, sessionStore }));
   app.route('/', scanRoutes({ bus, logger, serverScannerMode: config.layers?.['server-scanner']?.mode }));
   app.route('/', logRoutes({ ringBuffer, hookEventBuffer }));

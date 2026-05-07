@@ -33,6 +33,8 @@ export interface RindEventMap {
   'server:shadow-attempt': { serverId: string; timestamp: number };
   'server:registered': { serverId: string; transport: string };
   'server:unregistered': { serverId: string };
+  'key:issued': { keyId: string; name: string; serverIds: string[] };
+  'key:revoked': { keyId: string };
 }
 
 type EventHandler<K extends keyof RindEventMap> = (payload: RindEventMap[K]) => void;
