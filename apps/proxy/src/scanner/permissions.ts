@@ -10,6 +10,8 @@ import {
   SHELL_EXECUTION_PATTERNS,
   UNRESTRICTED_FS_PATTERNS,
   OUTBOUND_HTTP_PATTERNS,
+  SENSITIVE_DATA_PATTERNS,
+  SERVICE_LIFECYCLE_PATTERNS,
 } from '../rules/index.js';
 
 export function checkPermissions(tools: ToolDefinition[]): ScanFinding[] {
@@ -61,6 +63,24 @@ export function checkPermissions(tools: ToolDefinition[]): ScanFinding[] {
         severity: 'critical',
         toolName: tool.name,
         detail: `Tool "${tool.name}" can send HTTP requests to caller-supplied external URLs. This is a one-call data exfiltration path — any prompt injection into this tool's arguments can exfiltrate data.`,
+      });
+    }
+
+    if (SENSITIVE_DATA_PATTERNS.some((p) => p.pattern.test(text))) {
+      findings.push({
+        category: 'OVER_PERMISSIONED',
+        severity: 'high',
+        toolName: tool.name,
+        detail: `Tool "${tool.name}" exposes environment variables or secrets without per-agent scoping. Any agent granted this tool can read all credentials for all services.`,
+      });
+    }
+
+    if (SERVICE_LIFECYCLE_PATTERNS.some((p) => p.pattern.test(text))) {
+      findings.push({
+        category: 'OVER_PERMISSIONED',
+        severity: 'high',
+        toolName: tool.name,
+        detail: `Tool "${tool.name}" can restart or redeploy a service, potentially causing a production outage. Verify it enforces environment scoping (staging vs. production).`,
       });
     }
   }

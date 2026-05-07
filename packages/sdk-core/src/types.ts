@@ -210,6 +210,8 @@ export interface ToolCallEvent {
   matchedRule?: string;
   // Which engine produced the matched rule — 'policy' for the policy engine, 'scan' for the scanner
   matchedRuleType?: 'policy' | 'scan';
+  // Names of observe-mode rules that matched but were not enforced (rule had observe: true)
+  observedRules?: string[];
   // Source classification: 'builtin' for Claude Code tools, 'mcp' for MCP server tools
   source?: 'builtin' | 'mcp' | 'proxy';
   // Human-readable label: "Bash: git status", "Read: server.ts", "Edit: types.ts"
@@ -522,6 +524,7 @@ export interface PolicyRule {
   name: string;
   agent: string; // '*' = all agents
   enabled?: boolean; // default true — set to false to disable without deleting
+  observe?: boolean; // default false — when true, rule matches are logged but not enforced; evaluation continues to next rule
   match: {
     tool?: string[];
     toolPattern?: string; // glob pattern e.g. "billing.*"
@@ -677,6 +680,7 @@ export interface AuditEntry {
   serverId: string;
   action: string; // ALLOW, DENY, BLOCKED_*, etc.
   policyRule?: string; // name of matching rule, or undefined for default-allow
+  observedRules?: string[]; // names of observe-mode rules that matched but were not enforced
   toolName?: string;
   reason?: string;
   threats?: ResponseThreat[];

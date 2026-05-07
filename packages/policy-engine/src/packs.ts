@@ -388,6 +388,32 @@ const registry: PolicyPack[] = [
         priority: PACK_PRIORITY,
       },
 
+      // ── Cloud SaaS GraphQL destructive mutations via curl ────────────────────
+      {
+        // Catches curl calls that reach a cloud provider's GraphQL API and contain
+        // a destructive mutation keyword. Canonical example: the PocketOS incident
+        // (April 2026) where an agent issued volumeDelete against backboard.railway.app.
+        // The agent bypassed the MCP server (which intentionally omits destructive tools)
+        // and hit the raw GraphQL endpoint directly via Bash. REQUIRE_APPROVAL keeps
+        // the human in the loop rather than outright blocking — the call may be legitimate.
+        name: 'cli-protection:require-approval-cloud-graphql-destructive',
+        agent: '*',
+        match: {
+          tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
+          parameters: {
+            command: {
+              // Matches: curl … backboard.railway.app/graphql … volumeDelete
+              // Also covers generic *.railway.app and graphql paths for other providers.
+              // Destructive verbs: Delete, Drop, Destroy, Terminate, Purge, Truncate.
+              regex: '\\bcurl\\b.*(?:backboard\\.railway|railway\\.app\\/graphql|\\/graphql\\/v\\d+).*\\b(?:Delete|Drop|Destroy|Terminate|Purge|Truncate)\\b',
+            },
+          },
+        },
+        action: 'REQUIRE_APPROVAL',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+
       // ── Local file system destruction ─────────────────────────────────────────
       {
         // Catches rm -rf, rm -fr, rm -Rf, rm -fR, rm --recursive --force (and reverse)

@@ -33,6 +33,7 @@ export interface PolicyEvalResult {
   action: PolicyAction;
   matchedRule?: PolicyRule; // the rule that triggered the action (undefined = default allow)
   reason?: string; // human-readable reason (for loop detection, includes threshold info)
+  observedRules?: PolicyRule[]; // rules that matched in observe-only mode (logged, not enforced)
 }
 
 export class PolicyEngine {
@@ -54,6 +55,8 @@ export class PolicyEngine {
   }
 
   evaluate(event: ToolCallEvent): PolicyEvalResult {
+    const observedRules: PolicyRule[] = [];
+
     for (const rule of this.rules) {
       // Skip disabled rules (enabled defaults to true when not set)
       if (rule.enabled === false) continue;
@@ -69,16 +72,32 @@ export class PolicyEngine {
           event.sessionId, event.toolName, event.input, rule.loop,
         );
         if (!loopResult.loop) continue; // condition not met → skip this rule
+
+        if (rule.observe) {
+          observedRules.push(rule);
+          continue; // observe-only — log but do not enforce, continue to next rule
+        }
         return {
           action: rule.action,
           matchedRule: rule,
           reason: loopResult.reason,
+          ...(observedRules.length > 0 && { observedRules }),
         };
       }
 
-      return { action: rule.action, matchedRule: rule };
+      // Observe-only rule: record match and continue evaluating
+      if (rule.observe) {
+        observedRules.push(rule);
+        continue;
+      }
+
+      return {
+        action: rule.action,
+        matchedRule: rule,
+        ...(observedRules.length > 0 && { observedRules }),
+      };
     }
-    return { action: 'ALLOW' };
+    return { action: 'ALLOW', ...(observedRules.length > 0 && { observedRules }) };
   }
 
   /**

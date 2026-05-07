@@ -159,9 +159,12 @@ export function createProxyServer(config: ProxyConfig) {
       loopDetector,
       rateLimiter,
       sessionStore,
-      onToolCallEvent: (event: ToolCallEvent, rule?: import('./types.js').PolicyRule) => {
+      onToolCallEvent: (event: ToolCallEvent, rule?: import('./types.js').PolicyRule, observedRules?: import('./types.js').PolicyRule[]) => {
+        // Enrich the event with observe-mode rule names before storing in the ring buffer
+        const observedNames = observedRules?.map((r) => r.name);
+        const emittedEvent = observedNames ? { ...event, observedRules: observedNames } : event;
         // bus.emit triggers the ring buffer subscriber — no direct push needed
-        bus.emit('tool:call', event);
+        bus.emit('tool:call', emittedEvent);
         emitAudit(bus, {
           eventType: 'tool:call',
           sessionId: event.sessionId,
@@ -170,9 +173,25 @@ export function createProxyServer(config: ProxyConfig) {
           toolName: event.toolName,
           action: 'evaluated',
           policyRule: rule?.name,
+          observedRules: observedNames,
         });
       },
-      onToolResponseEvent: () => {},
+      onToolResponseEvent: (event: import('./types.js').ToolResponseEvent) => {
+        if (event.threats.length === 0) return;
+        bus.emit('tool:response', event);
+        // Enrich the matching tool:call ring buffer entry with response threat data.
+        // Matches on sessionId + toolName — finds the most recent un-enriched entry.
+        ringBuffer.update(
+          (e) => e.sessionId === event.sessionId && e.toolName === event.toolName && !e.response,
+          (e) => ({
+            ...e,
+            response: {
+              threats: event.threats,
+              timestamp: Date.now(),
+            },
+          }),
+        );
+      },
       blockOnCriticalResponseThreats: false,
       layers: config.layers,
     };

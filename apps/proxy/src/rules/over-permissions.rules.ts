@@ -58,3 +58,22 @@ export const OUTBOUND_HTTP_PATTERNS: PermissionsPattern[] = [
   { id: 'perm-http-004', pattern: /\bpost\s+(?:to\s+)?(?:an?\s+)?(?:external\s+)?url\b/i, description: 'Post to external URL' },
   { id: 'perm-http-005', pattern: /\bhttp\s+request\s+to\b/i, description: 'HTTP request to caller-supplied destination' },
 ];
+
+// Sensitive data access — tools that expose credentials or secrets broadly.
+// These are high-severity even without a destructive action: any credential leak
+// enables follow-on attacks, as in the PocketOS Railway incident.
+export const SENSITIVE_DATA_PATTERNS: PermissionsPattern[] = [
+  { id: 'perm-data-001', pattern: /\blist\b.{0,40}\b(variable|secret|credential|env(?:ironment)?|token)\b/i, description: 'Lists all variables/secrets (broad credential read)' },
+  { id: 'perm-data-002', pattern: /\b(retrieve|get|fetch|read)\b.{0,40}\ball\b.{0,40}\b(variable|secret|credential|env(?:ironment)?)\b/i, description: 'Retrieves all variables/secrets' },
+  { id: 'perm-data-003', pattern: /\b(variable|secret|credential)s?\b.{0,40}\b(list|retrieve|dump|export)\b/i, description: 'Variables/secrets listing or export operation' },
+];
+
+// Service lifecycle — operations that can cause production outages.
+// Restart/redeploy of a service has the same blast radius as deletion if it
+// hits production; the PocketOS incident used volumeDelete but service-restart
+// is equally dangerous and equally un-scoped in most MCP catalogs.
+export const SERVICE_LIFECYCLE_PATTERNS: PermissionsPattern[] = [
+  { id: 'perm-svc-001', pattern: /\b(restart|reboot|redeploy)\b.{0,40}\bservice\b/i, description: 'Restart/reboot/redeploy service (outage risk)' },
+  { id: 'perm-svc-002', pattern: /\bservice\b.{0,40}\b(restart|reboot|stop|redeploy)\b/i, description: 'Service stop/restart/redeploy operation' },
+  { id: 'perm-svc-003', pattern: /\b(trigger|force)\b.{0,30}\b(restart|redeploy|reboot)\b/i, description: 'Force restart/redeploy (outage risk)' },
+];

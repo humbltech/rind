@@ -80,7 +80,7 @@ export function hookRoutes({
     const evalResult: HookEvalResult = await evaluateHook(parsed.data, {
       policyEngine,
       sessionStore,
-      onToolCallEvent: (event, rule) => {
+      onToolCallEvent: (event, rule, observedRules) => {
         matchedRuleName = rule?.name;
         emitAudit(bus, {
           eventType: 'tool:call',
@@ -90,6 +90,7 @@ export function hookRoutes({
           toolName: event.toolName,
           action: 'evaluated',
           policyRule: rule?.name,
+          observedRules: observedRules?.map((r) => r.name),
         });
       },
       onToolResponseEvent: () => {

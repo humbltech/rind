@@ -25,6 +25,8 @@ export interface ToolCallEntry {
   matchedRule?: string;
   // Which engine produced the matched rule — 'policy' for policy engine, 'scan' for scanner
   matchedRuleType?: 'policy' | 'scan';
+  // Names of observe-mode rules that matched but were not enforced
+  observedRules?: string[];
   // Tool input arguments (for display in expandable row)
   input?: unknown;
   // Working directory
@@ -129,7 +131,12 @@ function TableRow({ entry, isNew }: { entry: ToolCallEntry; isNew: boolean }) {
           <SourceBadge source={entry.source} />
         </td>
         <td className="px-4 py-3">
-          {entry.outcome && <OutcomeBadge outcome={entry.outcome} />}
+          <div className="flex flex-col gap-1">
+            {entry.outcome && <OutcomeBadge outcome={entry.outcome} />}
+            {entry.observedRules && entry.observedRules.length > 0 && (
+              <ObserveBadge count={entry.observedRules.length} />
+            )}
+          </div>
         </td>
       </tr>
       {expanded && (
@@ -141,6 +148,7 @@ function TableRow({ entry, isNew }: { entry: ToolCallEntry; isNew: boolean }) {
               reason={entry.reason}
               matchedRule={entry.matchedRule ?? (entry.outcome === 'allowed' ? '(default)' : undefined)}
               matchedRuleType={entry.matchedRuleType}
+              observedRules={entry.observedRules}
               agentId={entry.agentId}
               sessionId={entry.sessionId}
               sessionName={entry.sessionName}
@@ -236,6 +244,24 @@ function OutcomeBadge({ outcome }: { outcome: NonNullable<ToolCallEntry['outcome
   );
 }
 
+// Observe badge — shown when observe-mode rules matched but were not enforced.
+// Signals: "Rind saw this, but isn't blocking yet — team is tuning policies."
+function ObserveBadge({ count }: { count: number }) {
+  return (
+    <span
+      className="font-mono text-[10px] tracking-[0.04em] px-2 py-0.5 rounded border whitespace-nowrap"
+      style={{
+        color: 'var(--rind-accent)',
+        background: 'color-mix(in srgb, var(--rind-accent) 8%, transparent)',
+        borderColor: 'color-mix(in srgb, var(--rind-accent) 20%, transparent)',
+      }}
+      title="Observe-mode rules matched — logged but not enforced"
+    >
+      OBSERVED {count > 1 ? `×${count}` : ''}
+    </span>
+  );
+}
+
 function EmptyState() {
   return (
     <div className="border border-border rounded-lg h-40 flex flex-col items-center justify-center gap-2">
@@ -309,12 +335,13 @@ function RuleTypeBadge({ type }: { type: 'policy' | 'scan' }) {
 }
 
 // Expandable input detail panel
-function InputDetail({ input, cwd, reason, matchedRule, matchedRuleType, agentId, sessionId, sessionName, response, correlationId }: {
+function InputDetail({ input, cwd, reason, matchedRule, matchedRuleType, observedRules, agentId, sessionId, sessionName, response, correlationId }: {
   input: unknown;
   cwd?: string;
   reason?: string;
   matchedRule?: string;
   matchedRuleType?: 'policy' | 'scan';
+  observedRules?: string[];
   agentId: string;
   sessionId: string;
   sessionName?: string;
@@ -354,6 +381,22 @@ function InputDetail({ input, cwd, reason, matchedRule, matchedRuleType, agentId
         <span className="font-mono text-muted truncate">{matchedRule ?? '—'}</span>
         {matchedRuleType && <RuleTypeBadge type={matchedRuleType} />}
       </div>
+      {observedRules && observedRules.length > 0 && (
+        <div className="flex gap-2 text-[11px]">
+          <span className="text-dim font-medium w-20 shrink-0">Observed</span>
+          <span
+            className="font-mono text-[10px] px-1.5 py-0.5 rounded border"
+            style={{
+              color: 'var(--rind-accent)',
+              background: 'color-mix(in srgb, var(--rind-accent) 8%, transparent)',
+              borderColor: 'color-mix(in srgb, var(--rind-accent) 20%, transparent)',
+            }}
+            title="Rules matched but not enforced (observe mode)"
+          >
+            {observedRules.join(', ')}
+          </span>
+        </div>
+      )}
 
       {/* Tabs: Input / Response */}
       {(hasInput || hasResponse) && (

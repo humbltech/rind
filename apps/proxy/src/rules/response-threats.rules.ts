@@ -136,6 +136,12 @@ export const CREDENTIAL_PATTERNS: CredentialPattern[] = [
     label: 'JWT token',
     description: 'Detects base64url-encoded JWT tokens (three dot-separated segments starting with eyJ)',
   },
+  {
+    id: 'cred-010',
+    pattern: /\bRAILWAY_(?:TOKEN|API_KEY)\s*[:=]\s*\S{16,}/i,
+    label: 'Railway API token',
+    description: 'Detects Railway API token in environment variable assignment (RAILWAY_TOKEN=... or RAILWAY_API_KEY=...)',
+  },
 ];
 
 // ─── Indirect prompt injection via retrieved content (D-029) ─────────────────

@@ -16,7 +16,7 @@
 
 import type { ToolCallEvent, ToolResponseEvent, PolicyAction, PolicyRule, ProxyConfig } from './types.js';
 import { inspectRequest } from './inspector/request.js';
-import { inspectResponse } from './inspector/response.js';
+import { inspectResponse, redactCredentialsInOutput } from './inspector/response.js';
 import type { ISessionStore } from './session.js';
 import type { PolicyEngine } from './policy/engine.js';
 import type { LoopDetector } from './loop-detector.js';
@@ -59,7 +59,7 @@ export interface InterceptorOptions {
   loopDetector?: LoopDetector;
   rateLimiter?: RateLimiter;
   sessionStore: ISessionStore;
-  onToolCallEvent: (event: ToolCallEvent, matchedRule?: PolicyRule) => void;
+  onToolCallEvent: (event: ToolCallEvent, matchedRule?: PolicyRule, observedRules?: PolicyRule[]) => void;
   onToolResponseEvent: (event: ToolResponseEvent) => void;
   blockOnCriticalResponseThreats: boolean;
   // Skip request-side injection scanning. Set true for hook evaluate-only mode
@@ -150,7 +150,7 @@ export async function intercept(
     return blocked('DENY', `Policy evaluation error: ${String(err)}`);
   }
 
-  opts.onToolCallEvent(event, evalResult?.matchedRule);
+  opts.onToolCallEvent(event, evalResult?.matchedRule, evalResult?.observedRules);
 
   const { action, matchedRule, reason: evalReason } = evalResult ?? { action: 'ALLOW' as PolicyAction };
   // effectiveAction starts as the policy action but is normalised to ALLOW after
@@ -282,25 +282,40 @@ export async function intercept(
     }
   }
 
+  // ── 8b. Redact credentials before returning to agent ────────────────────────
+  // When a CREDENTIAL_LEAK threat is detected, replace the token value with
+  // [REDACTED] in the output so the agent never sees the raw credential.
+  // The response is still returned (not blocked) — we log the sanitized event.
+  // This is the credential proxy pattern at the MCP response layer.
+  const hasCredentialLeak = responseThreats.some((t) => t.type === 'CREDENTIAL_LEAK');
+  let finalOutput = output;
+  let finalThreats = responseThreats;
+  if (hasCredentialLeak) {
+    const redacted = redactCredentialsInOutput(output, responseThreats);
+    finalOutput = redacted.redactedOutput;
+    finalThreats = redacted.threats;
+  }
+
   const responseEvent: ToolResponseEvent = {
     sessionId: event.sessionId,
     agentId: event.agentId,
     serverId: event.serverId,
     toolName: event.toolName,
-    output,
+    output: finalOutput,
     durationMs,
-    threats: responseThreats,
+    threats: finalThreats,
   };
   opts.onToolResponseEvent(responseEvent);
 
   // ── 9. Block on critical response threats ────────────────────────────────────
+  // Only block on threats that were NOT sanitized by redaction (step 8b).
   if (respMode === 'block' && opts.blockOnCriticalResponseThreats) {
-    const criticalThreats = responseThreats.filter((t) => t.severity === 'critical');
-    if (criticalThreats.length > 0) {
+    const unsanitizedCritical = finalThreats.filter((t) => t.severity === 'critical' && !t.sanitized);
+    if (unsanitizedCritical.length > 0) {
       return blocked(
         'BLOCKED_THREAT',
         `Tool response from "${event.toolName}" contained a critical threat: ` +
-          criticalThreats.map((t) => t.pattern).join(', ') +
+          unsanitizedCritical.map((t) => t.pattern).join(', ') +
           '. Response blocked.',
         matchedRule?.name ?? 'response-inspector',
       );
@@ -308,7 +323,7 @@ export async function intercept(
   }
 
   return {
-    output,
+    output: finalOutput,
     interceptorResult: { action: effectiveAction, matchedRule: matchedRule?.name, approvalDecision: pendingApprovalDecision },
   };
 }

@@ -136,6 +136,10 @@ export const PolicyRuleSchema = z.object({
   name: z.string(),
   agent: z.string().default('*'),
   enabled: z.boolean().default(true),
+  // Observe-only mode: rule matches are logged but not enforced.
+  // The engine continues evaluating subsequent rules after an observe-mode match.
+  // Use for policy tuning before enabling enforcement.
+  observe: z.boolean().default(false),
   match: z.object({
     tool: z.array(z.string()).optional(),
     toolPattern: z.string().optional(),
