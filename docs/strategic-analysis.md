@@ -1244,6 +1244,38 @@ Layer 5 ("Execution-layer control plane") now has partial coverage:
 
 ---
 
+### D-052: MCP Active Probe + npx rind-scan
+**Date**: May 7, 2026
+**Trigger**: Shadow server discovery (D-049) raises the question: once Rind finds an unregistered MCP server, how does it assess risk automatically?
+
+**Decision**: Build an active probe that connects to any MCP server URL, fetches its tool catalog, and runs the full scanner suite. Surface this as:
+- `POST /servers/probe { url }` — on-demand scan from the dashboard (shadow server → scan → report before registration decision)
+- `npx rind-scan <url>` — standalone CLI, no proxy required (open-source awareness / GitHub-starred wedge tool)
+- Auto-probe on shadow server discovery — config scan finds a server, probe runs automatically, report pre-loaded
+
+**What exists today (80% ready)**:
+- `runFullScan(serverId, tools[])` — scanner suite (poisoning, over-permissions, auth missing, schema drift)
+- `HttpUpstreamClient.listTools()` — active MCP connection + tool list fetch
+- Gap: wire them together in a `probeMcpServer(url)` function
+
+**Open design question (not decided — deferred)**:
+- **Auth handling for probing**: if the target MCP server requires auth (API key, OAuth), the probe needs credentials to fetch the tool list. Three cases: (1) server is open — probe works unauthenticated; (2) server requires a key — admin provides it at probe time; (3) server uses OAuth — requires a full browser flow, automated probing is not straightforward. How much to automate vs. prompt for credentials is a UX and security decision for a dedicated session.
+- **URL reputation scoring**: domain reputation, WHOIS age, TLS cert validity, known-bad-actor lists — valuable signal but requires external API integrations. Deferred to Phase 3.
+- **Risk scoring model**: aggregate findings into a single 0–100 score. Weighting of categories (TOOL_POISONING > OVER_PERMISSIONED > AUTH_MISSING etc.) needs a design session.
+
+**Additional scanner categories to add** (beyond existing):
+- `SUSPICIOUS_EXTERNAL_URL` — URL in a tool description (potential exfiltration target)
+- `EXCESSIVE_TOOL_COUNT` — >50 tools (prompt injection surface, context stuffing risk)
+- `CAPABILITY_MISMATCH` — server name implies read-only but tools include write/delete
+- `MISSING_DESCRIPTION` — empty tool descriptions (can't assess risk — flag for review)
+
+**Build order**: After server registration API and agent key issuance. `npx rind-scan` ships as a thin wrapper around `probeMcpServer()`.
+
+**Confidence**: 8/10
+**Kill criteria**: MCP servers universally require auth and automated probing proves impractical → probe becomes a guided wizard rather than a one-command tool
+
+---
+
 ### D-049: MCP Server Registration Architecture — Named Registry + Shadow Server Detection
 **Date**: May 7, 2026
 **Trigger**: Demo MCP connectivity gap revealed no server registration API exists. Research into MCP auth spec, Aembit, and API Stronghold informed the design.
