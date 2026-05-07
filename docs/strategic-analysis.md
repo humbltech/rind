@@ -1243,3 +1243,70 @@ Layer 5 ("Execution-layer control plane") now has partial coverage:
 - MCP Apps spec dies or stays niche → never build Phase 3 inspector
 
 ---
+
+### D-049: MCP Server Registration Architecture — Named Registry + Shadow Server Detection
+**Date**: May 7, 2026
+**Trigger**: Demo MCP connectivity gap revealed no server registration API exists. Research into MCP auth spec, Aembit, and API Stronghold informed the design.
+
+**Decision**: Named server registration is the core model. URL-based passthrough is rejected (open proxy / SSRF risk). Shadow server detection is the key differentiator over all competitors.
+
+**Registration flow**:
+1. Admin registers an MCP server: `POST /servers { id: "railway", url: "...", credentials: {...} }`
+2. Admin creates an agent key scoped to that server: `POST /keys { serverId: "railway" }` → `{ key: "rind_live_abc123" }`
+3. Agent configures: `Authorization: Bearer rind_live_abc123` + URL `http://rind-proxy/mcp/railway`
+4. Rind validates key → looks up registered server → injects upstream credentials → forwards
+
+**Shadow server detection**:
+- If an agent attempts to connect through Rind to an unregistered server ID or URL, Rind **blocks** the request (never silently forwards)
+- The attempt is surfaced to the admin as a "shadow server" discovery event — visible in the dashboard
+- Admin options: register it (configure policies + credentials → traffic flows), mark as resolved (acknowledged, still blocked, alert suppressed), or take no action (remains blocked, alert stays active)
+- Shadow servers are the MCP equivalent of shadow IT — they reveal what agents are trying to do outside sanctioned channels
+- This is a genuine differentiator: no competitor (Aembit, API Stronghold, MS Toolkit) surfaces shadow MCP server discovery
+
+**What is NOT included**:
+- URL-based routing where the upstream host is encoded in the request path — rejected (open proxy risk)
+- Automatic registration of shadow servers — admin approval is required before traffic flows
+
+**Confidence**: 9/10
+**Kill criteria**: If registration friction proves to be a blocker for self-serve adoption → consider a "provisional allow" mode for low-risk servers (read-only tools only) that can be upgraded to full registration
+
+---
+
+### D-050: Agent Key Model — Static API Keys for Phase 1, OAuth 2.1 for Phase 2
+**Date**: May 7, 2026
+**Trigger**: Research showed Claude Code, Cursor, and the vast majority of real deployments use static `Authorization: Bearer <key>` headers. OAuth 2.1 client credentials is correct long-term but not what the market uses today.
+
+**Decision**: Ship static API keys (`rind_live_abc123`-style) for Phase 1. Rind generates and manages these keys — agents never hold upstream MCP server credentials. OAuth 2.1 (Authorization Code + PKCE for user-delegated, Client Credentials for M2M) is Phase 2 enterprise.
+
+**Key properties**:
+- Keys are opaque, high-entropy, prefixed (`rind_live_` / `rind_test_`) for easy identification and secret-scanner detection
+- Keys are stored hashed (bcrypt or Argon2id) — never returned after initial issuance
+- Keys are scoped to one or more registered servers (not global)
+- Rotation: issue new key, invalidate old one — upstream server config does not change
+- Per-request: Rind validates key → policy evaluation → upstream credential injection → forward
+
+**What this replaces**: The `HttpServerConfig.headers` static baked-in approach (current). Static headers become an internal implementation detail hidden behind the `CredentialProvider` interface (D-042), not an admin-facing config surface.
+
+**Confidence**: 9/10
+**Kill criteria**: If enterprises refuse static keys and demand OIDC/SAML from day one → accelerate OAuth 2.1 to Phase 1B
+
+---
+
+### D-051: D-043 Revised — DPoP Moved to Phase 2 Enterprise
+**Date**: May 7, 2026
+**Trigger**: Research showed neither Aembit nor API Stronghold ships DPoP. Claude Code does not support DPoP. Making DPoP a hard MVP gate blocks shipping while adding zero competitive advantage today.
+
+**Decision**: D-043's requirement ("DPoP required for MVP") is revised. Phase 1 ships phantom tokens without DPoP. DPoP (RFC 9449) is Phase 2 enterprise — when we have OIDC integration and can negotiate with enterprise clients who have DPoP-capable agents.
+
+**Rationale**: DPoP binds tokens to a proof-of-possession key and requires the client to sign each request. No current MCP client (Claude Code CLI, Cursor) implements DPoP signing. Requiring it for MVP means either we break all real clients or we implement a workaround that defeats the purpose. The phantom token model (Rind-issued key, upstream credential injection) already prevents the key from being usable outside Rind's validation — DPoP adds defense-in-depth for token replay between validation endpoint and upstream, which is valuable but not MVP-critical.
+
+**Phase 1 security model without DPoP**:
+- Short TTL on agent keys (configurable, default 90 days — rotatable)
+- Keys are scoped to specific servers (can't be used against unregistered targets)
+- Upstream credentials never leave Rind's trust boundary
+- TLS in transit provides baseline replay protection
+
+**Confidence**: 9/10
+**Kill criteria**: Enterprise customer explicitly requires DPoP in procurement → accelerate
+
+---
