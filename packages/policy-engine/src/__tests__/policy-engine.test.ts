@@ -230,3 +230,87 @@ describe('PolicyEngine — agent negation (! prefix)', () => {
     expect(engine.evaluate(makeEvent('action', 'llm-openai')).action).toBe('DENY');
   });
 });
+
+// ─── Observe-mode ──────────────────────────────────────────────────────────────
+
+describe('PolicyEngine — observe mode', () => {
+  const observeCfg: PolicyConfig = {
+    policies: [
+      {
+        name: 'observe-env-reads',
+        agent: '*',
+        observe: true,
+        match: { tool: ['Read'], parameters: { file_path: { regex: '\\.env' } } },
+        action: 'REQUIRE_APPROVAL',
+        failMode: 'closed',
+      },
+      {
+        name: 'block-rm-rf',
+        agent: '*',
+        match: { tool: ['Bash'], parameters: { command: { regex: 'rm -rf' } } },
+        action: 'DENY',
+        failMode: 'closed',
+      },
+    ],
+  };
+  const engine = makeEngine(observeCfg);
+
+  it('does not enforce an observe-mode rule — returns ALLOW', () => {
+    const result = engine.evaluate(makeEvent('Read', 'agent-1', { file_path: '.env.staging' }));
+    expect(result.action).toBe('ALLOW');
+  });
+
+  it('populates observedRules with the matched observe-mode rule name', () => {
+    const result = engine.evaluate(makeEvent('Read', 'agent-1', { file_path: '.env.staging' }));
+    expect(result.observedRules).toHaveLength(1);
+    expect(result.observedRules![0].name).toBe('observe-env-reads');
+  });
+
+  it('does not set matchedRule for an observe-only match', () => {
+    const result = engine.evaluate(makeEvent('Read', 'agent-1', { file_path: '.env.staging' }));
+    expect(result.matchedRule).toBeUndefined();
+  });
+
+  it('continues past observe rule and enforces a later matching rule', () => {
+    const mixedCfg: PolicyConfig = {
+      policies: [
+        {
+          name: 'observe-read',
+          agent: '*',
+          observe: true,
+          match: { tool: ['Read'] },
+          action: 'REQUIRE_APPROVAL',
+          failMode: 'closed',
+          priority: 10,
+        },
+        {
+          name: 'block-read',
+          agent: '*',
+          match: { tool: ['Read'] },
+          action: 'DENY',
+          failMode: 'closed',
+          priority: 50,
+        },
+      ],
+    };
+    const mixedEngine = makeEngine(mixedCfg);
+    const result = mixedEngine.evaluate(makeEvent('Read', 'agent-1'));
+    expect(result.action).toBe('DENY');
+    expect(result.matchedRule?.name).toBe('block-read');
+    expect(result.observedRules).toHaveLength(1);
+    expect(result.observedRules![0].name).toBe('observe-read');
+  });
+
+  it('enforces a non-observe rule independently', () => {
+    const result = engine.evaluate(makeEvent('Bash', 'agent-1', { command: 'rm -rf /tmp/test' }));
+    expect(result.action).toBe('DENY');
+    expect(result.matchedRule?.name).toBe('block-rm-rf');
+    expect(result.observedRules).toBeUndefined();
+  });
+
+  it('returns no observedRules for a tool that matches nothing', () => {
+    const result = engine.evaluate(makeEvent('get_user', 'agent-1'));
+    expect(result.action).toBe('ALLOW');
+    expect(result.observedRules).toBeUndefined();
+  });
+});

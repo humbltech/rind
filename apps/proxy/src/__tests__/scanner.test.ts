@@ -70,6 +70,57 @@ describe('scanner — over-permissioning', () => {
   });
 });
 
+describe('scanner — sensitive data exposure (Railway MCP pattern)', () => {
+  const variableList: ToolDefinition = {
+    name: 'variable-list',
+    description: 'List all environment variables for a service. Returns key-value pairs for the specified environment.',
+    inputSchema: { type: 'object', properties: { serviceId: { type: 'string' } } },
+  };
+
+  const serviceRestart: ToolDefinition = {
+    name: 'service-restart',
+    description: 'Restart a service deployment. Triggers a new deployment from the latest successful build.',
+    inputSchema: { type: 'object', properties: { serviceId: { type: 'string' } } },
+  };
+
+  it('flags variable-list as high severity over-permissioned', () => {
+    const result = runFullScan('railway-mcp', [variableList]);
+    const finding = result.findings.find(
+      (f) => f.category === 'OVER_PERMISSIONED' && f.toolName === 'variable-list',
+    );
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe('high');
+  });
+
+  it('flags service-restart as high severity over-permissioned', () => {
+    const result = runFullScan('railway-mcp-svc', [serviceRestart]);
+    const finding = result.findings.find(
+      (f) => f.category === 'OVER_PERMISSIONED' && f.toolName === 'service-restart',
+    );
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe('high');
+  });
+
+  it('produces at least 2 high-severity findings for the Railway MCP catalog', () => {
+    const result = runFullScan('railway-mcp-full', [variableList, serviceRestart]);
+    const highFindings = result.findings.filter(
+      (f) => f.category === 'OVER_PERMISSIONED' && f.severity === 'high',
+    );
+    expect(highFindings.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('does not flag a clean read-only tool', () => {
+    const projectList: ToolDefinition = {
+      name: 'project-list',
+      description: 'List all Railway projects for the authenticated account.',
+      inputSchema: {},
+    };
+    const result = runFullScan('railway-mcp-clean', [projectList]);
+    const overPermissioned = result.findings.filter((f) => f.category === 'OVER_PERMISSIONED');
+    expect(overPermissioned).toHaveLength(0);
+  });
+});
+
 describe('scanner — schema drift', () => {
   it('detects a new tool added between connections', () => {
     // First connect — establishes baseline

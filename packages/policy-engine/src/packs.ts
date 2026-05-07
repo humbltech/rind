@@ -405,7 +405,10 @@ const registry: PolicyPack[] = [
               // Matches: curl … backboard.railway.app/graphql … volumeDelete
               // Also covers generic *.railway.app and graphql paths for other providers.
               // Destructive verbs: Delete, Drop, Destroy, Terminate, Purge, Truncate.
-              regex: '\\bcurl\\b.*(?:backboard\\.railway|railway\\.app\\/graphql|\\/graphql\\/v\\d+).*\\b(?:Delete|Drop|Destroy|Terminate|Purge|Truncate)\\b',
+              // No leading \b — GraphQL mutation names are camelCase (volumeDelete, projectDelete),
+              // so the preceding character is always a word char. The trailing \b catches the
+              // boundary between the verb and the following '(' argument list.
+              regex: '\\bcurl\\b.*(?:backboard\\.railway|railway\\.app\\/graphql|\\/graphql\\/v\\d+).*(?:Delete|Drop|Destroy|Terminate|Purge|Truncate)\\b',
             },
           },
         },
