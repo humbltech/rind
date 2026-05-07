@@ -42,14 +42,14 @@ type LogView = 'tools' | 'llm' | 'timeline';
 
 export default function LogsPage() {
   const { toolCalls, llmCalls, isConnected } = useLogData();
-  const [view, setView] = useState<LogView>(() => {
-    // Read ?view=llm from URL on mount (client-side only)
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('view') === 'llm' ? 'llm' : 'tools';
-    }
-    return 'tools';
-  });
+  const [view, setView] = useState<LogView>('tools');
+
+  // Sync view from URL after hydration — must not run during SSR to avoid mismatch
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlView = params.get('view');
+    if (urlView === 'llm' || urlView === 'timeline') setView(urlView);
+  }, []);
   const [query, setQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
