@@ -31,6 +31,7 @@ export function matchesRule(
   toolName: string,
   input: unknown,
   compiledRegexes: Map<string, RegExp>,
+  serverId?: string,
 ): boolean {
   // Agent matching — supports '*', exact ID, and '!<id>' negation
   if (!matchesAgentSpecifier(rule.agent, agentId)) {
@@ -75,6 +76,14 @@ export function matchesRule(
   // Sub-command matching (Bash only)
   if (match.subcommand && match.subcommand.length > 0) {
     if (!matchesSubcommand(match.subcommand, input)) return false;
+  }
+
+  // MCP server scoping — skip if no serverId available (e.g. builtin tools)
+  if (match.serverId && match.serverId.length > 0) {
+    if (!serverId || !match.serverId.includes(serverId)) return false;
+  }
+  if (match.serverPattern) {
+    if (!serverId || !matchGlob(match.serverPattern, serverId)) return false;
   }
 
   return true;
@@ -275,7 +284,9 @@ export function classifyRuleCriteria(match: PolicyRule['match']): {
       (match.tool != null && match.tool.length > 0) ||
       match.toolPattern != null ||
       (match.subcommand != null && match.subcommand.length > 0) ||
-      (match.parameters != null && Object.keys(match.parameters).length > 0),
+      (match.parameters != null && Object.keys(match.parameters).length > 0) ||
+      (match.serverId != null && match.serverId.length > 0) ||
+      match.serverPattern != null,
     hasLlmCriteria:
       (match.llmModel != null && match.llmModel.length > 0) ||
       (match.llmProvider != null && match.llmProvider.length > 0) ||

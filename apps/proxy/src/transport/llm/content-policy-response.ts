@@ -46,7 +46,9 @@ export interface ResponseContentPolicyResult {
 // ─── Scope filtering ──────────────────────────────────────────────────────────
 
 function matchesLlmScope(rule: PolicyRule, event: LlmCallEvent): boolean {
-  const { llmModel, llmProvider } = rule.match;
+  const { llmModel, llmProvider, serverId, serverPattern } = rule.match;
+  // Server-scoped rules only apply to MCP tool calls — skip on LLM events.
+  if ((serverId && serverId.length > 0) || serverPattern) return false;
   if (llmProvider && !llmProvider.includes(event.provider)) return false;
   if (llmModel) {
     const matchesModel = llmModel.some((pattern) => {

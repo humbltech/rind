@@ -152,6 +152,9 @@ export const PolicyRuleSchema = z.object({
     llmProvider: z.array(z.string()).optional(),
     // LLM content-based matching
     content: LlmContentMatchSchema.optional(),
+    // MCP server scoping
+    serverId: z.array(z.string()).optional(),
+    serverPattern: z.string().optional(),
   }),
   action: z.enum(['ALLOW', 'DENY', 'REQUIRE_APPROVAL', 'RATE_LIMIT', 'REDACT', 'PSEUDONYMIZE']),
   approval: ApprovalSchema.optional(), // D-013

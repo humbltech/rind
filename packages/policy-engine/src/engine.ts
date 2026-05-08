@@ -61,7 +61,7 @@ export class PolicyEngine {
       // Skip disabled rules (enabled defaults to true when not set)
       if (rule.enabled === false) continue;
 
-      if (!matchesRule(rule, event.agentId, event.toolName, event.input, this.compiledRegexes)) {
+      if (!matchesRule(rule, event.agentId, event.toolName, event.input, this.compiledRegexes, event.serverId)) {
         continue;
       }
 

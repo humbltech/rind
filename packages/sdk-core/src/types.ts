@@ -580,6 +580,11 @@ export interface PolicyRule {
     // When set, the rule runs through the content detection pipeline
     // instead of (or in addition to) metadata matching.
     content?: LlmContentMatch;
+    // MCP server scoping — limits rule to specific MCP server IDs.
+    // Rules with serverId/serverPattern never fire on LLM events (no serverId there).
+    // Both absent → match any server. Both present → AND semantics.
+    serverId?: string[];      // exact membership match against event.serverId
+    serverPattern?: string;   // glob, e.g. "railway*" or "github-*"
   };
   action: PolicyAction;
   // D-013: REQUIRE_APPROVAL metadata (parsed but async flow is Phase 2)
