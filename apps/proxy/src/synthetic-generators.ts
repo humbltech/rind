@@ -18,9 +18,93 @@
 //   - Distinct per occurrence index — N entities → N different synthetics
 //   - Deterministic per (entityType, index) — same index always gives same synthetic
 
+import { createHmac } from 'node:crypto';
 import type { PiiEntity } from '@rind/core';
 
-// ─── Per-entity generators ────────────────────────────────────────────────────
+// ─── Credential tag derivation ───────────────────────────────────────────────
+//
+// HMAC-based tag derivation for deterministic credential synthetics.
+// Phase 2 will replace these with AES-GCM-SIV ciphertext — same shapes,
+// pure swap of the derivation primitive. Public so credential-vault.ts can use them.
+
+/** Derive a per-agent subkey: HMAC-SHA256(masterKey, agentId) */
+export function deriveAgentKey(masterKey: Buffer, agentId: string): Buffer {
+  return createHmac('sha256', masterKey).update(agentId).digest();
+}
+
+/** Derive a 22-char base64url tag from a secret under an agent key. */
+export function deriveTag(agentKey: Buffer, secret: string): string {
+  return createHmac('sha256', agentKey).update(secret).digest().subarray(0, 16).toString('base64url');
+}
+
+// base32-uppercase encoder for cred-003 (AWS access key char class [A-Z0-9]).
+// Encodes 16 raw bytes → 26-char base32 string using alphabet A-Z2-7.
+function toBase32Upper(rawBytes: Buffer): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = 0;
+  let value = 0;
+  let output = '';
+  for (let i = 0; i < rawBytes.length; i++) {
+    value = (value << 8) | (rawBytes[i] as number);
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      output += alphabet[(value >> bits) & 0x1f];
+    }
+  }
+  if (bits > 0) output += alphabet[(value << (5 - bits)) & 0x1f];
+  return output;
+}
+
+// ─── Credential synthetic generator ──────────────────────────────────────────
+
+/**
+ * Generate a RIND_SYNTH_*-prefixed synthetic value for a detected credential.
+ *
+ * Every synthetic embeds a `RIND_SYNTH` marker so self-exclusion lookaheads
+ * in CREDENTIAL_PATTERNS can suppress re-detection on subsequent passes.
+ * The tag suffix is a 22-char base64url derived from HMAC(agentKey, secret),
+ * making synthetics deterministic per (agent, secret) and idempotent.
+ *
+ * @param entityType  credential pattern id, e.g. 'cred-010'
+ * @param original    the original matched string (used for shape-preserving generators)
+ * @param tag         22-char base64url tag from deriveTag()
+ */
+export function syntheticCredential(entityType: string, original: string, tag: string): string {
+  switch (entityType) {
+    case 'cred-001': return `RIND_SYNTH_pw_${tag}`;
+    case 'cred-002': return `RIND_SYNTH_ak_${tag}`;
+    case 'cred-003': {
+      // AWS access key char class is [A-Z0-9] — use base32-uppercase encoding
+      const rawTag = Buffer.from(tag, 'base64url');
+      return `RIND_SYNTH_AK${toBase32Upper(rawTag)}`;
+    }
+    case 'cred-004': return `RIND_SYNTH_${tag}`;
+    case 'cred-005':
+      // PEM block — preserve structural shape; BEGIN line regex matches RSA|EC|OPENSSH|PGP
+      // not RIND_SYNTH, so synthetic won't re-match without any extra lookahead.
+      return `-----BEGIN RIND_SYNTH PRIVATE KEY-----\nRIND_SYNTH_${tag}\n-----END RIND_SYNTH PRIVATE KEY-----`; // gitleaks:allow
+    case 'cred-006': {
+      // DB connection string — replace user:pass segment, keep protocol and host.
+      const atIdx = original.indexOf('@');
+      if (atIdx === -1) return `RIND_SYNTH_${tag}`;
+      const slashSlash = original.indexOf('//');
+      const proto = slashSlash !== -1 ? original.slice(0, slashSlash + 2) : '';
+      const afterAt = original.slice(atIdx);
+      return `${proto}RIND_SYNTH_u_${tag}:RIND_SYNTH_p_${tag}${afterAt}`;
+    }
+    case 'cred-007': return `ghp_RIND_SYNTH_${tag}`;
+    case 'cred-008': return `sk-RIND_SYNTH_${tag}`;
+    case 'cred-009':
+      // JWT requires 3 base64url segments separated by dots.
+      // eyJSSU5EX1NZTlRI = base64url('{"RIND_SYNTH') — trivially identifiable.
+      return `eyJSSU5EX1NZTlRI.${tag.slice(0, 11)}.${tag.slice(11)}`;
+    case 'cred-010': return `rly_RIND_SYNTH_${tag}`;
+    default:          return `RIND_SYNTH_${tag}`;
+  }
+}
+
+// ─── Per-entity PII generators ────────────────────────────────────────────────
 
 function syntheticEmail(index: number): string {
   // @example.com is RFC 2606 §3 reserved — guaranteed not a real address.
