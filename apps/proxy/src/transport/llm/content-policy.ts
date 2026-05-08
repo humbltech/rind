@@ -25,7 +25,6 @@ import type {
 import type { LlmCallEvent } from './types.js';
 import type { PIIVault } from '../../pii-vault.js';
 import { createPIIVault } from '../../pii-vault.js';
-import { redactCredentialString } from '../../inspector/response.js';
 import type { CredentialVault } from '../../credential-vault.js';
 import { createCredentialVault } from '../../credential-vault.js';
 import {
@@ -300,7 +299,7 @@ export async function evaluateLlmContent(
         // Use session-scoped vault if provided; otherwise create a temporary one for this call.
         // Determinism guarantees same agentId + same credential → same synthetic in both cases.
         const vaultToUse = credVault ?? createCredentialVault(event.agentId);
-        const sanitizedBody = applyRedaction(body, targets, vaultToUse);
+        const sanitizedBody = applyRedaction(body, targets, vaultToUse, piiVault);
         if (!credVault) vaultToUse.dispose();
         return {
           action: 'REDACT',
@@ -333,14 +332,27 @@ function applyRedaction(
   body: unknown,
   targets: ('system' | 'user' | 'assistant')[],
   credVault?: CredentialVault,
+  piiVault?: PIIVault,
 ): unknown {
+  const textOrigin = { serverId: '_llm_request', toolName: '_llm_request' };
+  const toolResultOrigin = { serverId: '_llm_tool_result', toolName: 'tool_result' };
+
+  // Apply vault pseudonymization for credential/PII content; fall back to [REDACTED]
+  // when neither vault makes a substitution (injection/dlp REDACT: the text passes
+  // through vault calls unchanged because there are no credential/PII tokens to replace).
+  function transformText(text: string, origin: { serverId: string; toolName: string }): string {
+    const credSanitized = credVault ? credVault.pseudonymize(text, origin).sanitized : text;
+    const piiSanitized = piiVault ? piiVault.pseudonymize(credSanitized, origin).sanitized : credSanitized;
+    return piiSanitized !== text ? piiSanitized : redactString(text);
+  }
+
   if (typeof body !== 'object' || body === null) return body;
   const b = body as Record<string, unknown>;
   const result: Record<string, unknown> = { ...b };
 
   if (targets.includes('system')) {
     if (typeof result['system'] === 'string') {
-      result['system'] = redactString(result['system']);
+      result['system'] = transformText(result['system'], textOrigin);
     } else if (Array.isArray(result['system'])) {
       // Anthropic API supports system as an array of content blocks
       result['system'] = result['system'].map((block) => {
@@ -348,7 +360,7 @@ function applyRedaction(
             (block as Record<string, unknown>)['type'] === 'text') {
           const b2 = block as Record<string, unknown>;
           const text = b2['text'];
-          return { ...b2, text: typeof text === 'string' ? redactString(text) : text };
+          return { ...b2, text: typeof text === 'string' ? transformText(text, textOrigin) : text };
         }
         return block;
       });
@@ -363,7 +375,7 @@ function applyRedaction(
       if (!role || !targets.includes(role as 'system' | 'user' | 'assistant')) return msg;
 
       if (typeof m['content'] === 'string') {
-        return { ...m, content: redactString(m['content']) };
+        return { ...m, content: transformText(m['content'], textOrigin) };
       }
       if (Array.isArray(m['content'])) {
         return {
@@ -373,16 +385,12 @@ function applyRedaction(
             const b2 = block as Record<string, unknown>;
             if (b2['type'] === 'text') {
               const text = b2['text'];
-              return { ...b2, text: typeof text === 'string' ? redactString(text) : text };
+              return { ...b2, text: typeof text === 'string' ? transformText(text, textOrigin) : text };
             }
-            // tool_result: replace credentials with RIND_SYNTH synthetics (preserves agent context)
+            // tool_result: surgical synthetic substitution (preserves surrounding context)
             if (b2['type'] === 'tool_result') {
-              const origin = { serverId: '_llm_tool_result', toolName: 'tool_result' };
               if (typeof b2['content'] === 'string') {
-                const text = credVault
-                  ? credVault.pseudonymize(b2['content'], origin).sanitized
-                  : redactCredentialString(b2['content']);
-                return { ...b2, content: text };
+                return { ...b2, content: transformText(b2['content'], toolResultOrigin) };
               }
               if (Array.isArray(b2['content'])) {
                 return {
@@ -392,10 +400,7 @@ function applyRedaction(
                         (inner as Record<string, unknown>)['type'] === 'text') {
                       const t = inner as Record<string, unknown>;
                       if (typeof t['text'] === 'string') {
-                        const text = credVault
-                          ? credVault.pseudonymize(t['text'], origin).sanitized
-                          : redactCredentialString(t['text']);
-                        return { ...t, text };
+                        return { ...t, text: transformText(t['text'], toolResultOrigin) };
                       }
                     }
                     return inner;

@@ -447,6 +447,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
           event,
           contentRules,
           credVault,
+          piiVault,
         );
 
         if (responseContentResult.action === 'DENY') {
@@ -465,18 +466,19 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
           );
         }
 
-        const finalMeta = responseContentResult.action === 'REDACT' && responseContentResult.redactedText
+        const transformAction =
+          responseContentResult.action === 'REDACT' || responseContentResult.action === 'PSEUDONYMIZE';
+        const finalMeta = transformAction && responseContentResult.redactedText
           ? { ...result.meta, responseText: responseContentResult.redactedText }
           : result.meta;
 
-        // REDACT takes precedence: pseudonymize credentials in the response body before
-        // returning to client (uses the pseudonymized text from evaluateLlmResponseContent).
+        // REDACT/PSEUDONYMIZE: patch response body with transformed text (synthetic or [REDACTED]).
         // Otherwise rehydrate vault tokens → original PII values before sending to client.
         // Must happen before emitEnrichedEvent disposes the vault.
-        let finalBody: unknown = responseContentResult.action === 'REDACT'
+        let finalBody: unknown = transformAction
           ? patchResponseBodyWithRedaction(result.responseBody, responseContentResult.redactedText)
           : result.responseBody;
-        if (activeVault && responseContentResult.action !== 'REDACT') {
+        if (activeVault && !transformAction) {
           finalBody = rehydrateResponseBody(finalBody, activeVault);
         }
 
@@ -506,6 +508,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     const capturedVaultOwned = vaultOwned;
     const capturedContentRules = contentRules; // capture for async response-side eval
     const capturedCredVault = credVault; // capture for async response-side credential pseudonymization
+    const capturedPiiVault = piiVault;   // capture for async response-side PII pseudonymization
     activeVault = undefined; // ownership transferred to stream closure
 
     // ── 7b-i. Vault active: hold-back window rehydration ────────────────────
@@ -568,6 +571,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
           capturedEvent,
           capturedContentRules,
           capturedCredVault,
+          capturedPiiVault,
         );
         const isViolation = responseContentResult.action !== 'ALLOW';
         const vaultMeta: typeof meta = isViolation && responseContentResult.redactedText
@@ -594,6 +598,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
         capturedEvent,
         capturedContentRules,
         capturedCredVault,
+        capturedPiiVault,
       );
 
       const isViolation = responseContentResult.action !== 'ALLOW';

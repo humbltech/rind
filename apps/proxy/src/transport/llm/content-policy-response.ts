@@ -3,12 +3,15 @@
 // Evaluates content-based policy rules against the accumulated LLM response text.
 // Only rules with scope:'response' or scope:'both' are considered here.
 //
-// PSEUDONYMIZE rules are intentionally skipped: vault rehydration (already wired
-// into the enriched event path) handles token replacement for scope:'both' rules.
+// PSEUDONYMIZE rules: pii detector pseudonymizes newly-detected PII in the response
+// (e.g. LLM-generated entities the client should not see); piiVault is populated so
+// step 5c can rehydrate synthetic tokens if they appear in subsequent tool inputs.
+// For secret/injection/dlp detectors, PSEUDONYMIZE falls through (vault rehydration
+// handles scope:'both' credential rules; injection/dlp have no synthetic concept).
 //
 // Enforcement semantics by path:
 //   Non-streaming — full enforcement: DENY blocks the response before the client
-//   receives it; REDACT replaces assistant text in the response body.
+//   receives it; REDACT/PSEUDONYMIZE replaces assistant text in the response body.
 //   Streaming — post-hoc only: the stream was already forwarded to the client.
 //   Violations are flagged via outcome:'policy-violation' in the response event.
 
@@ -30,7 +33,7 @@ import {
 // ─── Public result type ───────────────────────────────────────────────────────
 
 export interface ResponseContentPolicyResult {
-  action: 'ALLOW' | 'DENY' | 'REDACT';
+  action: 'ALLOW' | 'DENY' | 'REDACT' | 'PSEUDONYMIZE';
   matchedRule?: string;
   reason?: string;
   /**
@@ -58,6 +61,7 @@ export async function evaluateLlmResponseContent(
   event: LlmCallEvent,
   rules: PolicyRule[],
   credVault?: CredentialVault,
+  piiVault?: PIIVault,
 ): Promise<ResponseContentPolicyResult> {
   const startMs = Date.now();
 
@@ -84,8 +88,6 @@ export async function evaluateLlmResponseContent(
 
   for (const rule of responseRules) {
     if (!matchesContentScope(rule, scopeFilter)) continue;
-    // PSEUDONYMIZE on response: vault.rehydrate() already handles token replacement
-    if (rule.action === 'PSEUDONYMIZE') continue;
 
     const content = rule.match.content!;
 
@@ -115,17 +117,38 @@ export async function evaluateLlmResponseContent(
         };
       }
 
+      if (rule.action === 'PSEUDONYMIZE') {
+        // pii detector: pseudonymize newly-detected PII in the response so the
+        // client sees a synthetic. piiVault is populated; subsequent tool inputs
+        // carrying the synthetic are rehydrated by step 5c.
+        if (detector === 'pii' && rule.pii && piiVault) {
+          const origin = { serverId: '_llm_response', toolName: 'llm_response' };
+          const { sanitized } = piiVault.pseudonymize(responseText, origin, rule.pii);
+          return {
+            action: 'PSEUDONYMIZE',
+            matchedRule: rule.name,
+            redactedText: sanitized,
+            inspection: buildContentInspection(auditResults, startMs),
+          };
+        }
+        // secret/injection/dlp PSEUDONYMIZE: vault rehydration handles scope:'both'
+        // credential rules; injection/dlp have no synthetic concept. Fall through.
+        continue;
+      }
+
       if (rule.action === 'REDACT') {
-        // For credential secrets: pseudonymize (synthetic replaces only the token value,
-        // surrounding context preserved). For other detectors (pii, injection, dlp):
-        // replace the full response text with [REDACTED] — these are not rehydratable.
+        const origin = { serverId: '_llm_response', toolName: 'llm_response' };
         let redactedText: string;
         if (detector === 'secret') {
           const vaultToUse = credVault ?? createCredentialVault(event.agentId);
-          const origin = { serverId: '_llm_response', toolName: 'llm_response' };
           redactedText = vaultToUse.pseudonymize(responseText, origin).sanitized;
           if (!credVault) vaultToUse.dispose();
+        } else if (detector === 'pii' && piiVault) {
+          // PII REDACT: pseudonymize detected entities (synthetic replaces values,
+          // surrounding context preserved). Client sees synthetic, not original PII.
+          redactedText = piiVault.pseudonymize(responseText, origin).sanitized;
         } else {
+          // injection/dlp: no synthetic concept — replace entire response text.
           redactedText = '[REDACTED]';
         }
         return {

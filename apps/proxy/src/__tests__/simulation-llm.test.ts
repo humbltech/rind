@@ -129,7 +129,7 @@ describe('/llm/anthropic/v1/messages — LLM gateway simulation', () => {
     expect(bodyStr).toContain('@example.com');
   });
 
-  it('PII in prompt → REDACT: [REDACTED] in forwarded body', async () => {
+  it('PII in prompt → REDACT: synthetic in forwarded body (email replaced, context preserved)', async () => {
     let capturedBody: unknown;
     const forwardFn = vi.fn().mockImplementation(async (_path, _headers, body) => {
       capturedBody = body;
@@ -146,7 +146,8 @@ describe('/llm/anthropic/v1/messages — LLM gateway simulation', () => {
     expect(forwardFn).toHaveBeenCalled();
     const bodyStr = JSON.stringify(capturedBody);
     expect(bodyStr).not.toContain('alice@secret.org');
-    expect(bodyStr).toContain('[REDACTED]');
+    // Email replaced with reserved-range synthetic (RFC 2606 example.com domain)
+    expect(bodyStr).toContain('@example.com');
   });
 
   it('model block → DENY by llmModel pattern, 403', async () => {
@@ -189,7 +190,7 @@ describe('/llm/anthropic/v1/messages — LLM gateway simulation', () => {
     expect(res.status).toBe(403);
   });
 
-  it('response with PII → REDACT: [REDACTED] in response body', async () => {
+  it('response with PII → REDACT: synthetic in response body (email/phone replaced, context preserved)', async () => {
     const forwardFn = vi.fn().mockResolvedValue(
       makeForwardResult('The user email is test.user@company.com and phone is 416-555-0100'),
     );
@@ -205,7 +206,8 @@ describe('/llm/anthropic/v1/messages — LLM gateway simulation', () => {
     const text = await res.text();
     expect(text).not.toContain('test.user@company.com');
     expect(text).not.toContain('416-555-0100');
-    expect(text).toContain('[REDACTED]');
+    // PII replaced with reserved-range synthetics: @example.com and 555-010-XXXX
+    expect(text).toContain('@example.com');
   });
 
   it('LLM events appear in /logs/llm-calls with required fields', async () => {
