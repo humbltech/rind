@@ -14,19 +14,18 @@
 
 import type {
   PolicyRule,
-  LlmDetector,
   ContentInspectionAudit,
   DetectorAuditResult,
 } from '@rind/core';
 import type { LlmCallEvent } from './types.js';
 import type { PIIVault } from '../../pii-vault.js';
-import { runSecretDetector } from '../../detectors/secret.js';
-import { runPIIDetector } from '../../detectors/pii.js';
-import { runInjectionDetector } from '../../detectors/injection.js';
-import { runDLPDetector } from '../../detectors/dlp.js';
-import type { DetectorRunResult } from '../../detectors/types.js';
 import type { CredentialVault } from '../../credential-vault.js';
 import { createCredentialVault } from '../../credential-vault.js';
+import {
+  runDetector,
+  buildContentInspection,
+  matchesContentScope,
+} from '../../policy/evaluate-content.js';
 
 // ─── Public result type ───────────────────────────────────────────────────────
 
@@ -43,55 +42,7 @@ export interface ResponseContentPolicyResult {
   inspection: ContentInspectionAudit;
 }
 
-// ─── Scope filtering ──────────────────────────────────────────────────────────
-
-function matchesLlmScope(rule: PolicyRule, event: LlmCallEvent): boolean {
-  const { llmModel, llmProvider, serverId, serverPattern } = rule.match;
-  // Server-scoped rules only apply to MCP tool calls — skip on LLM events.
-  if ((serverId && serverId.length > 0) || serverPattern) return false;
-  if (llmProvider && !llmProvider.includes(event.provider)) return false;
-  if (llmModel) {
-    const matchesModel = llmModel.some((pattern) => {
-      if (pattern === '*') return true;
-      if (pattern.endsWith('*')) return event.model.startsWith(pattern.slice(0, -1));
-      return event.model === pattern;
-    });
-    if (!matchesModel) return false;
-  }
-  return true;
-}
-
-// ─── Detector dispatch ────────────────────────────────────────────────────────
-
-function runDetector(
-  detector: LlmDetector,
-  rule: PolicyRule,
-  text: string,
-): DetectorRunResult {
-  switch (detector) {
-    case 'secret':
-      return runSecretDetector(text, rule.secrets ?? {});
-    case 'pii':
-      return runPIIDetector(text, rule.pii ?? { entities: [] });
-    case 'prompt_injection':
-      return runInjectionDetector(text, rule.injection ?? {});
-    case 'dlp':
-      return runDLPDetector(text, rule.dlp ?? { patterns: [] });
-  }
-}
-
-// ─── Audit builder ────────────────────────────────────────────────────────────
-
-function buildInspection(
-  results: DetectorAuditResult[],
-  startMs: number,
-): ContentInspectionAudit {
-  return {
-    detectorsRan: [...new Set(results.map((r) => r.detector))],
-    results,
-    inspectionDurationMs: Date.now() - startMs,
-  };
-}
+// (runDetector, buildInspection, matchesLlmScope — now in ../../policy/evaluate-content.ts)
 
 // ─── Main evaluator ───────────────────────────────────────────────────────────
 
@@ -111,7 +62,7 @@ export async function evaluateLlmResponseContent(
   const startMs = Date.now();
 
   if (!responseText) {
-    return { action: 'ALLOW', inspection: buildInspection([], startMs) };
+    return { action: 'ALLOW', inspection: buildContentInspection([], startMs) };
   }
 
   const responseRules = rules
@@ -124,13 +75,15 @@ export async function evaluateLlmResponseContent(
     .sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50));
 
   if (responseRules.length === 0) {
-    return { action: 'ALLOW', inspection: buildInspection([], startMs) };
+    return { action: 'ALLOW', inspection: buildContentInspection([], startMs) };
   }
 
   const auditResults: DetectorAuditResult[] = [];
 
+  const scopeFilter = { agentId: event.agentId, llmModel: event.model, llmProvider: event.provider };
+
   for (const rule of responseRules) {
-    if (!matchesLlmScope(rule, event)) continue;
+    if (!matchesContentScope(rule, scopeFilter)) continue;
     // PSEUDONYMIZE on response: vault.rehydrate() already handles token replacement
     if (rule.action === 'PSEUDONYMIZE') continue;
 
@@ -158,7 +111,7 @@ export async function evaluateLlmResponseContent(
           action: 'DENY',
           matchedRule: rule.name,
           reason: `Response content policy DENY: ${detector} detector matched (rule: ${rule.name})`,
-          inspection: buildInspection(auditResults, startMs),
+          inspection: buildContentInspection(auditResults, startMs),
         };
       }
 
@@ -179,13 +132,13 @@ export async function evaluateLlmResponseContent(
           action: 'REDACT',
           matchedRule: rule.name,
           redactedText,
-          inspection: buildInspection(auditResults, startMs),
+          inspection: buildContentInspection(auditResults, startMs),
         };
       }
     }
   }
 
-  return { action: 'ALLOW', inspection: buildInspection(auditResults, startMs) };
+  return { action: 'ALLOW', inspection: buildContentInspection(auditResults, startMs) };
 }
 
 // ─── Response body rehydration ────────────────────────────────────────────────
