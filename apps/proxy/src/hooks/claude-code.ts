@@ -21,12 +21,13 @@
 //              "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "deny",
 //                                      "permissionDecisionReason": "..." } }
 
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { ToolCallEvent, ResponseThreat, PolicyRule } from '../types.js';
 import { intercept } from '../interceptor.js';
 import type { InterceptorOptions } from '../interceptor.js';
 import { inspectResponse } from '../inspector/response.js';
+import { normalizeToolName } from './tool-name.js';
+import { summarizeOutput } from './output-summary.js';
 
 // ─── Request schema ───────────────────────────────────────────────────────────
 
@@ -129,28 +130,10 @@ export function processHookEvent(req: HookEvent): ProcessedHookEvent {
   const isPostToolUse = req.hook_event_name === 'PostToolUse';
   const output = req.tool_response;
 
-  // Serialize output once — reused for truncation, size, and hash
-  const outputText = isPostToolUse && output != null
-    ? (typeof output === 'string' ? output : JSON.stringify(output))
-    : undefined;
+  const { outputPreview, outputTruncated, outputSizeBytes, outputHash } =
+    isPostToolUse && output != null ? summarizeOutput(output) : {};
 
-  // Always capture a preview; truncate large outputs at 4KB
-  let outputPreview: string | undefined;
-  let outputTruncated = false;
-  let storedResponse = output;
-  const MAX_OUTPUT_BYTES = 4096;
-  const PREVIEW_BYTES = 1024; // always capture first 1KB as preview
-
-  if (outputText) {
-    if (outputText.length > MAX_OUTPUT_BYTES) {
-      outputPreview = outputText.slice(0, MAX_OUTPUT_BYTES);
-      outputTruncated = true;
-      storedResponse = outputPreview;
-    } else {
-      // Small output — capture first 1KB as preview for dashboard display
-      outputPreview = outputText.slice(0, PREVIEW_BYTES);
-    }
-  }
+  const storedResponse = outputTruncated ? outputPreview : output;
 
   // Run response inspector on PostToolUse output for threat detection
   let threats: ResponseThreat[] | undefined;
@@ -162,10 +145,6 @@ export function processHookEvent(req: HookEvent): ProcessedHookEvent {
       // Inspector failure is non-fatal — event is still stored
     }
   }
-
-  // Compute response size and hash for forensics
-  const outputSizeBytes = outputText ? Buffer.byteLength(outputText, 'utf-8') : undefined;
-  const outputHash = outputText ? hashString(outputText) : undefined;
 
   return {
     eventType: req.hook_event_name,
@@ -392,22 +371,12 @@ function dedupeAdjacent(items: string[]): string[] {
   return items.filter((item, i) => i === 0 || item !== items[i - 1]);
 }
 
-function hashString(value: string): string {
-  return createHash('sha256').update(value).digest('hex');
-}
-
 function basename(path: string): string {
   return path.split('/').pop() || path;
 }
 
 function serverIdFromToolName(toolName: string): string {
-  // MCP tools in Claude Code follow the pattern: mcp__<server>__<tool>
-  if (toolName.startsWith('mcp__')) {
-    const parts = toolName.split('__');
-    // Use || not ?? — parts[1] may be '' (empty string) for malformed names like 'mcp__'
-    return parts[1] || 'mcp-unknown';
-  }
-  return 'builtin';
+  return normalizeToolName(toolName).serverId;
 }
 
 // ─── Response builders ────────────────────────────────────────────────────────

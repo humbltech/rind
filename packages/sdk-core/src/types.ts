@@ -220,6 +220,10 @@ export interface ToolCallEvent {
   cwd?: string;
   // Deterministic correlation ID linking PreToolUse → PostToolUse for the same call
   correlationId?: string;
+  // Which observation paths recorded this call (hook, proxy, or both when merged)
+  observedBy?: ('hook' | 'proxy')[];
+  // MCP transport session ID from the MCP-Session-ID header (proxy path only)
+  transportSessionId?: string;
   // Request-side injection threats detected in alert mode (non-blocking)
   requestThreats?: string[];
   // PostToolUse response data — enriched server-side when PostToolUse arrives
@@ -241,6 +245,9 @@ export interface ToolResponseEvent {
   output: unknown;
   durationMs: number;
   threats: ResponseThreat[]; // prompt injection, credential patterns
+  // Carries the originating ToolCallEvent's correlationId so the server.ts response
+  // callback can target the correct ring-buffer row for enrichment.
+  correlationId?: string;
 }
 
 export interface ToolErrorEvent {

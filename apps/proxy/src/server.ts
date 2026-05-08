@@ -28,6 +28,10 @@ import { LoopDetector } from './loop-detector.js';
 import { RateLimiter } from './rate-limiter.js';
 import type { ProcessedHookEvent } from './hooks/claude-code.js';
 import { CorrelationTracker } from './hooks/correlator.js';
+import { MergeCorrelator } from './merge-correlator.js';
+import type { IMergeCorrelator } from './merge-correlator.js';
+import { normalizeToolName } from './hooks/tool-name.js';
+import { summarizeOutput } from './hooks/output-summary.js';
 import { ApprovalQueue } from './approval-queue.js';
 import { discoverMcpServers } from './hooks/claude-code-context.js';
 import { UpstreamPool } from './transport/pool.js';
@@ -107,6 +111,8 @@ export function createProxyServer(config: ProxyConfig) {
   const loopDetector = new LoopDetector();
   // ── PreToolUse ↔ PostToolUse correlation tracker
   const correlator = new CorrelationTracker();
+  // ── Hook-path ↔ MCP-gateway-path merge correlator (dedup same call from both paths)
+  const mergeCorrelator: IMergeCorrelator = new MergeCorrelator();
   // ── Approval queue (D-013: REQUIRE_APPROVAL blocking flow)
   const approvalQueue = new ApprovalQueue();
   const policyEngine = new PolicyEngine(policyStore, loopDetector);
@@ -164,17 +170,45 @@ export function createProxyServer(config: ProxyConfig) {
   // Gateway is always mounted when mcpProxyEnabled — servers can be registered
   // dynamically via POST /servers even if none are configured at startup.
   if (config.mcpProxyEnabled !== false) {
+    // Maps gateway correlationId → hook correlationId for merged calls.
+    // Populated in onToolCallEvent, consumed (and deleted) in onToolResponseEvent.
+    // Bounded: one entry per in-flight MCP call; deleted on response or upstream timeout.
+    // Worst case: N concurrent calls × 1 entry each — typical concurrency is single-digit.
+    const mergedCorrelationIds = new Map<string, string>();
+
     const gatewayInterceptorOpts = {
       policyEngine,
       loopDetector,
       rateLimiter,
       sessionStore,
       onToolCallEvent: (event: ToolCallEvent, rule?: import('./types.js').PolicyRule, observedRules?: import('./types.js').PolicyRule[]) => {
-        // Enrich the event with observe-mode rule names before storing in the ring buffer
         const observedNames = observedRules?.map((r) => r.name);
-        const emittedEvent = observedNames ? { ...event, observedRules: observedNames } : event;
-        // bus.emit triggers the ring buffer subscriber — no direct push needed
-        bus.emit('tool:call', emittedEvent);
+        const enriched: ToolCallEvent = {
+          ...event,
+          matchedRule: rule?.name,
+          outcome: 'allowed',
+          ...(observedNames ? { observedRules: observedNames } : {}),
+        };
+
+        const { serverId: sid, tool } = normalizeToolName(enriched.toolName, enriched.serverId);
+        const hookEntry = mergeCorrelator.tryMatchProxy(sid, tool, enriched.input);
+
+        if (hookEntry && mergeCorrelator.claim(hookEntry.correlationId, 'proxy')) {
+          // Hook already pushed the canonical row — record the translation so the
+          // response callback can target the hook row by its correlationId.
+          if (enriched.correlationId) {
+            mergedCorrelationIds.set(enriched.correlationId, hookEntry.correlationId);
+          }
+          // Mark that the proxy also observed this call
+          ringBuffer.update(
+            (e) => e.correlationId === hookEntry.correlationId,
+            (e) => ({ ...e, observedBy: [...(e.observedBy ?? ['hook']), 'proxy'] }),
+          );
+        } else {
+          // Orphan path (non-hooked agent, e.g. Cursor) — push a fresh row
+          bus.emit('tool:call', enriched);
+        }
+
         emitAudit(bus, {
           eventType: 'tool:call',
           sessionId: event.sessionId,
@@ -187,20 +221,26 @@ export function createProxyServer(config: ProxyConfig) {
         });
       },
       onToolResponseEvent: (event: import('./types.js').ToolResponseEvent) => {
-        if (event.threats.length === 0) return;
-        bus.emit('tool:response', event);
-        // Enrich the matching tool:call ring buffer entry with response threat data.
-        // Matches on sessionId + toolName — finds the most recent un-enriched entry.
-        ringBuffer.update(
-          (e) => e.sessionId === event.sessionId && e.toolName === event.toolName && !e.response,
-          (e) => ({
-            ...e,
-            response: {
-              threats: event.threats,
-              timestamp: Date.now(),
-            },
-          }),
-        );
+        if (event.threats.length > 0) bus.emit('tool:response', event);
+
+        const summary = summarizeOutput(event.output);
+        // Translate gateway correlationId → hook correlationId on merged calls.
+        // targetCorrelationId is undefined when the gateway event has no correlationId
+        // (shouldn't happen in practice — gateway always sets one — but guard anyway).
+        const targetCorrelationId = event.correlationId
+          ? (mergedCorrelationIds.get(event.correlationId) ?? event.correlationId)
+          : undefined;
+        if (event.correlationId) mergedCorrelationIds.delete(event.correlationId);
+
+        if (targetCorrelationId) {
+          ringBuffer.update(
+            (e) => e.correlationId === targetCorrelationId,
+            (e) => ({
+              ...e,
+              response: { ...summary, threats: event.threats, timestamp: Date.now() },
+            }),
+          );
+        }
       },
       blockOnCriticalResponseThreats: false,
       layers: config.layers,
@@ -389,7 +429,7 @@ export function createProxyServer(config: ProxyConfig) {
   app.route('/', sessionRoutes({ bus, config, logger, sessionStore }));
   app.route('/', scanRoutes({ bus, logger, serverScannerMode: config.layers?.['server-scanner']?.mode }));
   app.route('/', logRoutes({ ringBuffer, hookEventBuffer }));
-  app.route('/', hookRoutes({ policyEngine, policyStore, approvalQueue, correlator, ringBuffer, hookEventBuffer, bus, config, logger, sessionStore, pool: upstreamPool }));
+  app.route('/', hookRoutes({ policyEngine, policyStore, approvalQueue, correlator, mergeCorrelator, ringBuffer, hookEventBuffer, bus, config, logger, sessionStore, pool: upstreamPool }));
   app.route('/', toolCallRoutes({ policyEngine, policyStore, loopDetector, rateLimiter, approvalQueue, ringBuffer, bus, config, logger, sessionStore }));
 
   return {
@@ -411,7 +451,10 @@ export function createProxyServer(config: ProxyConfig) {
       }
 
       // Periodic cleanup of expired correlation entries (every 60s)
-      const correlatorCleanup = setInterval(() => correlator.cleanup(), 60_000);
+      const correlatorCleanup = setInterval(() => {
+        correlator.cleanup();
+        mergeCorrelator.cleanup();
+      }, 60_000);
 
       const server = serve({ fetch: app.fetch, port: config.port });
       // Clean up intervals and queues when server closes to prevent leaks in tests

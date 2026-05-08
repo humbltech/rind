@@ -11,6 +11,8 @@ import type { RindEventBus } from '../event-bus.js';
 import type { ProxyConfig, ToolCallEvent } from '../types.js';
 import type { ProcessedHookEvent } from '../hooks/claude-code.js';
 import { HookRequestSchema, HookEventSchema, evaluateHook, processHookEvent, deriveToolLabel } from '../hooks/claude-code.js';
+import type { IMergeCorrelator } from '../merge-correlator.js';
+import { normalizeToolName } from '../hooks/tool-name.js';
 import type { HookEvalOptions, HookEvalResult } from '../hooks/claude-code.js';
 import { discoverClaudeCodeContext, resolveSessionName } from '../hooks/claude-code-context.js';
 import type { DiscoveredMcpServer } from '../hooks/claude-code-context.js';
@@ -23,6 +25,7 @@ export interface HookRouteDeps {
   policyStore: InMemoryPolicyStore;
   approvalQueue: ApprovalQueue;
   correlator: CorrelationTracker;
+  mergeCorrelator: IMergeCorrelator;
   ringBuffer: IEventStore<ToolCallEvent>;
   hookEventBuffer: IEventStore<ProcessedHookEvent>;
   bus: RindEventBus;
@@ -37,6 +40,7 @@ export function hookRoutes({
   policyStore,
   approvalQueue,
   correlator,
+  mergeCorrelator,
   ringBuffer,
   hookEventBuffer,
   bus,
@@ -136,7 +140,7 @@ export function hookRoutes({
         sessionId: sid,
         sessionName,
         agentId,
-        serverId: parsed.data.tool_name.startsWith('mcp__') ? parsed.data.tool_name.split('__')[1] || 'mcp-unknown' : 'builtin',
+        serverId: normalizeToolName(parsed.data.tool_name).serverId,
         toolName: parsed.data.tool_name,
         toolLabel,
         input: parsed.data.tool_input,
@@ -147,6 +151,7 @@ export function hookRoutes({
         source: (parsed.data.tool_name.startsWith('mcp__') ? 'mcp' : 'builtin') as 'builtin' | 'mcp',
         cwd: parsed.data.cwd,
         correlationId,
+        observedBy: ['hook'],
       };
       ringBuffer.push(enrichedEvent);
 
@@ -182,6 +187,9 @@ export function hookRoutes({
         || (result.decision === 'timeout' && onTimeout === 'ALLOW');
 
       if (shouldAllow) {
+        // Record so the proxy path can merge its response into this row
+        const { serverId: mSid, tool: mTool } = normalizeToolName(parsed.data.tool_name);
+        mergeCorrelator.recordHook(mSid, mTool, parsed.data.tool_input, correlationId);
         return c.json({
           hookSpecificOutput: {
             hookEventName: 'PreToolUse',
@@ -215,7 +223,7 @@ export function hookRoutes({
       sessionId: sid,
       sessionName,
       agentId,
-      serverId: parsed.data.tool_name.startsWith('mcp__') ? parsed.data.tool_name.split('__')[1] || 'mcp-unknown' : 'builtin',
+      serverId: normalizeToolName(parsed.data.tool_name).serverId,
       toolName: parsed.data.tool_name,
       toolLabel,
       input: parsed.data.tool_input,
@@ -226,8 +234,15 @@ export function hookRoutes({
       source: (parsed.data.tool_name.startsWith('mcp__') ? 'mcp' : 'builtin') as 'builtin' | 'mcp',
       cwd: parsed.data.cwd,
       correlationId,
+      observedBy: ['hook'],
     };
     ringBuffer.push(enrichedEvent);
+
+    // Record for proxy-path dedup — only allowed calls reach the proxy
+    if (!isDenied) {
+      const { serverId: mSid, tool: mTool } = normalizeToolName(parsed.data.tool_name);
+      mergeCorrelator.recordHook(mSid, mTool, parsed.data.tool_input, correlationId);
+    }
 
     logger.info(
       { toolName: parsed.data.tool_name, decision },
@@ -264,8 +279,12 @@ export function hookRoutes({
       );
       event.correlationId = correlationId;
 
-      // Enrich the matching PreToolUse event in the ring buffer
-      if (correlationId) {
+      // Enrich the matching PreToolUse event in the ring buffer.
+      // Skip if the proxy already attached its response (first-writer-wins).
+      // wasConsumedByProxy distinguishes "proxy won" from "no entry" — in the
+      // latter case (restart state, non-proxied tool) we still want to update.
+      if (correlationId && !mergeCorrelator.wasConsumedByProxy(correlationId)) {
+        mergeCorrelator.claim(correlationId, 'post-tool-use');
         ringBuffer.update(
           (e) => e.correlationId === correlationId,
           (e) => ({

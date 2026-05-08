@@ -16,6 +16,7 @@ import type { UpstreamClient, ToolInfo } from './upstream/interface.js';
 import type { InterceptorOptions } from '../interceptor.js';
 import { intercept } from '../interceptor.js';
 import type { ToolCallEvent } from '../types.js';
+import { normalizeToolName, toMcpToolName } from '../hooks/tool-name.js';
 import type { McpRequestMessage, McpResponseMessage } from './types.js';
 import { JSON_RPC } from './types.js';
 import {
@@ -185,13 +186,23 @@ export async function dispatchToolCall(
   const sessionId = mcpSessionId ?? `mcp:${randomUUID()}`;
   const agentId   = agentIdHeader ?? `agent:${serverId}`;
 
+  // Normalize the raw MCP tool name to the canonical mcp__server__tool form.
+  // The hook path sees this form (Claude Code prefixes it); normalizing here
+  // ensures the merge correlator can join on a shared (serverId, tool) key.
+  const { serverId: normalizedServerId, tool: normalizedTool } = normalizeToolName(call.name, serverId);
+
   const event: ToolCallEvent = {
     sessionId,
     agentId,
-    serverId,
-    toolName:  call.name,
-    input:     call.input,
-    timestamp: Date.now(),
+    serverId:           normalizedServerId,
+    toolName:           toMcpToolName(normalizedServerId, normalizedTool),
+    toolLabel:          call.name,
+    input:              call.input,
+    timestamp:          Date.now(),
+    source:             'proxy',
+    correlationId:      randomUUID(),
+    transportSessionId: mcpSessionId,
+    observedBy:         ['proxy'],
   };
 
   const forward = async () => {

@@ -304,6 +304,7 @@ export async function intercept(
     output: finalOutput,
     durationMs,
     threats: finalThreats,
+    correlationId: event.correlationId,
   };
   opts.onToolResponseEvent(responseEvent);
 
