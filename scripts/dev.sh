@@ -88,6 +88,13 @@ add_window() {
 }
 
 # ── rind-proxy  (proxy server + dashboard) ────────────────────────────────────
+# Auto-detect PocketOS demo policy when rind-demo repo is present and no policy is
+# explicitly set. This ensures all three demo layers fire without manual env setup.
+if [ -z "${RIND_POLICY_FILE:-}" ] && [ -n "${RIND_DEMO_REPO:-}" ]; then
+  _DEMO_POLICY="${RIND_DEMO_REPO}/demo/pocketos/rind.policy.yaml"
+  [ -f "$_DEMO_POLICY" ] && RIND_POLICY_FILE="$_DEMO_POLICY"
+fi
+
 if session_running "rind-proxy"; then
   echo "[rind-proxy] already running — skipping."
 else
