@@ -105,9 +105,12 @@ if [ -z "${RIND_DEMO_REPO:-}" ] || [ ! -d "${RIND_DEMO_REPO}" ]; then
 elif session_running "rind-demo"; then
   echo "[rind-demo] already running — skipping."
 else
-  # TODO: replace placeholders with real start commands once wired up
-  DEMO_SERVER_CMD="cd '${RIND_DEMO_REPO}' && echo 'TODO: demo server start command' && bash"
-  MCP_GRAPHQL_CMD="cd '${RIND_DEMO_REPO}' && echo 'TODO: MCP GraphQL start command' && bash"
+  free_port 8082
+  free_port 8083
+
+  DEMO_DIR="${RIND_DEMO_REPO}/demo/pocketos"
+  DEMO_SERVER_CMD="cd '${DEMO_DIR}/fake-railway-mcp' && npm install --silent && npm start"
+  MCP_GRAPHQL_CMD="cd '${DEMO_DIR}/fake-railway-graphql' && npm install --silent && npm start"
 
   new_session "rind-demo" "demo-server" "${DEMO_SERVER_CMD}"
   add_window  "rind-demo" "mcp-graphql" "${MCP_GRAPHQL_CMD}"
