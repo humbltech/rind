@@ -13,6 +13,8 @@ import type { ProcessedHookEvent } from '../hooks/claude-code.js';
 import { HookRequestSchema, HookEventSchema, evaluateHook, processHookEvent, deriveToolLabel } from '../hooks/claude-code.js';
 import type { HookEvalOptions, HookEvalResult } from '../hooks/claude-code.js';
 import { discoverClaudeCodeContext, resolveSessionName } from '../hooks/claude-code-context.js';
+import type { DiscoveredMcpServer } from '../hooks/claude-code-context.js';
+import type { UpstreamPool } from '../transport/pool.js';
 import type { ISessionStore } from '../session.js';
 import { emitAudit, parseApprovalTimeout } from './helpers.js';
 
@@ -27,6 +29,7 @@ export interface HookRouteDeps {
   config: ProxyConfig;
   logger: Logger;
   sessionStore: ISessionStore;
+  pool: UpstreamPool;
 }
 
 export function hookRoutes({
@@ -40,6 +43,7 @@ export function hookRoutes({
   config,
   logger,
   sessionStore,
+  pool,
 }: HookRouteDeps): Hono {
   const app = new Hono();
 
@@ -325,9 +329,11 @@ export function hookRoutes({
   app.get('/hook/context', (c) => {
     const context = discoverClaudeCodeContext();
 
-    // Enrich with protection state: which MCP servers are also going through the proxy?
-    const proxiedServerIds = new Set(Object.keys(config.servers ?? {}));
-    // Which MCP servers have been seen via hooks (mcp__server__tool pattern)?
+    // Use the live pool as the authoritative set of proxied servers — this includes
+    // servers registered at runtime via POST /servers, not just startup config.
+    const proxiedServerIds = new Set(pool.list().map((s) => s.id));
+
+    // Servers seen via hooks (mcp__server__tool pattern in ring buffer).
     const observedServerIds = new Set<string>();
     for (const event of ringBuffer.toArray()) {
       if (event.source === 'mcp' && event.serverId !== 'builtin') {
@@ -335,15 +341,31 @@ export function hookRoutes({
       }
     }
 
-    const enrichedServers = context.mcpServers.map((server) => {
-      // Protection state: proxied > observed > registered
+    // Merge pool-registered servers into the list alongside filesystem-discovered
+    // servers. This makes the dashboard correct when the agent runs on a different
+    // machine (the proxy's pool is the single source of truth for registered servers).
+    const discoveredIds = new Set(context.mcpServers.map((s) => s.id));
+    const poolOnlyServers: DiscoveredMcpServer[] = pool.list()
+      .filter(({ id }) => !discoveredIds.has(id))
+      .map(({ id, config: serverConfig }) => ({
+        id,
+        source: 'rind-registered' as const,
+        transport: serverConfig.transport === 'http' ? 'http' as const : 'stdio' as const,
+        url: serverConfig.transport === 'http' ? serverConfig.url : undefined,
+        command: serverConfig.transport === 'stdio' ? serverConfig.command : undefined,
+        enabled: true,
+        connectionStatus: observedServerIds.has(id) ? 'connected' as const : 'registered' as const,
+      }));
+
+    const allServers = [...context.mcpServers, ...poolOnlyServers];
+
+    const enrichedServers = allServers.map((server) => {
       const protectionState = proxiedServerIds.has(server.id)
         ? 'proxied' as const
         : observedServerIds.has(server.id)
           ? 'observed' as const
           : 'registered' as const;
 
-      // Connection status upgrade: if we've seen tool calls, it's connected
       const connectionStatus = observedServerIds.has(server.id)
         ? 'connected' as const
         : server.connectionStatus;

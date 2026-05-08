@@ -389,7 +389,7 @@ export function createProxyServer(config: ProxyConfig) {
   app.route('/', sessionRoutes({ bus, config, logger, sessionStore }));
   app.route('/', scanRoutes({ bus, logger, serverScannerMode: config.layers?.['server-scanner']?.mode }));
   app.route('/', logRoutes({ ringBuffer, hookEventBuffer }));
-  app.route('/', hookRoutes({ policyEngine, policyStore, approvalQueue, correlator, ringBuffer, hookEventBuffer, bus, config, logger, sessionStore }));
+  app.route('/', hookRoutes({ policyEngine, policyStore, approvalQueue, correlator, ringBuffer, hookEventBuffer, bus, config, logger, sessionStore, pool: upstreamPool }));
   app.route('/', toolCallRoutes({ policyEngine, policyStore, loopDetector, rateLimiter, approvalQueue, ringBuffer, bus, config, logger, sessionStore }));
 
   return {

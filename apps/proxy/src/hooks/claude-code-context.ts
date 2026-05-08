@@ -25,7 +25,7 @@ export type McpConnectionStatus =
 
 export interface DiscoveredMcpServer {
   id: string;
-  source: 'user-settings' | 'plugin' | 'cloud-ai';
+  source: 'user-settings' | 'plugin' | 'cloud-ai' | 'rind-registered';
   transport: 'stdio' | 'http';
   command?: string;
   url?: string;
