@@ -257,6 +257,52 @@ export async function intercept(
     if (limitBlock) return limitBlock;
   }
 
+  // ── 5b. Rehydrate synthetic credentials before forwarding upstream ─────────
+  // If the agent passed a RIND_SYNTH_* synthetic in the tool input, swap it back
+  // to the real credential so the upstream MCP server receives the original value.
+  // Destination-scoped: synthetics only rehydrate for the same serverId they
+  // originated from. Cross-server attempts leave the synthetic in place and emit
+  // a CredentialExfiltrationAttemptEvent for the audit pipeline.
+  //
+  // Runs AFTER onToolCallEvent (step 4) so audit events record synthetics —
+  // real credential values never appear in audit log payloads (council SEC-6).
+  {
+    const credVault = opts.sessionStore.getCredentialVault(event.agentId, event.sessionId);
+    const { value: rehydratedInput, rehydratedTokens, blockedTokens } =
+      credVault.rehydrateValueForDestination(event.input, {
+        serverId: event.serverId,
+        toolName: event.toolName,
+      });
+    for (const tok of rehydratedTokens) {
+      opts.onCredentialRehydration?.({
+        type: 'credential_rehydration',
+        sessionId: event.sessionId,
+        agentId: event.agentId,
+        entityType: tok.entityType,
+        sourceTool: tok.originToolName,
+        targetTool: event.toolName,
+        serverId: event.serverId,
+        timestamp: Date.now(),
+      });
+    }
+    for (const tok of blockedTokens) {
+      opts.onCredentialExfiltrationAttempt?.({
+        type: 'credential_exfiltration_attempt',
+        sessionId: event.sessionId,
+        agentId: event.agentId,
+        entityType: tok.entityType,
+        sourceTool: tok.originToolName,
+        targetTool: event.toolName,
+        targetServerId: event.serverId,
+        reason: 'destination_scope_violation',
+        timestamp: Date.now(),
+      });
+    }
+    if (rehydratedTokens.length > 0) {
+      event = { ...event, input: rehydratedInput };
+    }
+  }
+
   // ── 6. Forward to upstream MCP server ───────────────────────────────────────
   opts.sessionStore.incrementToolCall(event.sessionId);
 
