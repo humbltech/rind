@@ -11,7 +11,10 @@
     "typecheck": "turbo typecheck",
     "rind-proxy": "pnpm --filter @rind/proxy exec node dist/index.js",
     "session": "bash scripts/dev.sh",
-    "session:kill": "bash scripts/dev.sh --kill"
+    "session:kill": "bash scripts/dev.sh --kill",
+    "session:restart": "bash scripts/dev.sh --restart",
+    "session:restart:demo": "bash scripts/dev.sh --restart rind-demo",
+    "session:restart:proxy": "bash scripts/dev.sh --restart rind-proxy"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",

@@ -29,7 +29,7 @@ if [ -z "${RIND_DEMO_REPO:-}" ]; then
   [ -d "$CANDIDATE" ] && RIND_DEMO_REPO="$CANDIDATE" || RIND_DEMO_REPO=""
 fi
 
-# ── Kill flag ─────────────────────────────────────────────────────────────────
+# ── Kill / restart flags ──────────────────────────────────────────────────────
 if [ "${1:-}" = "--kill" ]; then
   if [ -n "${2:-}" ]; then
     tmux kill-session -t "$2" 2>/dev/null && echo "Killed '$2'." || echo "No session '$2' found."
@@ -40,6 +40,17 @@ if [ "${1:-}" = "--kill" ]; then
     echo "All rind sessions stopped."
   fi
   exit 0
+fi
+
+if [ "${1:-}" = "--restart" ]; then
+  TARGET="${2:-}"
+  if [ -z "$TARGET" ]; then
+    echo "Usage: dev.sh --restart <session>"
+    echo "  Sessions: ${ALL_SESSIONS[*]}"
+    exit 1
+  fi
+  tmux kill-session -t "$TARGET" 2>/dev/null && echo "Killed '$TARGET'." || echo "Session '$TARGET' was not running."
+  exec bash "$0"
 fi
 
 # ── Guards ────────────────────────────────────────────────────────────────────
