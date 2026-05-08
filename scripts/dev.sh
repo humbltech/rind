@@ -49,7 +49,9 @@ if [ "${1:-}" = "--restart" ]; then
     echo "  Sessions: ${ALL_SESSIONS[*]}"
     exit 1
   fi
-  tmux kill-session -t "$TARGET" 2>/dev/null && echo "Killed '$TARGET'." || echo "Session '$TARGET' was not running."
+  # Accept short names: "demo" → "rind-demo", "proxy" → "rind-proxy", etc.
+  [[ "$TARGET" != rind-* ]] && TARGET="rind-${TARGET}"
+  tmux kill-session -t "=$TARGET" 2>/dev/null && echo "Killed '$TARGET'." || echo "Session '$TARGET' was not running."
   exec bash "$0"
 fi
 
@@ -67,7 +69,9 @@ else
 fi
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-session_running() { tmux has-session -t "$1" 2>/dev/null; }
+# Use exact-name matching — without '=' prefix, tmux treats the arg as a pattern
+# and 'rind-demo' would falsely match 'rind-demo-cloud'.
+session_running() { tmux has-session -t "=$1" 2>/dev/null; }
 
 free_port() { fuser -k "$1/tcp" 2>/dev/null || true; }
 
