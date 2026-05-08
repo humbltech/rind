@@ -25,6 +25,8 @@ import { runPIIDetector } from '../../detectors/pii.js';
 import { runInjectionDetector } from '../../detectors/injection.js';
 import { runDLPDetector } from '../../detectors/dlp.js';
 import type { DetectorRunResult } from '../../detectors/types.js';
+import type { CredentialVault } from '../../credential-vault.js';
+import { createCredentialVault } from '../../credential-vault.js';
 
 // ─── Public result type ───────────────────────────────────────────────────────
 
@@ -102,6 +104,7 @@ export async function evaluateLlmResponseContent(
   responseText: string,
   event: LlmCallEvent,
   rules: PolicyRule[],
+  credVault?: CredentialVault,
 ): Promise<ResponseContentPolicyResult> {
   const startMs = Date.now();
 
@@ -158,10 +161,22 @@ export async function evaluateLlmResponseContent(
       }
 
       if (rule.action === 'REDACT') {
+        // For credential secrets: pseudonymize (synthetic replaces only the token value,
+        // surrounding context preserved). For other detectors (pii, injection, dlp):
+        // replace the full response text with [REDACTED] — these are not rehydratable.
+        let redactedText: string;
+        if (detector === 'secret') {
+          const vaultToUse = credVault ?? createCredentialVault(event.agentId);
+          const origin = { serverId: '_llm_response', toolName: 'llm_response' };
+          redactedText = vaultToUse.pseudonymize(responseText, origin).sanitized;
+          if (!credVault) vaultToUse.dispose();
+        } else {
+          redactedText = '[REDACTED]';
+        }
         return {
           action: 'REDACT',
           matchedRule: rule.name,
-          redactedText: '[REDACTED]',
+          redactedText,
           inspection: buildInspection(auditResults, startMs),
         };
       }
@@ -197,11 +212,12 @@ export function rehydrateResponseBody(body: unknown, vault: PIIVault): unknown {
 // ─── Response body patching ───────────────────────────────────────────────────
 
 /**
- * Replace all assistant text content in a non-streaming response body with [REDACTED].
+ * Replace all assistant text content in a non-streaming response body with the provided text.
+ * When called from the REDACT path, `replacementText` is the pseudonymized response text
+ * (credentials replaced with RIND_SYNTH synthetics, surrounding context preserved).
  * Handles Anthropic (content[*].type:'text') and OpenAI (choices[*].message.content).
- * Only called when action is REDACT.
  */
-export function patchResponseBodyWithRedaction(body: unknown): unknown {
+export function patchResponseBodyWithRedaction(body: unknown, replacementText = '[REDACTED]'): unknown {
   if (typeof body !== 'object' || body === null) return body;
   const b = body as Record<string, unknown>;
 
@@ -215,7 +231,7 @@ export function patchResponseBodyWithRedaction(body: unknown): unknown {
           block !== null &&
           (block as Record<string, unknown>)['type'] === 'text'
         ) {
-          return { ...(block as object), text: '[REDACTED]' };
+          return { ...(block as object), text: replacementText };
         }
         return block;
       }),
@@ -233,7 +249,7 @@ export function patchResponseBodyWithRedaction(body: unknown): unknown {
         if (typeof msg === 'object' && msg !== null) {
           const m = msg as Record<string, unknown>;
           if (typeof m['content'] === 'string') {
-            return { ...c, message: { ...m, content: '[REDACTED]' } };
+            return { ...c, message: { ...m, content: replacementText } };
           }
         }
         return choice;

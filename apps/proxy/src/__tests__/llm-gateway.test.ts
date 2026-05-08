@@ -573,13 +573,16 @@ describe('llmGateway — response-side content policy', () => {
     expect(res.status).toBe(200);
     const responseBody = await res.json() as { content: { type: string; text: string }[] };
 
-    // Response body text replaced with [REDACTED]
+    // Credential value replaced with RIND_SYNTH synthetic; surrounding context preserved
     const textBlock = responseBody.content.find((b) => b.type === 'text');
-    expect(textBlock?.text).toBe('[REDACTED]');
+    expect(textBlock?.text).toContain('sk-RIND_SYNTH_');
+    expect(textBlock?.text).not.toContain('sk-abcdefghijklmnopqrstuvwxyz1234567890ab');
+    expect(textBlock?.text).toContain('to authenticate.');
 
-    // Event responseText also reflects the redacted value
+    // Event responseText also reflects the pseudonymized value
     expect(responseEvents).toHaveLength(1);
-    expect(responseEvents[0]!.responseText).toBe('[REDACTED]');
+    expect(responseEvents[0]!.responseText).toContain('sk-RIND_SYNTH_');
+    expect(responseEvents[0]!.responseText).not.toContain('sk-abcdefghijklmnopqrstuvwxyz1234567890ab');
   });
 
   it('streaming policy violation: emits outcome:policy-violation after stream completes', async () => {

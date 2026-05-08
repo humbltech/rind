@@ -325,7 +325,7 @@ export function createProxyServer(config: ProxyConfig) {
     });
 
     const llmConfig = { ...defaultLlmProxyConfig(), ...config.llmProxy };
-    app.route('/', llmGateway({ config: llmConfig, bus, policyEngine, logger, forwardFn: config.llmForwardFn, layers: config.layers }));
+    app.route('/', llmGateway({ config: llmConfig, bus, policyEngine, logger, forwardFn: config.llmForwardFn, layers: config.layers, sessionStore }));
     logger.info({ logLevel: llmConfig.logLevel }, 'LLM API proxy gateway mounted');
 
     // Admin endpoint: dynamically update the Anthropic upstream URL.

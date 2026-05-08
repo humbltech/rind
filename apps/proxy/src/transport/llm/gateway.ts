@@ -32,6 +32,7 @@ import { evaluateLlmContent, applyPseudonymizeToBody } from './content-policy.js
 import { evaluateLlmResponseContent, patchResponseBodyWithRedaction, rehydrateResponseBody } from './content-policy-response.js';
 import type { PIIVault } from '../../pii-vault.js';
 import type { LlmForwardFn, ProxyConfig } from '../../types.js';
+import type { ISessionStore } from '../../session.js';
 
 // ─── Gateway options ──────────────────────────────────────────────────────────
 
@@ -53,6 +54,13 @@ export interface LlmGatewayOptions {
   forwardFn?: LlmForwardFn;
   /** Per-layer detection mode overrides. Default for all layers: 'block'. */
   layers?: ProxyConfig['layers'];
+  /**
+   * Session store — used to retrieve the credential vault for the current session.
+   * When provided, credentials in tool_results and LLM responses are pseudonymized
+   * with the session-scoped vault (consistent synthetics with the MCP proxy path).
+   * Optional for backward compatibility; when absent a per-call temporary vault is used.
+   */
+  sessionStore?: ISessionStore;
 }
 
 // ─── Conversation tracker ─────────────────────────────────────────────────────
@@ -283,6 +291,14 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
       throw err;
     }
 
+    // ── 3a-ii. Session-scoped credential vault ───────────────────────────────
+    // Retrieve (or lazily create) the vault for this session so that credentials
+    // in tool_results and LLM responses are pseudonymized with the same RIND_SYNTH
+    // synthetics as the MCP proxy path (same HMAC key + agentId → same tag).
+    // Optional: if no sessionStore is configured, evaluateLlmContent/Response will
+    // create a temporary per-call vault instead.
+    const credVault = opts.sessionStore?.getCredentialVault(event.agentId, event.sessionId);
+
     // ── 3b. Request scanning (sync, pre-forward) ─────────────────────────────
     // Scan outbound prompt for credentials and PII. Attaches threats to the event
     // for audit/dashboard visibility. Does not block forwarding on its own — a
@@ -299,7 +315,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     // Evaluates rules with match.content (PII, secrets, injection, DLP).
     // May block the request, pseudonymize, or redact the body before forwarding.
     const contentRules = policyEngine.getContentRules();
-    const contentResult = await evaluateLlmContent(body, event, contentRules);
+    const contentResult = await evaluateLlmContent(body, event, contentRules, credVault);
 
     if (contentResult.action === 'DENY') {
       const blockedEvent: LlmCallEvent = {
@@ -424,11 +440,13 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
       if (result.meta) {
         // ── 7a-i. Response-side content policy ──────────────────────────────
         // Evaluated after the upstream responds but before returning to client.
-        // DENY blocks the response body; REDACT replaces assistant text content.
+        // DENY blocks the response body; REDACT pseudonymizes credentials in
+        // assistant text (RIND_SYNTH synthetics, not [REDACTED]).
         const responseContentResult = await evaluateLlmResponseContent(
           result.meta.responseText ?? '',
           event,
           contentRules,
+          credVault,
         );
 
         if (responseContentResult.action === 'DENY') {
@@ -451,11 +469,12 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
           ? { ...result.meta, responseText: responseContentResult.redactedText }
           : result.meta;
 
-        // REDACT takes precedence: replace content with [REDACTED] before rehydration.
+        // REDACT takes precedence: pseudonymize credentials in the response body before
+        // returning to client (uses the pseudonymized text from evaluateLlmResponseContent).
         // Otherwise rehydrate vault tokens → original PII values before sending to client.
         // Must happen before emitEnrichedEvent disposes the vault.
         let finalBody: unknown = responseContentResult.action === 'REDACT'
-          ? patchResponseBodyWithRedaction(result.responseBody)
+          ? patchResponseBodyWithRedaction(result.responseBody, responseContentResult.redactedText)
           : result.responseBody;
         if (activeVault && responseContentResult.action !== 'REDACT') {
           finalBody = rehydrateResponseBody(finalBody, activeVault);
@@ -485,6 +504,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     const capturedStatusCode = result.statusCode;
     const capturedVault = activeVault;
     const capturedContentRules = contentRules; // capture for async response-side eval
+    const capturedCredVault = credVault; // capture for async response-side credential pseudonymization
     activeVault = undefined; // ownership transferred to stream closure
 
     // ── 7b-i. Vault active: hold-back window rehydration ────────────────────
@@ -546,6 +566,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
           meta.responseText ?? '',
           capturedEvent,
           capturedContentRules,
+          capturedCredVault,
         );
         const isViolation = responseContentResult.action !== 'ALLOW';
         const vaultMeta: typeof meta = isViolation && responseContentResult.redactedText
@@ -571,6 +592,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
         meta.responseText ?? '',
         capturedEvent,
         capturedContentRules,
+        capturedCredVault,
       );
 
       const isViolation = responseContentResult.action !== 'ALLOW';

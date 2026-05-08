@@ -32,6 +32,8 @@ import { runInjectionDetector } from '../../detectors/injection.js';
 import { runDLPDetector } from '../../detectors/dlp.js';
 import type { DetectorRunResult } from '../../detectors/types.js';
 import { redactCredentialString } from '../../inspector/response.js';
+import type { CredentialVault } from '../../credential-vault.js';
+import { createCredentialVault } from '../../credential-vault.js';
 
 // ─── Public result type ───────────────────────────────────────────────────────
 
@@ -228,6 +230,7 @@ export async function evaluateLlmContent(
   body: unknown,
   event: LlmCallEvent,
   rules: PolicyRule[],
+  credVault?: CredentialVault,
 ): Promise<ContentPolicyResult> {
   const startMs = Date.now();
 
@@ -342,7 +345,11 @@ export async function evaluateLlmContent(
       }
 
       if (rule.action === 'REDACT') {
-        const sanitizedBody = applyRedaction(body, targets);
+        // Use session-scoped vault if provided; otherwise create a temporary one for this call.
+        // Determinism guarantees same agentId + same credential → same synthetic in both cases.
+        const vaultToUse = credVault ?? createCredentialVault(event.agentId);
+        const sanitizedBody = applyRedaction(body, targets, vaultToUse);
+        if (!credVault) vaultToUse.dispose();
         return {
           action: 'REDACT',
           matchedRule: rule.name,
@@ -373,6 +380,7 @@ function redactString(text: string): string {
 function applyRedaction(
   body: unknown,
   targets: ('system' | 'user' | 'assistant')[],
+  credVault?: CredentialVault,
 ): unknown {
   if (typeof body !== 'object' || body === null) return body;
   const b = body as Record<string, unknown>;
@@ -415,10 +423,14 @@ function applyRedaction(
               const text = b2['text'];
               return { ...b2, text: typeof text === 'string' ? redactString(text) : text };
             }
-            // tool_result: surgical credential replacement preserves agent context
+            // tool_result: replace credentials with RIND_SYNTH synthetics (preserves agent context)
             if (b2['type'] === 'tool_result') {
+              const origin = { serverId: '_llm_tool_result', toolName: 'tool_result' };
               if (typeof b2['content'] === 'string') {
-                return { ...b2, content: redactCredentialString(b2['content']) };
+                const text = credVault
+                  ? credVault.pseudonymize(b2['content'], origin).sanitized
+                  : redactCredentialString(b2['content']);
+                return { ...b2, content: text };
               }
               if (Array.isArray(b2['content'])) {
                 return {
@@ -427,7 +439,12 @@ function applyRedaction(
                     if (typeof inner === 'object' && inner !== null &&
                         (inner as Record<string, unknown>)['type'] === 'text') {
                       const t = inner as Record<string, unknown>;
-                      return { ...t, text: typeof t['text'] === 'string' ? redactCredentialString(t['text']) : t['text'] };
+                      if (typeof t['text'] === 'string') {
+                        const text = credVault
+                          ? credVault.pseudonymize(t['text'], origin).sanitized
+                          : redactCredentialString(t['text']);
+                        return { ...t, text };
+                      }
                     }
                     return inner;
                   }),

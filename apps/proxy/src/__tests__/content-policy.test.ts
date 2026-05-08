@@ -459,7 +459,7 @@ describe('tool_result extraction and redaction', () => {
     expect(result.action).toBe('REDACT');
     const sanitized = JSON.stringify(result.sanitizedBody);
     expect(sanitized).not.toContain('railway_prod_abc123456789012345');
-    expect(sanitized).toContain('[REDACTED]');
+    expect(sanitized).toContain('rly_RIND_SYNTH_');
     expect(sanitized).toContain('domain script');
   });
 
@@ -470,7 +470,7 @@ describe('tool_result extraction and redaction', () => {
     const result = await evaluateLlmContent(body, makeLlmEvent(), [railwayRedactRule]);
     const sanitized = JSON.stringify(result.sanitizedBody);
     expect(sanitized).not.toContain('railway_prod_abc123456789012345');
-    expect(sanitized).toContain('[REDACTED]');
+    expect(sanitized).toContain('rly_RIND_SYNTH_');
     expect(sanitized).toContain('railway domain update');
   });
 
