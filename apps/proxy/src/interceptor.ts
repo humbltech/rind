@@ -14,9 +14,17 @@
 //   - Fail-closed (default): inspection/policy errors produce DENY
 //   - Fail-open: allowed per-rule via failMode: 'open'
 
-import type { ToolCallEvent, ToolResponseEvent, PolicyAction, PolicyRule, ProxyConfig } from './types.js';
+import type {
+  ToolCallEvent,
+  ToolResponseEvent,
+  PolicyAction,
+  PolicyRule,
+  ProxyConfig,
+  CredentialRehydrationEvent,
+  CredentialExfiltrationAttemptEvent,
+} from './types.js';
 import { inspectRequest } from './inspector/request.js';
-import { inspectResponse, redactCredentialsInOutput } from './inspector/response.js';
+import { inspectResponse } from './inspector/response.js';
 import type { ISessionStore } from './session.js';
 import type { PolicyEngine } from './policy/engine.js';
 import type { LoopDetector } from './loop-detector.js';
@@ -61,6 +69,8 @@ export interface InterceptorOptions {
   sessionStore: ISessionStore;
   onToolCallEvent: (event: ToolCallEvent, matchedRule?: PolicyRule, observedRules?: PolicyRule[]) => void;
   onToolResponseEvent: (event: ToolResponseEvent) => void;
+  onCredentialRehydration?: (event: CredentialRehydrationEvent) => void;
+  onCredentialExfiltrationAttempt?: (event: CredentialExfiltrationAttemptEvent) => void;
   blockOnCriticalResponseThreats: boolean;
   // Skip request-side injection scanning. Set true for hook evaluate-only mode
   // where tool inputs are user-initiated (not attacker-controlled MCP inputs).
@@ -282,18 +292,31 @@ export async function intercept(
     }
   }
 
-  // ── 8b. Redact credentials before returning to agent ────────────────────────
-  // When a CREDENTIAL_LEAK threat is detected, replace the token value with
-  // [REDACTED] in the output so the agent never sees the raw credential.
-  // The response is still returned (not blocked) — we log the sanitized event.
-  // This is the credential proxy pattern at the MCP response layer.
+  // ── 8b. Pseudonymize credentials before returning to agent ──────────────────
+  // When a CREDENTIAL_LEAK threat is detected, replace the token value with a
+  // deterministic RIND_SYNTH_*-prefixed synthetic so the agent sees a plausible
+  // stand-in rather than [REDACTED] or the real secret.
+  //
+  // The synthetic is stored in the session-scoped credential vault. When the agent
+  // later passes the synthetic in a tool input, step 5b rehydrates it to the real
+  // credential before forwarding upstream (cross-server attempts are blocked there).
+  //
+  // Real credential values never appear in audit events — finalOutput carries synthetics.
   const hasCredentialLeak = responseThreats.some((t) => t.type === 'CREDENTIAL_LEAK');
   let finalOutput = output;
   let finalThreats = responseThreats;
   if (hasCredentialLeak) {
-    const redacted = redactCredentialsInOutput(output, responseThreats);
-    finalOutput = redacted.redactedOutput;
-    finalThreats = redacted.threats;
+    const credVault = opts.sessionStore.getCredentialVault(event.agentId, event.sessionId);
+    const outputStr = typeof output === 'string' ? output : JSON.stringify(output);
+    const { sanitized } = credVault.pseudonymize(outputStr, {
+      serverId: event.serverId,
+      toolName: event.toolName,
+    });
+    finalOutput = typeof output === 'string' ? sanitized : (JSON.parse(sanitized) as unknown);
+    // Mark credential threats as sanitized (mirrors old redactCredentialsInOutput behaviour)
+    finalThreats = responseThreats.map((t) =>
+      t.type === 'CREDENTIAL_LEAK' ? { ...t, sanitized: true } : t,
+    );
   }
 
   const responseEvent: ToolResponseEvent = {

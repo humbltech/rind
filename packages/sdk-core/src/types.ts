@@ -260,6 +260,31 @@ export interface ToolErrorEvent {
   durationMs: number;
 }
 
+/** Emitted when a credential synthetic is rehydrated before forwarding to an upstream tool. */
+export interface CredentialRehydrationEvent {
+  type: 'credential_rehydration';
+  sessionId: string;
+  agentId: string;
+  entityType: string;   // e.g. 'cred-010'
+  sourceTool: string;   // tool that originally surfaced the credential
+  targetTool: string;   // tool the synthetic was passed into
+  serverId: string;
+  timestamp: number;
+}
+
+/** Emitted when a credential synthetic is blocked from being rehydrated (cross-server exfiltration attempt). */
+export interface CredentialExfiltrationAttemptEvent {
+  type: 'credential_exfiltration_attempt';
+  sessionId: string;
+  agentId: string;
+  entityType: string;
+  sourceTool: string;
+  targetTool: string;
+  targetServerId: string;
+  reason: 'destination_scope_violation';
+  timestamp: number;
+}
+
 // ─── Response-side threat detection ─────────────────────────────────────────
 
 export interface ResponseThreat {
