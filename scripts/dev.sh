@@ -5,7 +5,7 @@
 #   rind-proxy      — proxy server (port 7777) + dashboard (port 3000)
 #   rind-cloud      — Claude Code in the rind repo
 #   rind-demo       — demo server + MCP GraphQL server
-#   rind-demo-cloud — Claude Code in the rind-demo repo
+#   rind-demo-claude — Claude Code in the rind-demo repo
 #
 # Usage:
 #   bash scripts/dev.sh              # start all sessions (skips already-running ones)
@@ -21,7 +21,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RIND_REPO="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ALL_SESSIONS=("rind-proxy" "rind-cloud" "rind-demo" "rind-demo-cloud")
+ALL_SESSIONS=("rind-proxy" "rind-cloud" "rind-demo" "rind-demo-claude")
 
 # ── Resolve rind-demo repo ────────────────────────────────────────────────────
 if [ -z "${RIND_DEMO_REPO:-}" ]; then
@@ -70,7 +70,7 @@ fi
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 # Use exact-name matching — without '=' prefix, tmux treats the arg as a pattern
-# and 'rind-demo' would falsely match 'rind-demo-cloud'.
+# and 'rind-demo' would falsely match 'rind-demo-claude'.
 session_running() { tmux has-session -t "=$1" 2>/dev/null; }
 
 free_port() { fuser -k "$1/tcp" 2>/dev/null || true; }
@@ -133,14 +133,14 @@ else
   echo "[rind-demo] started."
 fi
 
-# ── rind-demo-cloud  (Claude Code — rind-demo repo) ───────────────────────────
+# ── rind-demo-claude  (Claude Code — rind-demo repo) ───────────────────────────
 if [ -z "${RIND_DEMO_REPO:-}" ] || [ ! -d "${RIND_DEMO_REPO}" ]; then
-  echo "[rind-demo-cloud] skipped — repo not found."
-elif session_running "rind-demo-cloud"; then
-  echo "[rind-demo-cloud] already running — skipping."
+  echo "[rind-demo-claude] skipped — repo not found."
+elif session_running "rind-demo-claude"; then
+  echo "[rind-demo-claude] already running — skipping."
 else
-  new_session "rind-demo-cloud" "claude" "cd '${RIND_DEMO_REPO}' && ${CLAUDE_CMD}"
-  echo "[rind-demo-cloud] started."
+  new_session "rind-demo-claude" "claude" "cd '${RIND_DEMO_REPO}' && ${CLAUDE_CMD}"
+  echo "[rind-demo-claude] started."
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
@@ -150,7 +150,7 @@ echo "    rind-proxy      → proxy :${PROXY_PORT:-7777}  |  dashboard :3040"
 echo "    rind-cloud      → Claude Code  ($(basename "${RIND_REPO}"))"
 if [ -n "${RIND_DEMO_REPO:-}" ] && [ -d "${RIND_DEMO_REPO}" ]; then
   echo "    rind-demo       → demo server  |  MCP GraphQL"
-  echo "    rind-demo-cloud → Claude Code  ($(basename "${RIND_DEMO_REPO}"))"
+  echo "    rind-demo-claude → Claude Code  ($(basename "${RIND_DEMO_REPO}"))"
 fi
 echo ""
 echo "Attach:    tmux attach -t <session>"
