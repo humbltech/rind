@@ -5,6 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Session } from './types.js';
 import { type CredentialVault, createCredentialVault } from './credential-vault.js';
+import { type PIIVault, createPIIVault } from './pii-vault.js';
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,11 @@ export interface ISessionStore {
    * Vault provides destination-scoped rehydration of RIND_SYNTH_* credential synthetics.
    */
   getCredentialVault(agentId: string, sessionId: string): CredentialVault;
+  /**
+   * Return (or lazily create) the PII vault for a given (agentId, sessionId) pair.
+   * Vault provides HMAC-deterministic PII pseudonymization with destination-scoped rehydration.
+   */
+  getPIIVault(agentId: string, sessionId: string): PIIVault;
   reset(): void;
 }
 
@@ -43,6 +49,8 @@ export class InMemorySessionStore implements ISessionStore {
   // call. This collapses both legs of the hook-path race at routes/hook.ts:73-74,291-292 onto
   // whichever vault is already in the map, preventing duplicate vaults for the same session.
   private credentialVaults = new Map<string, CredentialVault>();
+  // PII vaults — same lazy-creation pattern as credentialVaults (independent blast radius).
+  private piiVaults = new Map<string, PIIVault>();
 
   create(agentId: string, sessionId?: string): Session {
     const id = sessionId ?? randomUUID();
@@ -67,12 +75,16 @@ export class InMemorySessionStore implements ISessionStore {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
     session.active = false;
-    // Dispose the credential vault for this session so it stops accepting new synthetics.
     const vaultKey = `${session.agentId}:${sessionId}`;
-    const vault = this.credentialVaults.get(vaultKey);
-    if (vault) {
-      vault.dispose();
+    const credVault = this.credentialVaults.get(vaultKey);
+    if (credVault) {
+      credVault.dispose();
       this.credentialVaults.delete(vaultKey);
+    }
+    const piiVault = this.piiVaults.get(vaultKey);
+    if (piiVault) {
+      piiVault.dispose();
+      this.piiVaults.delete(vaultKey);
     }
     return true;
   }
@@ -83,6 +95,16 @@ export class InMemorySessionStore implements ISessionStore {
     if (!vault) {
       vault = createCredentialVault(agentId);
       this.credentialVaults.set(key, vault);
+    }
+    return vault;
+  }
+
+  getPIIVault(agentId: string, sessionId: string): PIIVault {
+    const key = `${agentId}:${sessionId}`;
+    let vault = this.piiVaults.get(key);
+    if (!vault) {
+      vault = createPIIVault(agentId);
+      this.piiVaults.set(key, vault);
     }
     return vault;
   }
@@ -127,6 +149,8 @@ export class InMemorySessionStore implements ISessionStore {
   reset(): void {
     for (const vault of this.credentialVaults.values()) vault.dispose();
     this.credentialVaults.clear();
+    for (const vault of this.piiVaults.values()) vault.dispose();
+    this.piiVaults.clear();
     this.sessions.clear();
     this.sessionCallLog.clear();
   }

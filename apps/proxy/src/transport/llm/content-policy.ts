@@ -50,9 +50,15 @@ export interface ContentPolicyResult {
   sanitizedBody: unknown;
   /**
    * Active vault instance — only present when action is PSEUDONYMIZE.
-   * Caller must call vault.rehydrate(responseText) then vault.dispose().
+   * When vaultOwned is true, caller must dispose after rehydration.
+   * When vaultOwned is false, vault is session-scoped; caller must NOT dispose it.
    */
   vault?: PIIVault;
+  /**
+   * True when this evaluator created the vault (no session-scoped vault was provided).
+   * Caller must dispose the vault after use. False when vault came from the session store.
+   */
+  vaultOwned?: boolean;
   /** Safe for main audit log — no original PII values */
   inspection: ContentInspectionAudit;
 }
@@ -231,6 +237,7 @@ export async function evaluateLlmContent(
   event: LlmCallEvent,
   rules: PolicyRule[],
   credVault?: CredentialVault,
+  piiVault?: PIIVault,
 ): Promise<ContentPolicyResult> {
   const startMs = Date.now();
 
@@ -317,13 +324,16 @@ export async function evaluateLlmContent(
       }
 
       if (rule.action === 'PSEUDONYMIZE' && detector === 'pii' && rule.pii) {
-        const vault = createPIIVault(event.agentId);
+        // Use session-scoped vault when provided; otherwise create a temporary one.
+        // vaultOwned tracks whether we own the lifecycle (caller must dispose if true).
+        const vaultOwned = piiVault == null;
+        const vaultToUse = piiVault ?? createPIIVault(event.agentId);
         // Pseudonymize the combined text of all targets to populate the vault with
         // all entity mappings before applying to the body. Vault deduplicates — the
         // same value across targets gets the same synthetic.
         const flatText = extractText(body, targets);
         const origin = { serverId: '_llm_request', toolName: '_llm_request' };
-        const pseudoResult = vault.pseudonymize(flatText, origin, rule.pii);
+        const pseudoResult = vaultToUse.pseudonymize(flatText, origin, rule.pii);
 
         // Annotate PII matches with the synthetic values that were generated.
         // syntheticValue is safe to log — it's the reserved-range placeholder, not
@@ -331,16 +341,17 @@ export async function evaluateLlmContent(
         // to understand and tune the rule without accessing original PII.
         const matchesWithSynthetics = taggedMatches.map((match) => ({
           ...match,
-          syntheticValue: vault.getSyntheticsForEntity(match.type as PiiEntity).join(', '),
+          syntheticValue: vaultToUse.getSyntheticsForEntity(match.type as PiiEntity).join(', '),
         }));
         auditResults[auditResults.length - 1] = { ...auditResult, matches: matchesWithSynthetics };
 
-        const sanitizedBody = applyPseudonymizeToBody(body, vault);
+        const sanitizedBody = applyPseudonymizeToBody(body, vaultToUse);
         return {
           action: 'PSEUDONYMIZE',
           matchedRule: rule.name,
           sanitizedBody,
-          vault,
+          vault: vaultToUse,
+          vaultOwned,
           inspection: buildInspection(auditResults, startMs, pseudoResult.stats),
         };
       }

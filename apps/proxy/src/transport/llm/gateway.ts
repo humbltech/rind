@@ -236,7 +236,6 @@ function makeEnricher(
     if (responseThreats.length > 0) {
       logger.warn({ model: baseEvent.model, threatCount: responseThreats.length }, 'LLM response threats detected');
     }
-    vault?.dispose();
     bus.emit('llm:response', enrichedEvent);
     if (
       config.costAnomalyThresholdUsd != null &&
@@ -291,13 +290,12 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
       throw err;
     }
 
-    // ── 3a-ii. Session-scoped credential vault ───────────────────────────────
-    // Retrieve (or lazily create) the vault for this session so that credentials
-    // in tool_results and LLM responses are pseudonymized with the same RIND_SYNTH
-    // synthetics as the MCP proxy path (same HMAC key + agentId → same tag).
-    // Optional: if no sessionStore is configured, evaluateLlmContent/Response will
-    // create a temporary per-call vault instead.
+    // ── 3a-ii. Session-scoped vaults ─────────────────────────────────────────
+    // Retrieve (or lazily create) credential + PII vaults for this session so that
+    // synthetics are consistent across all LLM calls within the session. Without
+    // a sessionStore, evaluateLlmContent creates a temporary per-call vault instead.
     const credVault = opts.sessionStore?.getCredentialVault(event.agentId, event.sessionId);
+    const piiVault = opts.sessionStore?.getPIIVault(event.agentId, event.sessionId);
 
     // ── 3b. Request scanning (sync, pre-forward) ─────────────────────────────
     // Scan outbound prompt for credentials and PII. Attaches threats to the event
@@ -315,7 +313,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     // Evaluates rules with match.content (PII, secrets, injection, DLP).
     // May block the request, pseudonymize, or redact the body before forwarding.
     const contentRules = policyEngine.getContentRules();
-    const contentResult = await evaluateLlmContent(body, event, contentRules, credVault);
+    const contentResult = await evaluateLlmContent(body, event, contentRules, credVault, piiVault);
 
     if (contentResult.action === 'DENY') {
       const blockedEvent: LlmCallEvent = {
@@ -339,8 +337,10 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
 
     // Use sanitized body for all downstream steps (may be mutated by PSEUDONYMIZE/REDACT)
     const forwardBody = contentResult.sanitizedBody;
-    // Vault reference for rehydration — undefined when no pseudonymization occurred
+    // Vault reference for rehydration — undefined when no pseudonymization occurred.
+    // vaultOwned: true means we created it (must dispose); false means session-scoped (session disposes).
     let activeVault: PIIVault | undefined = contentResult.vault;
+    const vaultOwned = contentResult.vaultOwned ?? false;
 
     // ── Scrub original PII from the audit event ──────────────────────────────
     // event.messages was built from the raw inbound body before pseudonymization.
@@ -356,7 +356,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
       const blockedEvent: LlmCallEvent = { ...event, outcome: 'blocked', matchedRule: policyResult.matchedRule?.name };
       bus.emit('llm:blocked', { event: blockedEvent, reason: policyResult.reason ?? 'Policy DENY' });
       logger.info({ model: event.model, rule: policyResult.matchedRule?.name }, 'LLM call blocked by policy');
-      activeVault?.dispose();
+      if (vaultOwned) activeVault?.dispose();
       activeVault = undefined;
       return c.json(
         { error: { type: 'policy_denied', message: policyResult.reason ?? 'Request blocked by policy' } },
@@ -378,7 +378,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
           errorMessage: `Rate limit exceeded: ${config.rateLimitPerAgentPerMinute} LLM calls/min`,
         };
         bus.emit('llm:blocked', { event: blockedEvent, reason: 'Rate limit exceeded' });
-        activeVault?.dispose();
+        if (vaultOwned) activeVault?.dispose();
         activeVault = undefined;
         return c.json(
           { error: { type: 'rate_limit_exceeded', message: 'Too many LLM requests — slow down' } },
@@ -422,7 +422,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
         ttfbMs: result.ttfbMs,
       };
       bus.emit('llm:response', errorEvent);
-      activeVault?.dispose();
+      if (vaultOwned) activeVault?.dispose();
       activeVault = undefined;
       return new Response(JSON.stringify(result.responseBody), {
         status: result.statusCode,
@@ -457,7 +457,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
           };
           bus.emit('llm:blocked', { event: blockedEvent, reason: responseContentResult.reason ?? 'Response content policy DENY' });
           logger.info({ model: event.model, rule: responseContentResult.matchedRule }, 'LLM response blocked by content policy');
-          activeVault?.dispose();
+          if (vaultOwned) activeVault?.dispose();
           activeVault = undefined;
           return c.json(
             { error: { type: 'policy_denied', message: responseContentResult.reason ?? 'Response blocked by policy' } },
@@ -481,14 +481,14 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
         }
 
         emitEnrichedEvent(event, finalMeta, { statusCode: result.statusCode, durationMs: result.durationMs, ttfbMs: result.ttfbMs }, activeVault);
-        activeVault = undefined; // vault disposed inside emitEnrichedEvent
+        if (vaultOwned) activeVault?.dispose();
+        activeVault = undefined;
         return new Response(JSON.stringify(finalBody), {
           status: result.statusCode,
           headers: { 'content-type': 'application/json' },
         });
       } else {
-        // No parsed meta (e.g. unexpected upstream format) — dispose vault to prevent leak
-        activeVault?.dispose();
+        if (vaultOwned) activeVault?.dispose();
         activeVault = undefined;
       }
       return new Response(JSON.stringify(result.responseBody), {
@@ -503,6 +503,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     const capturedForwardStart = forwardStart;
     const capturedStatusCode = result.statusCode;
     const capturedVault = activeVault;
+    const capturedVaultOwned = vaultOwned;
     const capturedContentRules = contentRules; // capture for async response-side eval
     const capturedCredVault = credVault; // capture for async response-side credential pseudonymization
     activeVault = undefined; // ownership transferred to stream closure
@@ -558,7 +559,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
             ttfbMs: capturedTtfb,
             totalDurationMs: Date.now() - capturedForwardStart,
           });
-          capturedVault.dispose();
+          if (capturedVaultOwned) capturedVault.dispose();
           return;
         }
 
