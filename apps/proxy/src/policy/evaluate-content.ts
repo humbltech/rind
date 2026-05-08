@@ -198,9 +198,6 @@ export async function evaluateFlatText(
   for (const rule of applicable) {
     if (!matchesContentScope(rule, filter)) continue;
 
-    // Response path: PSEUDONYMIZE rules are skipped — vault rehydration handles them.
-    if (scope === 'response' && rule.action === 'PSEUDONYMIZE') continue;
-
     const content = rule.match.content!;
 
     for (const detector of content.detectors) {
@@ -277,6 +274,7 @@ export async function evaluateFlatText(
           return {
             action: 'REDACT',
             matchedRule: rule.name,
+            vaultUsed: 'credential' as const,
             redactedText,
             inspection: buildContentInspection(auditResults, startMs),
           };

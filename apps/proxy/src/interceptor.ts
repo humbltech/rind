@@ -25,6 +25,7 @@ import type {
 } from './types.js';
 import { inspectRequest } from './inspector/request.js';
 import { inspectResponse } from './inspector/response.js';
+import { evaluateMcpResponseContent } from './inspector/content-evaluator.js';
 import type { ISessionStore } from './session.js';
 import type { PolicyEngine } from './policy/engine.js';
 import type { LoopDetector } from './loop-detector.js';
@@ -303,6 +304,46 @@ export async function intercept(
     }
   }
 
+  // ── 5c. Rehydrate PII synthetics before forwarding upstream ─────────────────
+  // Mirrors step 5b for PII entities (synth+... tokens). Runs after credential
+  // rehydration so the two vault walks chain on the already-updated event.input.
+  {
+    const piiVault = opts.sessionStore.getPIIVault(event.agentId, event.sessionId);
+    const { value: rehydratedInput, rehydratedTokens, blockedTokens } =
+      piiVault.rehydrateValueForDestination(event.input, {
+        serverId: event.serverId,
+        toolName: event.toolName,
+      });
+    for (const tok of rehydratedTokens) {
+      opts.onCredentialRehydration?.({
+        type: 'credential_rehydration',
+        sessionId: event.sessionId,
+        agentId: event.agentId,
+        entityType: tok.entityType,
+        sourceTool: tok.originToolName,
+        targetTool: event.toolName,
+        serverId: event.serverId,
+        timestamp: Date.now(),
+      });
+    }
+    for (const tok of blockedTokens) {
+      opts.onCredentialExfiltrationAttempt?.({
+        type: 'credential_exfiltration_attempt',
+        sessionId: event.sessionId,
+        agentId: event.agentId,
+        entityType: tok.entityType,
+        sourceTool: tok.originToolName,
+        targetTool: event.toolName,
+        targetServerId: event.serverId,
+        reason: 'destination_scope_violation',
+        timestamp: Date.now(),
+      });
+    }
+    if (rehydratedTokens.length > 0) {
+      event = { ...event, input: rehydratedInput };
+    }
+  }
+
   // ── 6. Forward to upstream MCP server ───────────────────────────────────────
   opts.sessionStore.incrementToolCall(event.sessionId);
 
@@ -338,20 +379,50 @@ export async function intercept(
     }
   }
 
-  // ── 8b. Pseudonymize credentials before returning to agent ──────────────────
-  // When a CREDENTIAL_LEAK threat is detected, replace the token value with a
-  // deterministic RIND_SYNTH_*-prefixed synthetic so the agent sees a plausible
-  // stand-in rather than [REDACTED] or the real secret.
+  // ── 8b. Rule-driven response content evaluation ──────────────────────────────
+  // Runs content-based policy rules (scope:'response' or scope:'both') against
+  // the tool output. When a rule fires, takes precedence over the hardcoded
+  // CREDENTIAL_LEAK fallback below — prevents double-transformation.
   //
-  // The synthetic is stored in the session-scoped credential vault. When the agent
-  // later passes the synthetic in a tool input, step 5b rehydrates it to the real
-  // credential before forwarding upstream (cross-server attempts are blocked there).
-  //
-  // Real credential values never appear in audit events — finalOutput carries synthetics.
-  const hasCredentialLeak = responseThreats.some((t) => t.type === 'CREDENTIAL_LEAK');
+  // Real credential and PII values never appear in audit events; finalOutput
+  // carries synthetics. The session-scoped vaults persist so step 5b/5c can
+  // rehydrate synthetics when the agent passes them to a subsequent tool.
   let finalOutput = output;
   let finalThreats = responseThreats;
-  if (hasCredentialLeak) {
+  let ruleContentApplied = false;
+  {
+    const contentRules = opts.policyEngine.getContentRules();
+    if (contentRules.length > 0) {
+      const credVault = opts.sessionStore.getCredentialVault(event.agentId, event.sessionId);
+      const piiVault = opts.sessionStore.getPIIVault(event.agentId, event.sessionId);
+      const ruleResult = await evaluateMcpResponseContent(
+        output, event, contentRules, credVault, piiVault,
+      );
+
+      if (ruleResult.action === 'DENY') {
+        return blocked(
+          'BLOCKED_THREAT',
+          ruleResult.reason ?? `Response content policy DENY (rule: ${ruleResult.matchedRule ?? 'unknown'}).`,
+          ruleResult.matchedRule,
+        );
+      }
+
+      if (ruleResult.action === 'PSEUDONYMIZE' || ruleResult.action === 'REDACT') {
+        finalOutput = ruleResult.transformedOutput ?? output;
+        finalThreats = responseThreats.map((t) =>
+          t.type === 'CREDENTIAL_LEAK' ? { ...t, sanitized: true } : t,
+        );
+        ruleContentApplied = true;
+      }
+    }
+  }
+
+  // ── 8c. Hardcoded credential pseudonymization fallback ───────────────────────
+  // When a CREDENTIAL_LEAK threat is detected and no content rule already handled
+  // it, fall back to unconditional credential pseudonymization. Preserved for
+  // backward-compatibility: existing deployments with no content policy rules
+  // still get automatic credential protection.
+  if (!ruleContentApplied && responseThreats.some((t) => t.type === 'CREDENTIAL_LEAK')) {
     const credVault = opts.sessionStore.getCredentialVault(event.agentId, event.sessionId);
     const outputStr = typeof output === 'string' ? output : JSON.stringify(output);
     const { sanitized } = credVault.pseudonymize(outputStr, {
@@ -359,7 +430,6 @@ export async function intercept(
       toolName: event.toolName,
     });
     finalOutput = typeof output === 'string' ? sanitized : (JSON.parse(sanitized) as unknown);
-    // Mark credential threats as sanitized (mirrors old redactCredentialsInOutput behaviour)
     finalThreats = responseThreats.map((t) =>
       t.type === 'CREDENTIAL_LEAK' ? { ...t, sanitized: true } : t,
     );
