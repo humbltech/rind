@@ -317,12 +317,13 @@ export async function evaluateLlmContent(
       }
 
       if (rule.action === 'PSEUDONYMIZE' && detector === 'pii' && rule.pii) {
-        const vault = createPIIVault(event.id);
+        const vault = createPIIVault(event.agentId);
         // Pseudonymize the combined text of all targets to populate the vault with
         // all entity mappings before applying to the body. Vault deduplicates — the
         // same value across targets gets the same synthetic.
         const flatText = extractText(body, targets);
-        const pseudoResult = vault.pseudonymize(flatText, rule.pii);
+        const origin = { serverId: '_llm_request', toolName: '_llm_request' };
+        const pseudoResult = vault.pseudonymize(flatText, origin, rule.pii);
 
         // Annotate PII matches with the synthetic values that were generated.
         // syntheticValue is safe to log — it's the reserved-range placeholder, not

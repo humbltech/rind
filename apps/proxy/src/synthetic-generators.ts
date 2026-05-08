@@ -106,56 +106,63 @@ export function syntheticCredential(entityType: string, original: string, tag: s
 
 // ─── Per-entity PII generators ────────────────────────────────────────────────
 
-function syntheticEmail(index: number): string {
+function syntheticEmail(tag: string): string {
   // @example.com is RFC 2606 §3 reserved — guaranteed not a real address.
-  // user1@example.com … user999@example.com give 999 distinct, obviously-fake addresses.
-  return `user${index + 1}@example.com`;
+  // Tag suffix gives 2^128 distinct, deterministic per-(agent,value) addresses.
+  return `synth+${tag}@example.com`;
 }
 
-function syntheticPhone(original: string, index: number): string {
+function syntheticPhone(original: string, tag: string): string {
   // NANP 555-010-XXXX range is permanently reserved for fictional use.
   // Preserve the original formatting separators so the structure looks familiar.
-  const suffix = String((index * 7 + 1) % 10000).padStart(4, '0');
+  const tagBytes = Buffer.from(tag, 'base64url');
+  const suffix = String((tagBytes.readUInt16BE(0)) % 10000).padStart(4, '0');
   // Detect separator style from the original: dashes, dots, spaces, or none.
   const sep = original.match(/[\s.\-]/)?.[0] ?? '-';
   return `555${sep}010${sep}${suffix}`;
 }
 
-function syntheticSsn(index: number): string {
+function syntheticSsn(tag: string): string {
   // SSA permanently reserves all SSNs with 000 in any group.
-  // 000-00-XXXX (padded to 4 digits) gives 10 000 distinct invalid SSNs.
-  const suffix = String(index + 1).padStart(4, '0');
+  // 000-00-XXXX (4 decimal digits) gives 10 000 distinct invalid SSNs.
+  // Entropy caveat: birthday collision at ~117 entries; acceptable for session scope.
+  const tagBytes = Buffer.from(tag, 'base64url');
+  const suffix = String(tagBytes.readUInt16BE(0) % 10000).padStart(4, '0');
   return `000-00-${suffix}`;
 }
 
-function syntheticSin(index: number): string {
+function syntheticSin(tag: string): string {
   // Canadian SINs starting with 0 are permanently invalid.
-  // 000-000-XXX (padded) gives 1 000 distinct invalid SINs.
-  const suffix = String(index + 1).padStart(3, '0');
+  // 000-000-XXX (3 decimal digits) gives 1 000 distinct invalid SINs.
+  const tagBytes = Buffer.from(tag, 'base64url');
+  const suffix = String(tagBytes.readUInt16BE(0) % 1000).padStart(3, '0');
   return `000-000-${suffix}`;
 }
 
-function syntheticCreditCard(index: number): string {
+function syntheticCreditCard(tag: string): string {
   // 0000-prefix cards don't exist in any payment network (all real networks use 3-6
   // as the first digit). Using this prefix lets us exclude 0000-xxxx from the CC regex,
   // ensuring synthetic values are never re-detected as PII in subsequent requests.
-  const n = String(index + 1).padStart(12, '0');
-  return `0000-${n.slice(0, 4)}-${n.slice(4, 8)}-${n.slice(8, 12)}`;
+  const tagBytes = Buffer.from(tag, 'base64url');
+  const n1 = String(tagBytes.readUInt16BE(0) % 10000).padStart(4, '0');
+  const n2 = String(tagBytes.readUInt16BE(2) % 10000).padStart(4, '0');
+  const n3 = String(tagBytes.readUInt16BE(4) % 10000).padStart(4, '0');
+  return `0000-${n1}-${n2}-${n3}`;
 }
 
-function syntheticIp(index: number): string {
+function syntheticIp(tag: string): string {
   // RFC 5737 §3 TEST-NET-1 (192.0.2.0/24) is reserved for documentation.
   // 192.0.2.1 … 192.0.2.254 give 254 distinct, never-routable addresses.
-  return `192.0.2.${(index % 254) + 1}`;
+  const tagBytes = Buffer.from(tag, 'base64url');
+  return `192.0.2.${(tagBytes[0]! % 254) + 1}`;
 }
 
-function syntheticIban(original: string, index: number): string {
-  // Keep the 4-char country+check prefix (e.g. "GB29") so the LLM knows the
-  // country of origin and doesn't flag the value as structurally wrong.
-  const prefix = original.slice(0, 4);
-  const shift = (index * 6 + 5) % 9 + 1; // always 1–9
-  const shifted = original.slice(4).replace(/\d/g, (d) => ((parseInt(d, 10) + shift) % 10).toString());
-  return prefix + shifted;
+function syntheticIban(tag: string): string {
+  // XX is not a valid ISO 3166-1 country code; no real IBAN starts with XX.
+  // Raw base64url tag (A-Za-z0-9-_) prevents re-match by the IBAN detector regex
+  // (\d{7} requirement fails on letters/symbols); XX prefix is additionally
+  // excluded by the (?!XX) lookahead in ENTITY_PATTERN_MAP.
+  return `XX00${tag}`;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -165,24 +172,25 @@ function syntheticIban(original: string, index: number): string {
  *
  * Every value:
  *   - Falls in an officially reserved / permanently invalid range for its type
- *   - Is indexed so N occurrences produce N distinct synthetics
- *   - Is deterministic per (entityType, index) — replay always produces the same value
+ *   - Is HMAC-deterministic: same (agent, value) → same synthetic across requests
+ *   - Is self-excluding: the entity detector patterns skip reserved ranges
+ *
+ * @param tag  22-char base64url from deriveTag(agentKey, originalValue)
  */
 export function generateSyntheticValue(
   entityType: PiiEntity,
   original: string,
-  index: number,
+  tag: string,
 ): string {
   switch (entityType) {
-    case 'EMAIL':       return syntheticEmail(index);
-    case 'PHONE':       return syntheticPhone(original, index);
-    case 'SSN':         return syntheticSsn(index);
-    case 'SIN':         return syntheticSin(index);
-    case 'CREDIT_CARD': return syntheticCreditCard(index);
-    case 'IP_ADDRESS':  return syntheticIp(index);
-    case 'IBAN':        return syntheticIban(original, index);
-    // Phase 2 entities require ml_ner — labelled placeholder still reads more
-    // naturally than an opaque token, reducing LLM confusion.
-    default:            return `[Redacted ${entityType.toLowerCase().replace(/_/g, ' ')} ${index + 1}]`;
+    case 'EMAIL':       return syntheticEmail(tag);
+    case 'PHONE':       return syntheticPhone(original, tag);
+    case 'SSN':         return syntheticSsn(tag);
+    case 'SIN':         return syntheticSin(tag);
+    case 'CREDIT_CARD': return syntheticCreditCard(tag);
+    case 'IP_ADDRESS':  return syntheticIp(tag);
+    case 'IBAN':        return syntheticIban(tag);
+    // Phase 2 entities require ml_ner — use HMAC tag as a unique placeholder suffix.
+    default:            return `[${entityType.toLowerCase().replace(/_/g, '-')}-${tag.slice(0, 8)}]`;
   }
 }

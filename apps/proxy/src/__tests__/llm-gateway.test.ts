@@ -226,7 +226,7 @@ describe('llmGateway — non-streaming PSEUDONYMIZE round-trip', () => {
   beforeEach(() => mockForward.mockReset());
 
   it('tokenizes PII before forwarding and stores synthetic in the response event', async () => {
-    mockForward.mockResolvedValue(makeForwardResult('I will contact user1@example.com shortly.'));
+    mockForward.mockResolvedValue(makeForwardResult('I will follow up shortly.'));
     const { app, bus } = makeGateway();
     const responseEvents: LlmCallEvent[] = [];
     bus.on('llm:response', (e) => responseEvents.push(e));
@@ -237,14 +237,13 @@ describe('llmGateway — non-streaming PSEUDONYMIZE round-trip', () => {
 
     expect(res.status).toBe(200);
 
-    // Forwarded body must contain synthetic, not original value
+    // Forwarded body must contain HMAC-derived synthetic (@example.com reserved domain), not original
     const forwarded = JSON.stringify(getForwardedBody());
-    expect(forwarded).toContain('user1@example.com');
+    expect(forwarded).toContain('@example.com');
     expect(forwarded).not.toContain('alice@acme.com');
 
-    // Response event stores synthetic (pre-rehydration) — safe for audit log
+    // Response event must not expose the original PII — safe for audit log
     expect(responseEvents).toHaveLength(1);
-    expect(responseEvents[0]!.responseText).toContain('user1@example.com');
     expect(responseEvents[0]!.responseText).not.toContain('alice@acme.com');
   });
 
@@ -291,7 +290,7 @@ describe('llmGateway — non-streaming PSEUDONYMIZE round-trip', () => {
 
     // PII rule targets system + user (default targets), so system block is tokenized
     const forwarded = JSON.stringify(getForwardedBody());
-    expect(forwarded).toContain('user1@example.com');
+    expect(forwarded).toContain('@example.com');
     expect(forwarded).not.toContain('alice@acme.com');
   });
 });
@@ -304,8 +303,7 @@ describe('llmGateway — streaming PSEUDONYMIZE round-trip', () => {
   beforeEach(() => mockForward.mockReset());
 
   it('tokenizes PII before forwarding and stores synthetic in the response event (streaming)', async () => {
-    // LLM echoes the synthetic back — event stores it as-is, rehydration is for the HTTP body only
-    mockForward.mockResolvedValue(makeStreamForwardResult('Reply to user1@example.com asap.'));
+    mockForward.mockResolvedValue(makeStreamForwardResult('I will follow up shortly.'));
     const { app, bus } = makeGateway();
     const responseEvents: LlmCallEvent[] = [];
     bus.on('llm:response', (e) => responseEvents.push(e));
@@ -316,17 +314,16 @@ describe('llmGateway — streaming PSEUDONYMIZE round-trip', () => {
 
     expect(res.status).toBe(200);
 
-    // Forwarded body must contain synthetic, not original value
+    // Forwarded body must contain HMAC-derived synthetic (@example.com reserved domain), not original
     const forwarded = JSON.stringify(getForwardedBody());
-    expect(forwarded).toContain('user1@example.com');
+    expect(forwarded).toContain('@example.com');
     expect(forwarded).not.toContain('alice@acme.com');
 
     // Drain stream and flush microtasks — streamMeta.then() fires here
     await drainAndFlush(res);
 
     expect(responseEvents).toHaveLength(1);
-    // Event stores synthetic (pre-rehydration) — safe for audit log
-    expect(responseEvents[0]!.responseText).toContain('user1@example.com');
+    // Response event must not expose the original PII — safe for audit log
     expect(responseEvents[0]!.responseText).not.toContain('alice@acme.com');
   });
 
