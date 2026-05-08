@@ -4,6 +4,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Session } from './types.js';
+import { type CredentialVault, createCredentialVault } from './credential-vault.js';
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,11 @@ export interface ISessionStore {
   addCost(sessionId: string, costUsd: number): void;
   recordCall(sessionId: string, costUsd: number): void;
   getHourlyStats(sessionId: string): { calls: number; costUsd: number };
+  /**
+   * Return (or lazily create) the credential vault for a given (agentId, sessionId) pair.
+   * Vault provides destination-scoped rehydration of RIND_SYNTH_* credential synthetics.
+   */
+  getCredentialVault(agentId: string, sessionId: string): CredentialVault;
   reset(): void;
 }
 
@@ -32,6 +38,11 @@ interface CallRecord {
 export class InMemorySessionStore implements ISessionStore {
   private sessions = new Map<string, Session>();
   private sessionCallLog = new Map<string, CallRecord[]>();
+  // Credential vaults keyed by `${agentId}:${sessionId}`.
+  // Lazy creation: vault is NOT created in create() — it's created on first getCredentialVault()
+  // call. This collapses both legs of the hook-path race at routes/hook.ts:73-74,291-292 onto
+  // whichever vault is already in the map, preventing duplicate vaults for the same session.
+  private credentialVaults = new Map<string, CredentialVault>();
 
   create(agentId: string, sessionId?: string): Session {
     const id = sessionId ?? randomUUID();
@@ -56,7 +67,24 @@ export class InMemorySessionStore implements ISessionStore {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
     session.active = false;
+    // Dispose the credential vault for this session so it stops accepting new synthetics.
+    const vaultKey = `${session.agentId}:${sessionId}`;
+    const vault = this.credentialVaults.get(vaultKey);
+    if (vault) {
+      vault.dispose();
+      this.credentialVaults.delete(vaultKey);
+    }
     return true;
+  }
+
+  getCredentialVault(agentId: string, sessionId: string): CredentialVault {
+    const key = `${agentId}:${sessionId}`;
+    let vault = this.credentialVaults.get(key);
+    if (!vault) {
+      vault = createCredentialVault(agentId);
+      this.credentialVaults.set(key, vault);
+    }
+    return vault;
   }
 
   isActive(sessionId: string): boolean {
@@ -97,6 +125,8 @@ export class InMemorySessionStore implements ISessionStore {
   }
 
   reset(): void {
+    for (const vault of this.credentialVaults.values()) vault.dispose();
+    this.credentialVaults.clear();
     this.sessions.clear();
     this.sessionCallLog.clear();
   }
