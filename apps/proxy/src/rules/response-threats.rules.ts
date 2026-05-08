@@ -81,64 +81,85 @@ export interface CredentialPattern {
   description: string;
 }
 
+// Self-exclusion notes:
+//   Patterns with the /i flag use a case-insensitive negative lookahead — the /i flag
+//   applies to the entire regex including lookaheads in JavaScript, so (?!RIND_SYNTH_)
+//   with /i also blocks rind_synth_, Rind_Synth_, etc.
+//   cred-009 (JWT) needs an explicit literal lookahead because the synthetic header
+//   eyJSSU5EX1NZTlRI (base64url of '{"RIND_SYNTH') would otherwise match the three-
+//   segment JWT shape.
 export const CREDENTIAL_PATTERNS: CredentialPattern[] = [
   {
     id: 'cred-001',
-    pattern: /(?:password|passwd)\s*[:=]\s*\S+/i,
+    // Exclude RIND_SYNTH_pw_* synthetics (/i makes lookahead case-insensitive).
+    pattern: /(?:password|passwd)\s*[:=]\s*(?!RIND_SYNTH_)\S+/i,
     label: 'plaintext password',
     description: 'Detects password= or passwd= assignments exposing plaintext credentials',
   },
   {
     id: 'cred-002',
-    pattern: /(?:api[_-]?key|apikey)\s*[:=]\s*[A-Za-z0-9_\-]{16,}/i,
+    // Exclude RIND_SYNTH_ak_* synthetics (/i makes lookahead case-insensitive).
+    pattern: /(?:api[_-]?key|apikey)\s*[:=]\s*(?!RIND_SYNTH_)[A-Za-z0-9_\-]{16,}/i,
     label: 'API key',
     description: 'Detects api_key= or apikey= assignments with 16+ character values',
   },
   {
     id: 'cred-003',
-    pattern: /(?:aws_access_key_id|AWS_ACCESS_KEY_ID)\s*[:=]\s*[A-Z0-9]{16,}/,
+    // Exclude RIND_SYNTH_AK* synthetics (case-sensitive pattern, uppercase synthetic).
+    pattern: /(?:aws_access_key_id|AWS_ACCESS_KEY_ID)\s*[:=]\s*(?!RIND_SYNTH_)[A-Z0-9]{16,}/,
     label: 'AWS access key',
     description: 'Detects AWS_ACCESS_KEY_ID assignments (AKIA... format)',
   },
   {
     id: 'cred-004',
-    pattern: /(?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\s*[:=]\s*[A-Za-z0-9+/]{30,}/,
+    // Exclude RIND_SYNTH_* synthetics (case-sensitive pattern).
+    pattern: /(?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\s*[:=]\s*(?!RIND_SYNTH_)[A-Za-z0-9+/]{30,}/,
     label: 'AWS secret key',
     description: 'Detects AWS_SECRET_ACCESS_KEY assignments',
   },
   {
     id: 'cred-005',
+    // No exclusion needed: synthetic uses BEGIN RIND_SYNTH PRIVATE KEY which cannot
+    // match the RSA|EC|OPENSSH|PGP alternation.
     pattern: /-----BEGIN\s+(?:RSA|EC|OPENSSH|PGP)\s+PRIVATE\s+KEY-----/,
     label: 'private key block',
     description: 'Detects PEM-encoded private key blocks (RSA, EC, OpenSSH, PGP)',
   },
   {
     id: 'cred-006',
-    pattern: /(?:mongodb\+srv?|postgresql?|mysql|redis):\/\/[^@\s]+:[^@\s]+@/i,
+    // Exclude RIND_SYNTH_u_* synthetics (/i makes lookahead case-insensitive).
+    pattern: /(?:mongodb\+srv?|postgresql?|mysql|redis):\/\/(?!RIND_SYNTH_)[^@\s]+:[^@\s]+@/i,
     label: 'database connection string with credentials',
     description: 'Detects database URIs containing embedded username:password credentials',
   },
   {
     id: 'cred-007',
-    pattern: /ghp_[A-Za-z0-9]{36}/,
+    // Exclude ghp_RIND_SYNTH_* synthetics (case-sensitive; underscore in synthetic
+    // would break [A-Za-z0-9]{36} anyway, but explicit is clearer).
+    pattern: /ghp_(?!RIND_SYNTH_)[A-Za-z0-9]{36}/,
     label: 'GitHub personal access token',
     description: 'Detects GitHub PAT format (ghp_ prefix followed by 36 alphanumeric chars)',
   },
   {
     id: 'cred-008',
-    pattern: /sk-[A-Za-z0-9]{32,}/,
+    // Exclude sk-RIND_SYNTH_* synthetics (underscore in synthetic would break
+    // [A-Za-z0-9]{32,} anyway, but explicit is clearer).
+    pattern: /sk-(?!RIND_SYNTH_)[A-Za-z0-9]{32,}/,
     label: 'OpenAI / Anthropic API key format',
     description: 'Detects sk- prefixed API keys used by OpenAI, Anthropic, and others',
   },
   {
     id: 'cred-009',
-    pattern: /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/,
+    // Exclude JWT synthetics: eyJSSU5EX1NZTlRI is base64url('{"RIND_SYNTH') and WOULD
+    // match the three-segment shape — explicit literal lookahead required.
+    pattern: /eyJ(?!SSU5EX1NZTlRI)[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/,
     label: 'JWT token',
     description: 'Detects base64url-encoded JWT tokens (three dot-separated segments starting with eyJ)',
   },
   {
     id: 'cred-010',
-    pattern: /\bRAILWAY_(?:TOKEN|API_KEY)\s*[:=]\s*\S{16,}/i,
+    // Exclude rly_RIND_SYNTH_* synthetics (/i makes lookahead case-insensitive).
+    pattern: /\bRAILWAY_(?:TOKEN|API_KEY)\s*[:=]\s*(?!rly_RIND_SYNTH_)\S{16,}/i,
     label: 'Railway API token',
     description: 'Detects Railway API token in environment variable assignment (RAILWAY_TOKEN=... or RAILWAY_API_KEY=...)',
   },
