@@ -7,6 +7,10 @@
     ".": {
       "types": "./src/lib.ts",
       "default": "./dist/lib.js"
+    },
+    "./fixture": {
+      "types": "./src/fixture/index.ts",
+      "default": "./dist/fixture/index.js"
     }
   },
   "bin": {

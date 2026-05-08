@@ -1,13 +1,12 @@
 // Rind proxy — CLI entry point
 // Usage:
-//   npx @rind/proxy                          start the HTTP proxy server
-//   rind-proxy wrap -- <command> [args...]   stdio wrapper for local MCP servers
+//   npx @rind/proxy                        start the HTTP proxy server
+//   rind-proxy wrap -- <command> [args…]  stdio wrapper for local MCP servers
 //
 // Reads configuration from environment variables (see cli.ts → buildConfigFromEnv).
 // In interactive terminals: prints the Rind banner and a human-readable startup summary.
 // In production pipelines (piped output): banner is suppressed; pino emits structured JSON.
 
-import { spawn } from 'node:child_process';
 import { createProxyServer } from './server.js';
 import {
   buildConfigFromEnv,
@@ -42,15 +41,6 @@ if (subcommand === 'wrap') {
 } else if (subcommand === 'demo-uninit') {
   // tear down live demo environment
   runDemoUninit(process.argv);
-} else if (subcommand === 'sim') {
-  // Delegate to the simulation CLI — passes all remaining args through.
-  // Using spawn so the simulation package's tsx environment is respected.
-  const child = spawn(
-    'pnpm',
-    ['--filter', '@rind/simulation', 'sim', ...process.argv.slice(3)],
-    { stdio: 'inherit', cwd: new URL('../../../../', import.meta.url).pathname },
-  );
-  child.on('exit', (code) => process.exit(code ?? 0));
 } else {
   // Default: HTTP proxy server mode
   // All flags that aren't subcommands are passed through as module toggles
