@@ -139,7 +139,7 @@ export class PolicyEngine {
       for (const matcher of Object.values(rule.match.parameters)) {
         if (matcher.regex && !this.compiledRegexes.has(matcher.regex)) {
           try {
-            this.compiledRegexes.set(matcher.regex, new RegExp(matcher.regex, 'i'));
+            this.compiledRegexes.set(matcher.regex, new RegExp(matcher.regex, 'is'));
           } catch {
             // Invalid regex in policy — skip (loader Zod validation should have caught it)
           }

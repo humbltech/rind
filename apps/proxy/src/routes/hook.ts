@@ -323,6 +323,12 @@ export function hookRoutes({
     return c.json({ denied: true, id });
   });
 
+  app.delete('/approvals', (c) => {
+    const count = approvalQueue.clear();
+    logger.info({ count }, 'Approval queue cleared');
+    return c.json({ cleared: true, count });
+  });
+
   // ─── Claude Code context discovery ──────────────────────────────────────────
   // Returns MCP servers registered in Claude Code and active session metadata.
   // Dashboard polls this to show server protection states and session names.

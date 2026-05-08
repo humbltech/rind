@@ -390,25 +390,37 @@ const registry: PolicyPack[] = [
 
       // ── Cloud SaaS GraphQL destructive mutations via curl ────────────────────
       {
-        // Catches curl calls that reach a cloud provider's GraphQL API and contain
-        // a destructive mutation keyword. Canonical example: the PocketOS incident
-        // (April 2026) where an agent issued volumeDelete against backboard.railway.app.
-        // The agent bypassed the MCP server (which intentionally omits destructive tools)
-        // and hit the raw GraphQL endpoint directly via Bash. REQUIRE_APPROVAL keeps
-        // the human in the loop rather than outright blocking — the call may be legitimate.
-        name: 'cli-protection:require-approval-cloud-graphql-destructive',
+        // Catches curl commands reaching backboard.railway.app that contain a
+        // destructive GraphQL mutation keyword. Uses contains (URL) + regex (keyword)
+        // as independent checks so multiline commands, variable assignments before
+        // curl, and any ordering of -H/-d flags all match correctly.
+        name: 'cli-protection:require-approval-railway-graphql-destructive',
         agent: '*',
         match: {
           tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
           parameters: {
             command: {
-              // Matches: curl … backboard.railway.app/graphql … volumeDelete
-              // Also covers generic *.railway.app and graphql paths for other providers.
-              // Destructive verbs: Delete, Drop, Destroy, Terminate, Purge, Truncate.
-              // No leading \b — GraphQL mutation names are camelCase (volumeDelete, projectDelete),
-              // so the preceding character is always a word char. The trailing \b catches the
-              // boundary between the verb and the following '(' argument list.
-              regex: '\\bcurl\\b.*(?:backboard\\.railway|railway\\.app\\/graphql|\\/graphql\\/v\\d+).*(?:Delete|Drop|Destroy|Terminate|Purge|Truncate)\\b',
+              contains: ['backboard.railway.app'],
+              regex: '(?:Delete|Drop|Destroy|Terminate|Purge|Truncate)',
+            },
+          },
+        },
+        action: 'REQUIRE_APPROVAL',
+        failMode: 'closed',
+        priority: PACK_PRIORITY,
+      },
+      {
+        // Generic GraphQL endpoint variant — catches any /graphql/ path (not just
+        // Railway) with a destructive mutation keyword. Covers other providers that
+        // agents might hit directly (Hasura, Supabase, custom GraphQL servers).
+        name: 'cli-protection:require-approval-graphql-destructive',
+        agent: '*',
+        match: {
+          tool: ['Bash', 'bash', 'shell', 'terminal', 'run_command'],
+          parameters: {
+            command: {
+              contains: ['/graphql/'],
+              regex: '(?:Delete|Drop|Destroy|Terminate|Purge|Truncate)',
             },
           },
         },

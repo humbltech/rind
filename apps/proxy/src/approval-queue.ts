@@ -109,6 +109,17 @@ export class ApprovalQueue {
     return this.pending.size;
   }
 
+  /** Deny all pending approvals and clear the queue (used for demo reset). */
+  clear(): number {
+    const count = this.pending.size;
+    for (const entry of this.pending.values()) {
+      clearTimeout(entry.timer);
+      entry.resolve({ decision: 'deny', decidedAt: Date.now(), decidedBy: 'queue-cleared' });
+    }
+    this.pending.clear();
+    return count;
+  }
+
   /** Clean up all timers (for graceful shutdown). */
   destroy(): void {
     for (const entry of this.pending.values()) {

@@ -130,7 +130,7 @@ function matchesValue(
   // regex: full-string match (pre-compiled at policy load time)
   if (matcher.regex !== undefined) {
     if (typeof value !== 'string') return false;
-    const re = compiledRegexes.get(matcher.regex) ?? new RegExp(matcher.regex, 'i');
+    const re = compiledRegexes.get(matcher.regex) ?? new RegExp(matcher.regex, 'is');
     if (!re.test(value)) return false;
   }
 

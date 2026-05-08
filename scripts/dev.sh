@@ -3,7 +3,7 @@
 #
 # Sessions:
 #   rind-proxy      — proxy server (port 7777) + dashboard (port 3000)
-#   rind-cloud      — Claude Code in the rind repo
+#   rind-claude      — Claude Code in the rind repo
 #   rind-demo       — demo server + MCP GraphQL server
 #   rind-demo-claude — Claude Code in the rind-demo repo
 #
@@ -21,7 +21,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RIND_REPO="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ALL_SESSIONS=("rind-proxy" "rind-cloud" "rind-demo" "rind-demo-claude")
+ALL_SESSIONS=("rind-proxy" "rind-claude" "rind-demo" "rind-demo-claude")
 
 # ── Resolve rind-demo repo ────────────────────────────────────────────────────
 if [ -z "${RIND_DEMO_REPO:-}" ]; then
@@ -62,7 +62,7 @@ if ! command -v tmux &>/dev/null; then
 fi
 
 if ! command -v claude &>/dev/null; then
-  echo "WARNING: 'claude' not in PATH — cloud sessions will open a shell instead."
+  echo "WARNING: 'claude' not in PATH — claude sessions will open a shell instead."
   CLAUDE_CMD="bash"
 else
   CLAUDE_CMD="claude"
@@ -113,12 +113,12 @@ else
   echo "[rind-proxy] started."
 fi
 
-# ── rind-cloud  (Claude Code — rind repo) ─────────────────────────────────────
-if session_running "rind-cloud"; then
-  echo "[rind-cloud] already running — skipping."
+# ── rind-claude  (Claude Code — rind repo) ─────────────────────────────────────
+if session_running "rind-claude"; then
+  echo "[rind-claude] already running — skipping."
 else
-  new_session "rind-cloud" "claude" "cd '${RIND_REPO}' && ${CLAUDE_CMD}"
-  echo "[rind-cloud] started."
+  new_session "rind-claude" "claude" "cd '${RIND_REPO}' && ${CLAUDE_CMD}"
+  echo "[rind-claude] started."
 fi
 
 # ── rind-demo  (demo server + MCP GraphQL) ────────────────────────────────────
@@ -154,7 +154,7 @@ fi
 echo ""
 echo "=== Rind sessions ==="
 echo "    rind-proxy      → proxy :${PROXY_PORT:-7777}  |  dashboard :3040"
-echo "    rind-cloud      → Claude Code  ($(basename "${RIND_REPO}"))"
+echo "    rind-claude      → Claude Code  ($(basename "${RIND_REPO}"))"
 if [ -n "${RIND_DEMO_REPO:-}" ] && [ -d "${RIND_DEMO_REPO}" ]; then
   echo "    rind-demo       → demo server  |  MCP GraphQL"
   echo "    rind-demo-claude → Claude Code  ($(basename "${RIND_DEMO_REPO}"))"

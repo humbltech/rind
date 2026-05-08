@@ -218,10 +218,13 @@ describe('cli-protection — Railway GraphQL destructive curl rule', () => {
     expect(pack.category).toBe('infrastructure');
   });
 
-  it('contains the Railway GraphQL destructive curl rule', () => {
-    const rule = rules.find((r) => r.name === 'cli-protection:require-approval-cloud-graphql-destructive');
-    expect(rule).toBeDefined();
-    expect(rule?.action).toBe('REQUIRE_APPROVAL');
+  it('contains the Railway GraphQL destructive curl rules', () => {
+    const rule1 = rules.find((r) => r.name === 'cli-protection:require-approval-railway-graphql-destructive');
+    const rule2 = rules.find((r) => r.name === 'cli-protection:require-approval-graphql-destructive');
+    expect(rule1).toBeDefined();
+    expect(rule1?.action).toBe('REQUIRE_APPROVAL');
+    expect(rule2).toBeDefined();
+    expect(rule2?.action).toBe('REQUIRE_APPROVAL');
   });
 
   it('rule matches the exact PocketOS incident curl command', () => {
@@ -236,7 +239,15 @@ describe('cli-protection — Railway GraphQL destructive curl rule', () => {
 
     const result = engine.evaluate(makeEvent('Bash', { command: incidentCurl }));
     expect(result.action).toBe('REQUIRE_APPROVAL');
-    expect(result.matchedRule?.name).toBe('cli-protection:require-approval-cloud-graphql-destructive');
+    expect(result.matchedRule?.name).toBe('cli-protection:require-approval-railway-graphql-destructive');
+  });
+
+  it('rule matches multiline command with variable assignment before curl', () => {
+    const store = new InMemoryPolicyStore({ policies: rules });
+    const engine = new PolicyEngine(store);
+    const cmd = 'RAILWAY_TOKEN="railway_prod_tk_4a8f2c9d1e3b7056a9c2f4e8d1b3a7f0" && \\\ncurl -s -X POST http://backboard.railway.app/graphql/v2 \\\n  -H "Authorization: Bearer ${RAILWAY_TOKEN}" \\\n  -d \'{"query":"mutation { volumeDelete(id: \\"vol_3d2c42fb\\") { id } }"}\' | jq .';
+    const result = engine.evaluate(makeEvent('Bash', { command: cmd }));
+    expect(result.action).toBe('REQUIRE_APPROVAL');
   });
 
   it('rule matches projectDelete mutation', () => {
@@ -251,14 +262,16 @@ describe('cli-protection — Railway GraphQL destructive curl rule', () => {
     const engine = new PolicyEngine(store);
     const benignCmd = 'curl https://backboard.railway.app/graphql/v2 -d \'{"query":"query { projects { id } }"}\'';
     const result = engine.evaluate(makeEvent('Bash', { command: benignCmd }));
-    expect(result.matchedRule?.name).not.toBe('cli-protection:require-approval-cloud-graphql-destructive');
+    expect(result.matchedRule?.name).not.toBe('cli-protection:require-approval-railway-graphql-destructive');
+    expect(result.matchedRule?.name).not.toBe('cli-protection:require-approval-graphql-destructive');
   });
 
-  it('rule does not trigger on a curl that has Delete in unrelated context', () => {
+  it('rule does not trigger on a curl that has Delete in unrelated context (no graphql path)', () => {
     const store = new InMemoryPolicyStore({ policies: rules });
     const engine = new PolicyEngine(store);
     const unrelatedCmd = 'curl https://api.example.com/endpoint -d \'{"action":"Delete"}\'';
     const result = engine.evaluate(makeEvent('Bash', { command: unrelatedCmd }));
-    expect(result.matchedRule?.name).not.toBe('cli-protection:require-approval-cloud-graphql-destructive');
+    expect(result.matchedRule?.name).not.toBe('cli-protection:require-approval-railway-graphql-destructive');
+    expect(result.matchedRule?.name).not.toBe('cli-protection:require-approval-graphql-destructive');
   });
 });
