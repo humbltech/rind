@@ -9,7 +9,9 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "typecheck": "turbo typecheck",
-"rind-proxy": "pnpm --filter @rind/proxy exec node dist/index.js"
+    "rind-proxy": "pnpm --filter @rind/proxy exec node dist/index.js",
+    "session": "bash scripts/dev.sh",
+    "session:kill": "bash scripts/dev.sh --kill"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
