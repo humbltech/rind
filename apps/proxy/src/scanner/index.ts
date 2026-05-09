@@ -77,10 +77,13 @@ export function runFullScan(
   // Always record the latest scan result so callers can check quarantine status.
   lastScanResults.set(serverId, { ...result, tools });
 
-  // Only update the baseline when no critical/high findings are present — even in alert mode.
-  // Alert mode doesn't block, but must not adopt a poisoned schema as the new ground truth,
-  // otherwise subsequent scans compare poisoned-against-poisoned and drift goes undetected.
-  if (!hasHighFindings) {
+  // Only update the baseline when no quarantine-category findings are present.
+  // OVER_PERMISSIONED / AUTH_MISSING are advisory: the tool is legitimate but misconfigured.
+  // Storing their schema allows cross-server shadowing detection and drift tracking to work.
+  // We don't store schemas for TOOL_POISONING / CROSS_SERVER_SHADOWING / SCHEMA_DRIFT_TOOL_MODIFIED
+  // because those indicate active compromise — adopting a poisoned schema as the ground truth
+  // would hide future drift and make cross-server checks compare poisoned-against-poisoned.
+  if (!hasQuarantineFindings) {
     schemaStore.set(serverId, {
       serverId,
       hash: hashToolSchema(tools),

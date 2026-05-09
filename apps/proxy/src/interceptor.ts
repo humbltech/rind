@@ -389,7 +389,6 @@ export async function intercept(
   // rehydrate synthetics when the agent passes them to a subsequent tool.
   let finalOutput = output;
   let finalThreats = responseThreats;
-  let ruleContentApplied = false;
   {
     const contentRules = opts.policyEngine.getContentRules();
     if (contentRules.length > 0) {
@@ -412,27 +411,8 @@ export async function intercept(
         finalThreats = responseThreats.map((t) =>
           t.type === 'CREDENTIAL_LEAK' ? { ...t, sanitized: true } : t,
         );
-        ruleContentApplied = true;
       }
     }
-  }
-
-  // ── 8c. Hardcoded credential pseudonymization fallback ───────────────────────
-  // When a CREDENTIAL_LEAK threat is detected and no content rule already handled
-  // it, fall back to unconditional credential pseudonymization. Preserved for
-  // backward-compatibility: existing deployments with no content policy rules
-  // still get automatic credential protection.
-  if (!ruleContentApplied && responseThreats.some((t) => t.type === 'CREDENTIAL_LEAK')) {
-    const credVault = opts.sessionStore.getCredentialVault(event.agentId, event.sessionId);
-    const outputStr = typeof output === 'string' ? output : JSON.stringify(output);
-    const { sanitized } = credVault.pseudonymize(outputStr, {
-      serverId: event.serverId,
-      toolName: event.toolName,
-    });
-    finalOutput = typeof output === 'string' ? sanitized : (JSON.parse(sanitized) as unknown);
-    finalThreats = responseThreats.map((t) =>
-      t.type === 'CREDENTIAL_LEAK' ? { ...t, sanitized: true } : t,
-    );
   }
 
   const responseEvent: ToolResponseEvent = {

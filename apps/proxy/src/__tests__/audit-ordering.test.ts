@@ -21,7 +21,15 @@ describe('audit ordering: onToolCallEvent fires before step 5b rehydration (SEC-
     const store = new InMemorySessionStore();
     store.create(AGENT_ID, SESSION_ID);
 
-    const policyStore = new InMemoryPolicyStore({ policies: [] });
+    const policyStore = new InMemoryPolicyStore({
+      policies: [{
+        name: 'test-credential-pseudonymize',
+        agent: '*',
+        match: { content: { scope: 'response', detectors: ['secret'] } },
+        action: 'PSEUDONYMIZE',
+        failMode: 'open',
+      }],
+    });
     const policyEngine = new PolicyEngine(policyStore);
 
     // ── Phase 1: populate the vault ──────────────────────────────────────────

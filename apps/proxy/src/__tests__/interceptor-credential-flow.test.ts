@@ -35,7 +35,15 @@ function makeOpts(
     onCredentialExfiltrationAttempt: (e: CredentialExfiltrationAttemptEvent) => void;
   }> = {},
 ) {
-  const policyStore = new InMemoryPolicyStore({ policies: [] });
+  const policyStore = new InMemoryPolicyStore({
+    policies: [{
+      name: 'test-credential-pseudonymize',
+      agent: '*',
+      match: { content: { scope: 'response', detectors: ['secret'] } },
+      action: 'PSEUDONYMIZE',
+      failMode: 'open',
+    }],
+  });
   const policyEngine = new PolicyEngine(policyStore);
   return {
     policyEngine,
@@ -197,7 +205,15 @@ describe('interceptor credential flow', () => {
 
     // Step 2: second call with synthetic in input — capture what onToolCallEvent sees
     const auditInputs: unknown[] = [];
-    const policyStore = new InMemoryPolicyStore({ policies: [] });
+    const policyStore = new InMemoryPolicyStore({
+      policies: [{
+        name: 'test-credential-pseudonymize',
+        agent: '*',
+        match: { content: { scope: 'response', detectors: ['secret'] } },
+        action: 'PSEUDONYMIZE',
+        failMode: 'open',
+      }],
+    });
     const policyEngine = new PolicyEngine(policyStore);
     const opts = {
       policyEngine,
