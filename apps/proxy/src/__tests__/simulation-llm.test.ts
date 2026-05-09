@@ -210,6 +210,41 @@ describe('/llm/anthropic/v1/messages — LLM gateway simulation', () => {
     expect(text).toContain('@example.com');
   });
 
+  it('session-scoped rehydration: LLM response echoing MCP-pseudonymized synthetic is rehydrated', async () => {
+    let capturedSynthetic = '';
+    let callCount = 0;
+    const forwardFn = vi.fn().mockImplementation(async (_path, _headers, body) => {
+      callCount++;
+      if (callCount === 1) {
+        // Capture the synthetic from the first forwarded body (PII was pseudonymized)
+        const bodyStr = JSON.stringify(body);
+        const match = bodyStr.match(/synth\+[^@]+@example\.com/);
+        capturedSynthetic = match?.[0] ?? '';
+        return makeForwardResult('Got it');
+      }
+      // Second call: LLM response echoes the synthetic that was in the conversation context
+      return makeForwardResult(`The user email is ${capturedSynthetic}`);
+    });
+    const app = createApp([{
+      name: 'pii-pseudo', agent: '*',
+      match: { content: { scope: 'request', detectors: ['pii'] } },
+      pii: { entities: ['EMAIL'] },
+      action: 'PSEUDONYMIZE', failMode: 'open', priority: 10,
+    }], forwardFn);
+
+    // First request: PII in prompt → pseudonymized → session PIIVault populated
+    await postLlm(app, makeBody('Contact john.doe@acme.com for details'));
+    expect(capturedSynthetic).toContain('@example.com');
+
+    // Second request: clean prompt, but LLM response echoes the synthetic from session vault
+    // Without the fix, client sees the synthetic; with the fix, it sees the original email.
+    const res = await postLlm(app, makeBody('What was the email again?'));
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).not.toContain(capturedSynthetic);
+    expect(text).toContain('john.doe@acme.com');
+  });
+
   it('LLM events appear in /logs/llm-calls with required fields', async () => {
     const forwardFn = vi.fn().mockResolvedValue(makeForwardResult('OK'));
     const app = createApp([], forwardFn);

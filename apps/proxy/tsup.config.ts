@@ -14,4 +14,10 @@ export default defineConfig([
     format: ['esm'],
     dts: true,
   },
+  {
+    // Fixture entry — in-process test server for simulation and integration tests
+    entry: { 'fixture/index': 'src/fixture/index.ts' },
+    format: ['esm'],
+    dts: true,
+  },
 ]);

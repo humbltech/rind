@@ -475,11 +475,14 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
         // REDACT/PSEUDONYMIZE: patch response body with transformed text (synthetic or [REDACTED]).
         // Otherwise rehydrate vault tokens → original PII values before sending to client.
         // Must happen before emitEnrichedEvent disposes the vault.
+        // Use activeVault (request-scoped pseudonymization) OR session piiVault (catches synthetics
+        // injected by MCP tool response pseudonymization earlier in the session).
         let finalBody: unknown = transformAction
           ? patchResponseBodyWithRedaction(result.responseBody, responseContentResult.redactedText)
           : result.responseBody;
-        if (activeVault && !transformAction) {
-          finalBody = rehydrateResponseBody(finalBody, activeVault);
+        const rehydrationVault = activeVault ?? piiVault;
+        if (rehydrationVault && !transformAction) {
+          finalBody = rehydrateResponseBody(finalBody, rehydrationVault);
         }
 
         emitEnrichedEvent(event, finalMeta, { statusCode: result.statusCode, durationMs: result.durationMs, ttfbMs: result.ttfbMs }, activeVault);
@@ -512,13 +515,14 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
     activeVault = undefined; // ownership transferred to stream closure
 
     // ── 7b-i. Vault active: hold-back window rehydration ────────────────────
-    // When PSEUDONYMIZE was applied to the request, tokens like <EMAIL_1> must
-    // be replaced before bytes reach the client. We use a hold-back window of
-    // maxTokenLength bytes: rehydrate and forward all bytes except the final
-    // window; the window is prepended to the next chunk so no token can span a
-    // send boundary. Only the window is ever held in memory — not the full stream.
-    if (capturedVault) {
-      const holdBack = capturedVault.maxTokenLength;
+    // When PSEUDONYMIZE was applied to the request, tokens must be replaced before bytes
+    // reach the client. Also rehydrates synthetics injected by MCP tool response
+    // pseudonymization earlier in the session (capturedPiiVault may have entries even when
+    // capturedVault is nil — the current request had no PII but previous tool responses did).
+    // Hold-back window: maxTokenLength bytes held at the tail so tokens don't span chunks.
+    const streamRehydrationVault = capturedVault ?? (capturedPiiVault && capturedPiiVault.size > 0 ? capturedPiiVault : undefined);
+    if (streamRehydrationVault) {
+      const holdBack = streamRehydrationVault.maxTokenLength;
       const decoder = new TextDecoder();
       const encoder = new TextEncoder();
 
@@ -532,7 +536,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
             pending += decoder.decode(value, { stream: true });
             if (pending.length > holdBack) {
               const cutAt = pending.length - holdBack;
-              await s.write(encoder.encode(capturedVault.rehydrate(pending.slice(0, cutAt))));
+              await s.write(encoder.encode(streamRehydrationVault.rehydrate(pending.slice(0, cutAt))));
               pending = pending.slice(cutAt);
             }
           }
@@ -544,7 +548,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
         }
 
         if (pending) {
-          await s.write(encoder.encode(capturedVault.rehydrate(pending)));
+          await s.write(encoder.encode(streamRehydrationVault.rehydrate(pending)));
         }
 
         // streamMeta has settled — stream was fully consumed above.
@@ -562,7 +566,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
             ttfbMs: capturedTtfb,
             totalDurationMs: Date.now() - capturedForwardStart,
           });
-          if (capturedVaultOwned) capturedVault.dispose();
+          if (capturedVaultOwned) capturedVault?.dispose();
           return;
         }
 
@@ -581,12 +585,13 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
           isViolation ? { ...capturedEvent, outcome: 'policy-violation' } : capturedEvent,
           vaultMeta,
           { statusCode: capturedStatusCode, durationMs: Date.now() - capturedForwardStart, ttfbMs: capturedTtfb },
-          capturedVault,
+          streamRehydrationVault,
         );
+        if (capturedVaultOwned) capturedVault?.dispose();
       });
     }
 
-    // ── 7b-ii. Normal streaming path (no vault) ──────────────────────────────
+    // ── 7b-ii. Normal streaming path (no vault, no session synthetics) ───────
     // Note: if two streaming responses overlap and both generate tool_use blocks,
     // ConversationTracker uses last-writer-wins — acceptable since overlapping
     // turns in the same conversation are rare and the conversationId is still correct.
