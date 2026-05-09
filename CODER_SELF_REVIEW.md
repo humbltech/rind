@@ -1,61 +1,75 @@
-# CODER_SELF_REVIEW.md
+## Coder Self-Review: Fix replit-db-deletion "no tool call recorded" + MCP gateway outcome bug
+**Language:** TypeScript
+**Date:** 2026-05-08
 
-## Task
+### Programmatic Pre-Flight
+- [x] `tsc --noEmit` — zero new errors (4 pre-existing errors in unrelated files: routes/servers.ts, keys.test.ts, servers.test.ts)
+- [x] Tests pass — 684/684 across 41 test files including all 16 gateway tests
 
-Fix: dashboard outcome badge stays frozen at "REQUIRE APPROVAL" after a
-dashboard deny/approve decision. The user sees the stale state until they do a
-hard browser refresh.
+### Changes Summary
 
-## Root cause
+**Bug 1 (primary): replit-db-deletion "no tool call recorded" in HTTP demo mode**
+Root cause: The proxy runs under `tsx watch` (hot-reload on file save). Any save between
+`maybeStartSimLlmServer` configuring `POST /admin/llm-upstream` and the actual agent-turn
+LLM call resets `anthropicUpstream` to `https://api.anthropic.com`. With no API key, the
+LLM call fails or returns `stop_reason: end_turn` (no tool_use) → `/proxy/tool-call` is
+never called → no tool call event in the ring buffer / dashboard.
 
-Both `page.tsx` and `logs/page.tsx` used timestamp-based incremental polling:
+Secondary cause: the silent `.catch(() => {})` on `POST /admin/scenario` hid failures
+from the sim server that would have explained why turns weren't loaded.
 
-```
-getToolCalls({ since: lastToolTs.current + 1 })
-```
+Fix in `simulation/src/scenario-runner.ts`:
+1. Before each agent-turn LLM loop, call `POST /admin/llm-upstream` via `transport`
+   (idempotent, guards against proxy restarts)
+2. Remove silent catch on `POST /admin/scenario` — surface errors to stderr with
+   actionable guidance
 
-When a ring-buffer entry is **updated in place** (outcome: require-approval →
-disapproved/approved/approval-timeout), its `timestamp` field does not change.
-So `since=T+1` never returns the updated entry. React state stays frozen at the
-stale outcome until a full page reload triggers `initialLoad`.
+**Bug 2 (secondary): MCP gateway hardcodes outcome:'allowed' for blocked calls**
+Root cause: `onToolCallEvent` in `server.ts` hardcodes `outcome: 'allowed'` regardless
+of policy result. The `/proxy/tool-call` route calls `recordProxyOutcome` after
+`intercept()` returns to fix this up, but the MCP gateway path had no equivalent.
 
-## Change
+Fix in `transport/gateway.ts` + `server.ts`:
+1. Add optional `onInterceptResult` callback to `dispatchToolCall`, `dispatchRequest`,
+   and `mcpGateway` factory — threaded as an optional param (backward compat, all
+   existing tests pass without it)
+2. `dispatchToolCall` fires the callback after `intercept()` returns
+3. `server.ts` wires it to `recordProxyOutcome(targetId, interceptorResult, ringBuffer)`
+   using the same `mergedCorrelationIds` translation logic as `onToolResponseEvent`
 
-Replaced the two-function (initialLoad + incrementalPoll) pattern in both
-polling hooks with a single `poll()` that always fetches the full recent window
-(`limit: 200` on Overview, `limit: 500` on Logs) and replaces the entire state.
+### Shared Quality Gates
+- [x] SRP — each function/component has one reason to change
+- [x] DI — no concrete deps instantiated inside business logic
+- [x] Edge cases: null correlationId guarded (`if (event.correlationId)`)
+- [x] Edge cases: `onInterceptResult` is optional; absent = old behavior
+- [x] Edge cases: `transport('/admin/llm-upstream')` failure is caught silently (non-fatal)
+- [x] Edge cases: `fetch('/admin/scenario')` failure written to stderr, not thrown (step continues)
+- [x] Temporal: `onInterceptResult` fires after `intercept()` resolves — correct ordering
+- [x] Temporal: `recordProxyOutcome` updates in-memory ring buffer synchronously
+- [x] Error handling: no swallowed exceptions for scenarios; stderr output for warnings
+- [x] Testability: `onInterceptResult` is optional — all existing 16 gateway tests pass
 
-Removed: `lastToolTs`, `lastLlmTs` refs; `since` query parameter usage;
-`INITIAL_LIMIT` constant; two-function split.
+### TypeScript-Specific Gates
+- [x] No `any` — `InterceptorResult` imported explicitly from `interceptor.ts`
+- [x] No `!` assertions
+- [x] No `@ts-ignore`
+- [x] Types derived from existing exports — `InterceptorResult` already exported
+- [x] `strict: true` — no tsconfig changes
+- [x] N/A: No React components, no Supabase, no i18n, no theme
 
-## Claims
+### Issues Found During Self-Review
+1. `scenRes !== null` check needed before `!scenRes.ok` since `fetch().catch()` returns
+   `null` on error — handled correctly.
+2. In-process mode: `simLlmUrl` is `undefined` when `proxyUrl` is absent, so the
+   `if (simLlmUrl)` guard correctly skips both calls in in-process mode.
+3. `mergedCorrelationIds` is correctly in scope for the `onInterceptResult` closure
+   in `server.ts` — defined in the same `if (config.mcpProxyEnabled !== false)` block.
+4. For blocked MCP calls (DENY), `onToolCallEvent` initially pushes `outcome:'allowed'`
+   then `onInterceptResult` immediately calls `recordProxyOutcome` which updates it to
+   `outcome:'blocked'`. Both are synchronous in-memory — correct state by the time the
+   HTTP response returns to the MCP client.
 
-| Claim | Evidence |
-|---|---|
-| TypeScript compiles clean | `tsc --noEmit` passes (0 errors) |
-| No tests broken | 684/684 proxy tests pass (dashboard has no test suite) |
-| `useRef` / `useCallback` imports still valid | grep confirms both remain used in other hooks/components |
-| `isConnected` false-on-error path preserved | `catch` block sets `setIsConnected(false)` in both pages |
-| `initialized` guard preserved | prevents interval from firing before first poll completes |
-| Cleanup correct | `return () => { active = false; clearInterval(intervalId); }` unchanged |
-
-## Known trade-offs
-
-- **State replacement on every poll**: React diffs the new array against the
-  previous one. Only changed rows get DOM updates. Expanded row state (local
-  `useState` in `TableRow`) resets if the row's key changes (timestamp+idx).
-  This was already true when new events prepended and shifted indices; the
-  change doesn't make it worse.
-- **No incremental growth for Logs page**: Previously the Logs page accumulated
-  events across polls. Now it is capped at 500 on every poll. Ring buffer itself
-  is capped at 10,000; the 500 limit was already a snapshot, not a growing set.
-- **Bandwidth**: 500 events × ~500 bytes ≈ 250 KB per 2-second poll on Logs.
-  Acceptable for a local dev dashboard; not a concern for the target use case.
-
-## What I did NOT do
-
-- Did not add `updatedAt` to `ToolCallEvent` (would fix the root cause more
-  surgically but requires touching the proxy type, server, and client — larger
-  blast radius than the fix warrants).
-- Did not add a test: dashboard has no test suite and the fix is a pure data
-  flow change with no logic branches.
+### Self-Certification
+All items above are marked [x] (pass) or N/A with a reason.
+I have found no defects I am unwilling to defend to an adversarial reviewer.
+Signed: claude-sonnet-4-6 at 2026-05-08T21:17:00Z

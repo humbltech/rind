@@ -48,7 +48,7 @@ import { scanRoutes } from './routes/scan.js';
 import { logRoutes } from './routes/log.js';
 import { hookRoutes } from './routes/hook.js';
 import { toolCallRoutes } from './routes/tool-call.js';
-import { emitAudit } from './routes/helpers.js';
+import { emitAudit, recordProxyOutcome } from './routes/helpers.js';
 
 export function createProxyServer(config: ProxyConfig) {
   const logger = pino({
@@ -269,7 +269,19 @@ export function createProxyServer(config: ProxyConfig) {
       logger.warn({ serverId }, 'Shadow MCP server attempt — server not registered, access blocked');
     };
 
-    app.route('/', mcpGateway(upstreamPool, gatewayInterceptorOpts, PROXY_VERSION, onToolsList, onShadowAttempt));
+    app.route('/', mcpGateway(
+      upstreamPool,
+      gatewayInterceptorOpts,
+      PROXY_VERSION,
+      onToolsList,
+      onShadowAttempt,
+      (correlationId, interceptorResult) => {
+        // Translate gateway correlationId → hook correlationId for merged calls
+        // (same logic as onToolResponseEvent above).
+        const targetId = mergedCorrelationIds.get(correlationId) ?? correlationId;
+        recordProxyOutcome(targetId, interceptorResult, ringBuffer);
+      },
+    ));
     logger.info({ servers: Object.keys(config.servers ?? {}) }, 'MCP gateway mounted');
   }
 

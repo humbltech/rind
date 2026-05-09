@@ -13,7 +13,7 @@ import { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
 import type { UpstreamPool } from './pool.js';
 import type { UpstreamClient, ToolInfo } from './upstream/interface.js';
-import type { InterceptorOptions } from '../interceptor.js';
+import type { InterceptorOptions, InterceptorResult } from '../interceptor.js';
 import { intercept } from '../interceptor.js';
 import type { ToolCallEvent } from '../types.js';
 import { normalizeToolName, toMcpToolName } from '../hooks/tool-name.js';
@@ -51,6 +51,7 @@ export function mcpGateway(
   version: string,
   onToolsList?: (serverId: string, tools: ToolInfo[]) => void,
   onShadowAttempt?: (serverId: string) => void,
+  onInterceptResult?: (correlationId: string, result: InterceptorResult) => void,
 ): Hono {
   const app = new Hono();
 
@@ -99,6 +100,7 @@ export function mcpGateway(
       interceptorOpts,
       version,
       onToolsList,
+      onInterceptResult,
     );
 
     // MCP notifications must not receive a JSON-RPC response body (protocol requirement)
@@ -115,14 +117,15 @@ export function mcpGateway(
 // Testable with any mock upstream and any interceptor config.
 
 export async function dispatchRequest(
-  request:        McpRequestMessage,
-  upstream:       UpstreamClient,
-  serverId:       string,
-  mcpSessionId:   string | undefined,
-  agentIdHeader:  string | undefined,
-  interceptorOpts: InterceptorOptions,
-  version:        string,
-  onToolsList?:   (serverId: string, tools: ToolInfo[]) => void,
+  request:          McpRequestMessage,
+  upstream:         UpstreamClient,
+  serverId:         string,
+  mcpSessionId:     string | undefined,
+  agentIdHeader:    string | undefined,
+  interceptorOpts:  InterceptorOptions,
+  version:          string,
+  onToolsList?:     (serverId: string, tools: ToolInfo[]) => void,
+  onInterceptResult?: (correlationId: string, result: InterceptorResult) => void,
 ): Promise<McpResponseMessage> {
   const { id } = request;
 
@@ -150,7 +153,7 @@ export async function dispatchRequest(
   }
 
   if (isToolsCall(request)) {
-    return dispatchToolCall(request, upstream, serverId, mcpSessionId, agentIdHeader, interceptorOpts);
+    return dispatchToolCall(request, upstream, serverId, mcpSessionId, agentIdHeader, interceptorOpts, onInterceptResult);
   }
 
   // Unrecognised method — not supported in Phase A3
@@ -161,12 +164,13 @@ export async function dispatchRequest(
 // Separate function so it can be tested without constructing a full gateway.
 
 export async function dispatchToolCall(
-  request:         McpRequestMessage,
-  upstream:        UpstreamClient,
-  serverId:        string,
-  mcpSessionId:    string | undefined,
-  agentIdHeader:   string | undefined,
-  interceptorOpts: InterceptorOptions,
+  request:            McpRequestMessage,
+  upstream:           UpstreamClient,
+  serverId:           string,
+  mcpSessionId:       string | undefined,
+  agentIdHeader:      string | undefined,
+  interceptorOpts:    InterceptorOptions,
+  onInterceptResult?: (correlationId: string, result: InterceptorResult) => void,
 ): Promise<McpResponseMessage> {
   const { id } = request;
 
@@ -216,6 +220,13 @@ export async function dispatchToolCall(
     result = await intercept(event, forward, interceptorOpts);
   } catch (err) {
     return buildInternalError(id, err);
+  }
+
+  // Update the ring buffer entry with the actual outcome — the MCP gateway path
+  // does not call recordProxyOutcome after intercept(), so blocked calls would
+  // otherwise remain with outcome:'allowed' pushed by onToolCallEvent.
+  if (event.correlationId) {
+    onInterceptResult?.(event.correlationId, result.interceptorResult);
   }
 
   const { interceptorResult, output } = result;
