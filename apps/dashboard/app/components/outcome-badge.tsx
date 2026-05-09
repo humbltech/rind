@@ -59,7 +59,7 @@ export function OutcomeBadge({ outcome }: { outcome: ToolCallOutcome }): React.R
       },
     },
     'approval-timeout': {
-      label: 'APPROVAL TIMEOUT',
+      label: 'TIMED OUT',
       style: {
         color: 'var(--rind-medium)',
         background: 'color-mix(in srgb, var(--rind-medium) 10%, transparent)',
