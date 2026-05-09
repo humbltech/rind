@@ -168,13 +168,16 @@ export async function evaluateLlmResponseContent(
 
 /**
  * Walk every string in the response body and replace pseudonymization tokens
- * with their original PII values. Inverse of applyPseudonymizeToBody.
+ * with their original values. Inverse of applyPseudonymizeToBody.
+ *
+ * Accepts any vault with a rehydrate(text) method — both PIIVault and CredentialVault
+ * satisfy this shape. Called with each vault separately so credential synthetics and
+ * PII synthetics are both resolved before the response reaches the client.
  *
  * Called on the non-streaming response body BEFORE it is sent to the client,
- * and on buffered SSE text for streaming responses, when PSEUDONYMIZE was applied
- * to the outbound request. Must run before vault.dispose() is called.
+ * and on buffered SSE text for streaming responses. Must run before vault.dispose().
  */
-export function rehydrateResponseBody(body: unknown, vault: PIIVault): unknown {
+export function rehydrateResponseBody(body: unknown, vault: { rehydrate(text: string): string }): unknown {
   if (typeof body === 'string') return vault.rehydrate(body);
   if (Array.isArray(body)) return body.map((item) => rehydrateResponseBody(item, vault));
   if (typeof body === 'object' && body !== null) {

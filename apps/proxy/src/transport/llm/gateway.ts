@@ -473,16 +473,20 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
           : result.meta;
 
         // REDACT/PSEUDONYMIZE: patch response body with transformed text (synthetic or [REDACTED]).
-        // Otherwise rehydrate vault tokens → original PII values before sending to client.
-        // Must happen before emitEnrichedEvent disposes the vault.
-        // Use activeVault (request-scoped pseudonymization) OR session piiVault (catches synthetics
-        // injected by MCP tool response pseudonymization earlier in the session).
+        // Otherwise rehydrate vault tokens → original values before sending to client.
+        // Apply credVault first (credential synthetics created by MCP step 8b), then
+        // piiVault / activeVault (PII synthetics). Both must run before vault disposal.
         let finalBody: unknown = transformAction
           ? patchResponseBodyWithRedaction(result.responseBody, responseContentResult.redactedText)
           : result.responseBody;
-        const rehydrationVault = activeVault ?? piiVault;
-        if (rehydrationVault && !transformAction) {
-          finalBody = rehydrateResponseBody(finalBody, rehydrationVault);
+        if (!transformAction) {
+          if (credVault) {
+            finalBody = rehydrateResponseBody(finalBody, credVault);
+          }
+          const rehydrationVault = activeVault ?? piiVault;
+          if (rehydrationVault) {
+            finalBody = rehydrateResponseBody(finalBody, rehydrationVault);
+          }
         }
 
         emitEnrichedEvent(event, finalMeta, { statusCode: result.statusCode, durationMs: result.durationMs, ttfbMs: result.ttfbMs }, activeVault);
@@ -516,13 +520,28 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
 
     // ── 7b-i. Vault active: hold-back window rehydration ────────────────────
     // When PSEUDONYMIZE was applied to the request, tokens must be replaced before bytes
-    // reach the client. Also rehydrates synthetics injected by MCP tool response
-    // pseudonymization earlier in the session (capturedPiiVault may have entries even when
-    // capturedVault is nil — the current request had no PII but previous tool responses did).
-    // Hold-back window: maxTokenLength bytes held at the tail so tokens don't span chunks.
-    const streamRehydrationVault = capturedVault ?? (capturedPiiVault && capturedPiiVault.size > 0 ? capturedPiiVault : undefined);
-    if (streamRehydrationVault) {
-      const holdBack = streamRehydrationVault.maxTokenLength;
+    // reach the client. Also rehydrates credential synthetics created by MCP step 8b
+    // (capturedCredVault entries), and PII synthetics from earlier in the session
+    // (capturedPiiVault entries when capturedVault is nil).
+    // Hold-back window: max(all vault maxTokenLength) bytes held so tokens don't span chunks.
+    const credVaultHasEntries = capturedCredVault && capturedCredVault.maxTokenLength > 0;
+    const piiVaultHasEntries = capturedPiiVault && capturedPiiVault.size > 0;
+    const needsStreamRehydration = capturedVault != null || credVaultHasEntries || piiVaultHasEntries;
+    if (needsStreamRehydration) {
+      const holdBack = Math.max(
+        capturedVault?.maxTokenLength ?? 0,
+        capturedCredVault?.maxTokenLength ?? 0,
+        capturedPiiVault?.maxTokenLength ?? 0,
+      );
+      // Chain all three vaults: cred synthetics first, then request-PII, then session-PII.
+      // capturedVault and capturedPiiVault may be the same object — double-apply is a no-op.
+      const rehydrateAll = (text: string): string => {
+        let t = text;
+        if (capturedCredVault) t = capturedCredVault.rehydrate(t);
+        if (capturedVault) t = capturedVault.rehydrate(t);
+        if (capturedPiiVault) t = capturedPiiVault.rehydrate(t);
+        return t;
+      };
       const decoder = new TextDecoder();
       const encoder = new TextEncoder();
 
@@ -536,7 +555,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
             pending += decoder.decode(value, { stream: true });
             if (pending.length > holdBack) {
               const cutAt = pending.length - holdBack;
-              await s.write(encoder.encode(streamRehydrationVault.rehydrate(pending.slice(0, cutAt))));
+              await s.write(encoder.encode(rehydrateAll(pending.slice(0, cutAt))));
               pending = pending.slice(cutAt);
             }
           }
@@ -548,7 +567,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
         }
 
         if (pending) {
-          await s.write(encoder.encode(streamRehydrationVault.rehydrate(pending)));
+          await s.write(encoder.encode(rehydrateAll(pending)));
         }
 
         // streamMeta has settled — stream was fully consumed above.
@@ -585,7 +604,7 @@ function buildProviderHandler(provider: LlmProxyProvider, opts: LlmGatewayOption
           isViolation ? { ...capturedEvent, outcome: 'policy-violation' } : capturedEvent,
           vaultMeta,
           { statusCode: capturedStatusCode, durationMs: Date.now() - capturedForwardStart, ttfbMs: capturedTtfb },
-          streamRehydrationVault,
+          capturedVault ?? capturedPiiVault,
         );
         if (capturedVaultOwned) capturedVault?.dispose();
       });

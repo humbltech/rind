@@ -62,6 +62,13 @@ export interface CredentialVault {
   rehydrateForDestination(text: string, dest: { serverId: string; toolName: string }): RehydrateResult;
   /** Walk an object tree, rehydrate synthetics scoped to dest.serverId. */
   rehydrateValueForDestination(value: unknown, dest: { serverId: string; toolName: string }): RehydrateValueResult;
+  /**
+   * Unconditionally replace all credential synthetics in text with their originals.
+   * No destination scoping — used for LLM response rehydration where we're returning
+   * to the agent that already holds the synthetics (destination scoping enforced at
+   * step 5b for MCP tool call inputs instead).
+   */
+  rehydrate(text: string): string;
   getDebugEntries(): Array<CredentialVaultEntry & { originalValue: string }>;
   readonly maxTokenLength: number;
   dispose(): void;
@@ -198,6 +205,16 @@ export function createCredentialVault(agentId: string): CredentialVault {
       });
 
       return { value: transformed, rehydratedTokens: allRehydrated, blockedTokens: allBlocked };
+    },
+
+    rehydrate(text) {
+      let result = text;
+      for (const [synthetic, tag] of syntheticToTag) {
+        if (!result.includes(synthetic)) continue;
+        const original = originalByTag.get(tag);
+        if (original) result = result.replaceAll(synthetic, original);
+      }
+      return result;
     },
 
     getDebugEntries() {
