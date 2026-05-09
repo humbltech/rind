@@ -298,8 +298,11 @@ export async function evaluateLlmContent(
       if (rule.action === 'REDACT') {
         // Use session-scoped vault if provided; otherwise create a temporary one for this call.
         // Determinism guarantees same agentId + same credential → same synthetic in both cases.
+        // fallbackToRedacted: injection/dlp have no synthetic concept — whole-block [REDACTED]
+        // is intentional. For secret/pii, blocks without credentials pass through unchanged.
         const vaultToUse = credVault ?? createCredentialVault(event.agentId);
-        const sanitizedBody = applyRedaction(body, targets, vaultToUse, piiVault);
+        const fallbackToRedacted = detector === 'prompt_injection' || detector === 'dlp';
+        const sanitizedBody = applyRedaction(body, targets, vaultToUse, piiVault, fallbackToRedacted);
         if (!credVault) vaultToUse.dispose();
         return {
           action: 'REDACT',
@@ -333,17 +336,23 @@ function applyRedaction(
   targets: ('system' | 'user' | 'assistant')[],
   credVault?: CredentialVault,
   piiVault?: PIIVault,
+  // true for injection/dlp detectors where [REDACTED] is intentional (no synthetic concept).
+  // false (default) for secret/pii detectors: blocks without credentials pass through unchanged.
+  fallbackToRedacted = false,
 ): unknown {
   const textOrigin = { serverId: '_llm_request', toolName: '_llm_request' };
   const toolResultOrigin = { serverId: '_llm_tool_result', toolName: 'tool_result' };
 
-  // Apply vault pseudonymization for credential/PII content; fall back to [REDACTED]
-  // when neither vault makes a substitution (injection/dlp REDACT: the text passes
-  // through vault calls unchanged because there are no credential/PII tokens to replace).
+  // Apply vault pseudonymization for credential/PII content.
+  // When vault(s) replace something → return the sanitized text.
+  // When vault(s) find nothing AND fallbackToRedacted → [REDACTED] (injection/dlp path).
+  // When vault(s) find nothing AND !fallbackToRedacted → return text unchanged (secret/pii path:
+  //   blocks that happen not to contain credentials should not become [REDACTED]).
   function transformText(text: string, origin: { serverId: string; toolName: string }): string {
     const credSanitized = credVault ? credVault.pseudonymize(text, origin).sanitized : text;
     const piiSanitized = piiVault ? piiVault.pseudonymize(credSanitized, origin).sanitized : credSanitized;
-    return piiSanitized !== text ? piiSanitized : redactString(text);
+    if (piiSanitized !== text) return piiSanitized;
+    return fallbackToRedacted ? redactString(text) : text;
   }
 
   if (typeof body !== 'object' || body === null) return body;
