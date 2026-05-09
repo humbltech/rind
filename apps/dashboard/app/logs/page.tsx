@@ -1213,70 +1213,40 @@ function TimelineLlmRow({ entry }: { entry: LlmCallEntry }) {
 
 // ─── Data polling ────────────────────────────────────────────────────────────
 
-// Initial fetch brings the 500 most recent events. Subsequent polls use ?since=
-// to fetch only new events, appending them — avoiding a full 10K buffer transfer every 2s.
-const INITIAL_LIMIT = 500;
+const POLL_LIMIT = 500;
 
 function useLogData() {
   const [toolCalls, setToolCalls] = useState<ToolCallEntry[]>([]);
   const [llmCalls, setLlmCalls]   = useState<LlmCallEntry[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 
-  // Track the highest timestamp seen so incremental polls only fetch new events.
-  const lastToolTs = useRef<number>(0);
-  const lastLlmTs  = useRef<number>(0);
-  // Whether the initial load has completed — incremental mode starts after.
   const initialized = useRef(false);
 
   useEffect(() => {
     let active = true;
 
-    async function initialLoad() {
+    async function poll() {
       try {
         const [calls, llm] = await Promise.all([
-          getToolCalls({ limit: INITIAL_LIMIT }),
-          getLlmCalls({ limit: INITIAL_LIMIT }),
+          getToolCalls({ limit: POLL_LIMIT }),
+          getLlmCalls({ limit: POLL_LIMIT }),
         ]);
         if (!active) return;
 
         setToolCalls(calls);
         setLlmCalls(llm);
         setIsConnected(true);
-        lastToolTs.current = calls.reduce((m, e) => Math.max(m, e.timestamp), 0);
-        lastLlmTs.current  = llm.reduce((m, e) => Math.max(m, e.timestamp), 0);
         initialized.current = true;
       } catch {
         if (active) setIsConnected(false);
       }
     }
 
-    async function incrementalPoll() {
-      try {
-        const [newCalls, newLlm] = await Promise.all([
-          lastToolTs.current > 0 ? getToolCalls({ since: lastToolTs.current + 1 }) : Promise.resolve([] as ToolCallEntry[]),
-          lastLlmTs.current  > 0 ? getLlmCalls({  since: lastLlmTs.current  + 1 }) : Promise.resolve([] as LlmCallEntry[]),
-        ]);
-        if (!active) return;
-
-        if (newCalls.length > 0) {
-          setToolCalls((prev) => [...prev, ...newCalls]);
-          lastToolTs.current = newCalls.reduce((m, e) => Math.max(m, e.timestamp), lastToolTs.current);
-        }
-        if (newLlm.length > 0) {
-          setLlmCalls((prev) => [...prev, ...newLlm]);
-          lastLlmTs.current = newLlm.reduce((m, e) => Math.max(m, e.timestamp), lastLlmTs.current);
-        }
-        setIsConnected(true);
-      } catch {
-        if (active) setIsConnected(false);
-      }
-    }
-
     let intervalId: ReturnType<typeof setInterval> | undefined;
-    initialLoad().then(() => {
+    poll().then(() => {
       if (!active) return;
       intervalId = setInterval(() => {
-        if (initialized.current) incrementalPoll();
+        if (initialized.current) poll();
       }, 2000);
     });
 

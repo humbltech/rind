@@ -413,14 +413,12 @@ function useProxyData() {
   const [llmCalls, setLlmCalls]       = useState<LlmCallEntry[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 
-  const lastToolTs = useRef<number>(0);
-  const lastLlmTs  = useRef<number>(0);
   const initialized = useRef(false);
 
   useEffect(() => {
     let active = true;
 
-    async function initialLoad() {
+    async function poll() {
       try {
         const [st, calls, scan, ctx, llm] = await Promise.all([
           getStatus(),
@@ -437,47 +435,17 @@ function useProxyData() {
         setHookContext(ctx);
         setLlmCalls(llm);
         setIsConnected(true);
-        lastToolTs.current = calls.reduce((m, e) => Math.max(m, e.timestamp), 0);
-        lastLlmTs.current  = llm.reduce((m, e) => Math.max(m, e.timestamp), 0);
         initialized.current = true;
       } catch {
         if (active) setIsConnected(false);
       }
     }
 
-    async function incrementalPoll() {
-      try {
-        const [st, newCalls, scan, ctx, newLlm] = await Promise.all([
-          getStatus(),
-          lastToolTs.current > 0 ? getToolCalls({ since: lastToolTs.current + 1 }) : Promise.resolve([] as ToolCallEntry[]),
-          getScanResults(),
-          getHookContext(),
-          lastLlmTs.current  > 0 ? getLlmCalls({  since: lastLlmTs.current  + 1 }) : Promise.resolve([] as LlmCallEntry[]),
-        ]);
-        if (!active) return;
-
-        setStatus(st);
-        setScanResults(scan);
-        setHookContext(ctx);
-        if (newCalls.length > 0) {
-          setToolCalls((prev) => [...prev, ...newCalls]);
-          lastToolTs.current = newCalls.reduce((m, e) => Math.max(m, e.timestamp), lastToolTs.current);
-        }
-        if (newLlm.length > 0) {
-          setLlmCalls((prev) => [...prev, ...newLlm]);
-          lastLlmTs.current = newLlm.reduce((m, e) => Math.max(m, e.timestamp), lastLlmTs.current);
-        }
-        setIsConnected(true);
-      } catch {
-        if (active) setIsConnected(false);
-      }
-    }
-
     let intervalId: ReturnType<typeof setInterval> | undefined;
-    initialLoad().then(() => {
+    poll().then(() => {
       if (!active) return;
       intervalId = setInterval(() => {
-        if (initialized.current) incrementalPoll();
+        if (initialized.current) poll();
       }, 2000);
     });
 
