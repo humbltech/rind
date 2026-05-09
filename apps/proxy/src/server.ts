@@ -404,6 +404,22 @@ export function createProxyServer(config: ProxyConfig) {
     });
   }
 
+  // Admin endpoint: dynamically update the MCP upstream URL.
+  // Used by the sim CLI in HTTP demo mode to route tool calls to the fixture server
+  // on the dev machine without requiring a proxy restart. Only mutates in-memory config.
+  //
+  // Prerequisite: add this line to /etc/hosts on the proxy machine:
+  //   <dev-machine-IP>  rind-sim-fixture.local
+  app.post('/admin/mcp-upstream', async (c) => {
+    let body: unknown;
+    try { body = await c.req.json(); } catch { return c.json({ error: 'Body must be valid JSON' }, 400); }
+    const url = (body as Record<string, unknown> | null)?.['url'];
+    if (typeof url !== 'string' || !url) return c.json({ error: 'Expected { url: string }' }, 400);
+    config.upstreamMcpUrl = url;
+    logger.info({ url }, 'MCP upstream updated via admin API');
+    return c.json({ ok: true, upstreamMcpUrl: url });
+  });
+
   // ─── Status summary (D-026) ───────────────────────────────────────────────────
   app.get('/status', (c) => {
     const sessions = sessionStore.list();
