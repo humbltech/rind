@@ -33,6 +33,11 @@ export function logRoutes({ ringBuffer, hookEventBuffer }: LogRouteDeps): Hono {
     return c.json(events);
   });
 
+  app.delete('/logs/tool-calls', async (c) => {
+    await ringBuffer.clear();
+    return c.body(null, 204);
+  });
+
   app.get('/logs/hook-events', (c) => {
     const { session_id, event_type, agent_id } = c.req.query();
     let events = hookEventBuffer.toArray();

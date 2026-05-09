@@ -35,6 +35,13 @@ export interface IEventStore<T> {
    * In-memory-only implementations return 0 immediately.
    */
   load(): Promise<number>;
+
+  /**
+   * Remove all events from the store and underlying persistence.
+   * After this resolves, length === 0 and toArray() returns [].
+   * I/O (file truncation) is fire-and-forget; the in-memory clear is synchronous.
+   */
+  clear(): Promise<void>;
 }
 
 // ─── Audit log ───────────────────────────────────────────────────────────────

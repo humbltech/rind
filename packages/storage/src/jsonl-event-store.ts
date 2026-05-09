@@ -82,6 +82,11 @@ export class JsonlEventStore<T> implements IEventStore<T> {
     this.writeChain = this.writeChain.then(fn).catch((err: unknown) => this.onError(err));
   }
 
+  async clear(): Promise<void> {
+    await this.mem.clear();
+    this.enqueueWrite(() => writeFile(this.filePath, '', 'utf-8'));
+  }
+
   private async compact(): Promise<void> {
     const entries = this.mem.toArray();
     const content = entries.map((e) => JSON.stringify(e)).join('\n') + '\n';

@@ -39,6 +39,12 @@ class RingBuffer<T> {
     return false;
   }
 
+  clear(): void {
+    this.buf = new Array<T | undefined>(this.cap);
+    this.head = 0;
+    this.size = 0;
+  }
+
   get length(): number {
     return this.size;
   }
@@ -78,5 +84,9 @@ export class InMemoryEventStore<T> implements IEventStore<T> {
   /** No-op — nothing to load. Returns 0. */
   async load(): Promise<number> {
     return 0;
+  }
+
+  async clear(): Promise<void> {
+    this.ring.clear();
   }
 }
