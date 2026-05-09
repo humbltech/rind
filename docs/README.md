@@ -40,6 +40,7 @@ docs/
 │   ├── hook-expansion-plan.md     ← Claude Code hook integration plan
 │   ├── ui-guidelines.md           ← Design language and UI standards
 │   ├── agent-deployment-patterns.md ← How agents are deployed, "wow" install flows
+│   ├── enterprise-deployment-guide.md ← CISO/IT: install, MDM, network enforcement, FAQ
 │   └── coverage-matrix.md         ← D-040 Phase A coverage tracking
 │
 ├── competitive/                   ← All competitive intelligence
@@ -122,6 +123,7 @@ docs/
 | [Product Spec](./product/product-spec.md) | Vision, architecture, pricing, MVP scope |
 | [Policy DSL](./product/policy-dsl.md) | Complete policy language spec |
 | [Hook Expansion Plan](./product/hook-expansion-plan.md) | D-040 endpoint agent integration |
+| [Enterprise Deployment Guide](./product/enterprise-deployment-guide.md) | One-command install, MDM enforcement, network blocking, CISO FAQ |
 
 ### Competitive
 
