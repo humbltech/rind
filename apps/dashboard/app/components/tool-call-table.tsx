@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type React from 'react';
 import Link from 'next/link';
+import { OutcomeBadge, type ToolCallOutcome } from './outcome-badge';
 
 export interface ToolCallEntry {
   sessionId: string;
@@ -17,7 +18,7 @@ export interface ToolCallEntry {
   toolLabel?: string;
   timestamp: number;
   // Present when the proxy returns a decision alongside the call
-  outcome?: 'allowed' | 'blocked' | 'require-approval' | 'approved' | 'disapproved' | 'approval-timeout' | 'upstream-error' | 'upstream-timeout';
+  outcome?: ToolCallOutcome;
   reason?: string;
   // Tool source classification
   source?: 'builtin' | 'mcp' | 'proxy';
@@ -162,87 +163,6 @@ function TableRow({ entry, isNew }: { entry: ToolCallEntry; isNew: boolean }) {
   );
 }
 
-// Outcome pill — ALLOWED / BLOCKED / REQUIRE APPROVAL
-// Per design spec: ALLOWED is intentionally muted (expected state);
-// BLOCKED is critical-tinted (exception); REQUIRE APPROVAL is amber-tinted.
-function OutcomeBadge({ outcome }: { outcome: NonNullable<ToolCallEntry['outcome']> }) {
-  const config: Record<NonNullable<ToolCallEntry['outcome']>, { label: string; style: React.CSSProperties }> = {
-    allowed: {
-      label: 'ALLOWED',
-      style: {
-        color: 'var(--rind-foreground-muted)',
-        background: 'var(--rind-overlay)',
-        borderColor: 'var(--rind-border-subtle)',
-      },
-    },
-    blocked: {
-      label: 'BLOCKED',
-      style: {
-        color: 'var(--rind-critical)',
-        background: 'color-mix(in srgb, var(--rind-critical) 10%, transparent)',
-        borderColor: 'color-mix(in srgb, var(--rind-critical) 24%, transparent)',
-      },
-    },
-    'require-approval': {
-      label: 'REQUIRE APPROVAL',
-      style: {
-        color: 'var(--rind-medium)',
-        background: 'color-mix(in srgb, var(--rind-medium) 10%, transparent)',
-        borderColor: 'color-mix(in srgb, var(--rind-medium) 24%, transparent)',
-      },
-    },
-    approved: {
-      label: 'APPROVED',
-      style: {
-        color: 'var(--rind-low)',
-        background: 'color-mix(in srgb, var(--rind-low) 10%, transparent)',
-        borderColor: 'color-mix(in srgb, var(--rind-low) 24%, transparent)',
-      },
-    },
-    disapproved: {
-      label: 'DISAPPROVED',
-      style: {
-        color: 'var(--rind-critical)',
-        background: 'color-mix(in srgb, var(--rind-critical) 10%, transparent)',
-        borderColor: 'color-mix(in srgb, var(--rind-critical) 24%, transparent)',
-      },
-    },
-    'approval-timeout': {
-      label: 'APPROVAL TIMEOUT',
-      style: {
-        color: 'var(--rind-medium)',
-        background: 'color-mix(in srgb, var(--rind-medium) 10%, transparent)',
-        borderColor: 'color-mix(in srgb, var(--rind-medium) 24%, transparent)',
-      },
-    },
-    'upstream-error': {
-      label: 'UPSTREAM ERROR',
-      style: {
-        color: 'var(--rind-medium)',
-        background: 'color-mix(in srgb, var(--rind-medium) 10%, transparent)',
-        borderColor: 'color-mix(in srgb, var(--rind-medium) 24%, transparent)',
-      },
-    },
-    'upstream-timeout': {
-      label: 'UPSTREAM TIMEOUT',
-      style: {
-        color: 'var(--rind-medium)',
-        background: 'color-mix(in srgb, var(--rind-medium) 10%, transparent)',
-        borderColor: 'color-mix(in srgb, var(--rind-medium) 24%, transparent)',
-      },
-    },
-  };
-
-  const { label, style } = config[outcome];
-  return (
-    <span
-      className="font-mono text-[10px] tracking-[0.04em] px-2 py-0.5 rounded border"
-      style={style}
-    >
-      {label}
-    </span>
-  );
-}
 
 // Observe badge — shown when observe-mode rules matched but were not enforced.
 // Signals: "Rind saw this, but isn't blocking yet — team is tuning policies."

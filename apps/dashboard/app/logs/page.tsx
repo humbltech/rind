@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { Sidebar } from '../components/sidebar';
 import type { ToolCallEntry } from '../components/tool-call-table';
+import { OutcomeBadge } from '../components/outcome-badge';
 import { LlmCallTable, type LlmCallEntry } from '../components/llm-call-table';
 import { getToolCalls, getLlmCalls } from '../lib/api';
 import {
@@ -562,37 +563,6 @@ function SourceBadge({ source }: { source?: 'builtin' | 'mcp' | 'proxy' }) {
   );
 }
 
-function OutcomeBadge({ outcome }: { outcome: NonNullable<ToolCallEntry['outcome']> }) {
-  const styles: Record<string, { label: string; color: string; bg: string; border: string }> = {
-    allowed: {
-      label: 'ALLOWED',
-      color: 'var(--rind-foreground-muted)',
-      bg: 'var(--rind-overlay)',
-      border: 'var(--rind-border-subtle)',
-    },
-    blocked: {
-      label: 'BLOCKED',
-      color: 'var(--rind-critical)',
-      bg: 'color-mix(in srgb, var(--rind-critical) 10%, transparent)',
-      border: 'color-mix(in srgb, var(--rind-critical) 24%, transparent)',
-    },
-    'require-approval': {
-      label: 'PENDING',
-      color: 'var(--rind-medium)',
-      bg: 'color-mix(in srgb, var(--rind-medium) 10%, transparent)',
-      border: 'color-mix(in srgb, var(--rind-medium) 24%, transparent)',
-    },
-  };
-  const s = styles[outcome] ?? styles.allowed;
-  return (
-    <span
-      className="font-mono text-[10px] tracking-[0.04em] px-2 py-0.5 rounded border"
-      style={{ color: s.color, background: s.bg, borderColor: s.border }}
-    >
-      {s.label}
-    </span>
-  );
-}
 
 function DetailPanel({ entry }: { entry: ToolCallEntry }) {
   const [tab, setTab] = useState<'input' | 'response'>('input');
@@ -1147,11 +1117,7 @@ function TimelineToolRow({ entry, correlated }: { entry: ToolCallEntry; correlat
       {/* Tool label */}
       <span className="font-mono text-[12px] text-accent truncate flex-1">{label}</span>
       {/* Outcome */}
-      {entry.outcome && (
-        <span className="shrink-0 font-mono text-[10px]" style={{ color: outcomeColor }}>
-          {entry.outcome.toUpperCase()}
-        </span>
-      )}
+      {entry.outcome && <OutcomeBadge outcome={entry.outcome} />}
       {expanded && (
         <div className="w-full mt-1 text-[11px] font-mono text-dim">
           <span className="text-foreground/60">{entry.serverId}</span>
